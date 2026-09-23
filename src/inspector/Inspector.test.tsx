@@ -1,10 +1,23 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { Inspector } from './Inspector';
-import { fakeModel, plate, width } from '../test/fakes';
+import { fakeModel, hole, plate, width } from '../test/fakes';
+import type { SelectionDescription } from '@aetheris/cad';
 
 describe('semantic inspector', () => {
-  it('shows identity and introspected property', () => { render(<Inspector model={fakeModel()} entityId={plate.id} diagnostics={[]} onApply={async () => true} />); expect(screen.getByText(plate.id)).toBeVisible(); expect(screen.getByLabelText('Width')).toHaveValue('50'); });
-  it('commits a unit-aware value only on Apply', async () => { const apply = vi.fn(async () => true); render(<Inspector model={fakeModel()} entityId={plate.id} diagnostics={[]} onApply={apply} />); fireEvent.change(screen.getByLabelText('Width'), { target: { value: '80' } }); expect(apply).not.toHaveBeenCalled(); fireEvent.click(screen.getByText('Apply')); await waitFor(() => expect(apply).toHaveBeenCalledWith(width, { value: 80, unit: 'mm' })); });
-  it('keeps invalid draft visibly correctable', async () => { render(<Inspector model={fakeModel()} entityId={plate.id} diagnostics={[]} onApply={async () => false} />); fireEvent.change(screen.getByLabelText('Width'), { target: { value: '-8' } }); fireEvent.click(screen.getByText('Apply')); expect(await screen.findByText(/last valid geometry remains/i)).toBeVisible(); expect(screen.getByLabelText('Width')).toHaveValue('-8'); });
+  it('shows identity and introspected property', () => { render(<Inspector model={fakeModel()} entityId={plate.id} diagnostics={[]} onApply={async () => true} />); expect(screen.getByText(plate.id)).toBeVisible(); fireEvent.click(screen.getByText(/SOURCE OVERRIDES/)); expect(screen.getByLabelText('Width')).toHaveValue('50'); });
+  it('commits a unit-aware value only on Apply', async () => { const apply = vi.fn(async () => true); render(<Inspector model={fakeModel()} entityId={plate.id} diagnostics={[]} onApply={apply} />); fireEvent.click(screen.getByText(/SOURCE OVERRIDES/)); fireEvent.change(screen.getByLabelText('Width'), { target: { value: '80' } }); expect(apply).not.toHaveBeenCalled(); fireEvent.click(screen.getByText('Apply')); await waitFor(() => expect(apply).toHaveBeenCalledWith(width, { value: 80, unit: 'mm' })); });
+  it('keeps invalid draft visibly correctable', async () => { render(<Inspector model={fakeModel()} entityId={plate.id} diagnostics={[]} onApply={async () => false} />); fireEvent.click(screen.getByText(/SOURCE OVERRIDES/)); fireEvent.change(screen.getByLabelText('Width'), { target: { value: '-8' } }); fireEvent.click(screen.getByText('Apply')); expect(await screen.findByText(/last valid geometry remains/i)).toBeVisible(); expect(screen.getByLabelText('Width')).toHaveValue('-8'); });
+  it('offers qualified Hole selector copy without a planar Datum action', () => {
+    const selection: SelectionDescription = { semanticEntityId: 'hole:center', faceId: 'face:7', occurrenceId: 'occ:plate', definitionId: 'def:plate',
+      semanticTopologyId: 'material:hole:Body.H:wall', topologyKind: 'Face', outputRole: 'HoleWallFace', originFeature: 'hole:Body.H',
+      selector: 'face(H.Wall)', sourceAddressability: 'DerivedStable', selectorReason: null, source: null, buildRevision: 1, sourceAddressable: true };
+    const reference = vi.fn();
+    render(<Inspector model={fakeModel({ entity: id => id === hole.id ? { ...hole, holeDiameterMm: 6 } : undefined })}
+      entityId="hole:center" selection={selection} diagnostics={[]} onApply={async () => true} onReferenceHoleWall={reference} />);
+    expect(screen.getByRole('button', { name: 'Copy Selector' })).toBeVisible();
+    expect(screen.queryByRole('button', { name: 'Reference Face in Source' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Reference Hole Wall in Source' }));
+    expect(reference).toHaveBeenCalledOnce();
+  });
 });

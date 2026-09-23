@@ -1,20 +1,22 @@
 import { useEffect, useRef } from 'react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
-import type { ModelSession } from '@aetheris/cad';
+import type { DisplayEdgePolyline, ModelSession, SelectionDescription } from '@aetheris/cad';
 import type { DisplayMode, ThemeName, ViewMode } from '../app/types';
 
 interface Props {
   model: ModelSession | null;
   selectedEntityId: string | null;
+  selectedTopologyId: string | null;
   theme: ThemeName;
   displayMode: DisplayMode;
   viewMode: ViewMode;
   viewCommand: string;
-  onSelect(entityId: string | null, faceId: string | null): void;
+  selectionMode: 'face' | 'edge';
+  onSelect(entityId: string | null, faceId: string | null, selection?: SelectionDescription | null): void;
 }
 
-type MeshMeta = { definitionId: string; occurrenceId: string; edge?: boolean };
+type MeshMeta = { definitionId: string; occurrenceId: string; edgeId?: string; highlight?: boolean };
 
 export function Viewport(props: Props) {
   const host = useRef<HTMLDivElement>(null);
@@ -28,9 +30,10 @@ export function Viewport(props: Props) {
   }, []);
 
   useEffect(() => { if (state.current) loadModel(state.current, props.model); }, [props.model, props.model?.revision]);
-  useEffect(() => { if (state.current) selectEntity(state.current, props.model, props.selectedEntityId); }, [props.model, props.selectedEntityId]);
+  useEffect(() => { if (state.current) selectEntity(state.current, props.model, props.selectedEntityId, props.selectedTopologyId); }, [props.model, props.selectedEntityId, props.selectedTopologyId]);
   useEffect(() => { if (state.current) applyAppearance(state.current, props.theme, props.displayMode); }, [props.theme, props.displayMode]);
   useEffect(() => { if (state.current) applyViewCommand(state.current, props.viewMode, props.viewCommand); }, [props.viewMode, props.viewCommand]);
+  useEffect(() => { if (state.current) state.current.selectionMode = props.selectionMode; }, [props.selectionMode]);
 
   return <section className="viewport-shell" aria-label="3D viewport">
     <div className="viewport-canvas" ref={host} data-testid="viewport" />
@@ -60,6 +63,7 @@ function createScene(host: HTMLDivElement, onSelect: Props['onSelect']) {
   const axes = new THREE.AxesHelper(25); scene.add(axes);
   const group = new THREE.Group(); scene.add(group);
   const raycaster = new THREE.Raycaster();
+  raycaster.params.Line!.threshold = 1.5;
   const pointer = new THREE.Vector2();
   let hovered: THREE.Mesh | null = null;
   let selectedIds = new Set<string>();
@@ -86,20 +90,26 @@ function createScene(host: HTMLDivElement, onSelect: Props['onSelect']) {
     const rect = renderer.domElement.getBoundingClientRect();
     pointer.set(((event.clientX - rect.left) / rect.width) * 2 - 1, -((event.clientY - rect.top) / rect.height) * 2 + 1);
     raycaster.setFromCamera(pointer, camera);
-    return raycaster.intersectObjects(group.children, false)[0];
+    const hits = raycaster.intersectObjects(group.children, false);
+    const face = hits.find(hit => hit.object instanceof THREE.Mesh);
+    if (state.selectionMode === 'face') return face;
+    const edge = hits.find(hit => hit.object instanceof THREE.LineSegments);
+    return edge && (!face || edge.distance <= face.distance + 1.5) ? edge : undefined;
   };
   renderer.domElement.addEventListener('pointermove', event => {
-    const next = hitTest(event)?.object as THREE.Mesh | undefined;
+    const next = hitTest(event)?.object instanceof THREE.Mesh ? hitTest(event)?.object as THREE.Mesh : undefined;
     if (hovered !== next) { hovered = next ?? null; updateMaterials(group, selectedIds, hovered); invalidate(); }
   });
   renderer.domElement.addEventListener('click', event => {
     const hit = hitTest(event);
     if (!hit) { onSelect(null, null); return; }
     const meta = hit.object.userData as MeshMeta;
-    const resolved = (state.model as ModelSession | null)?.resolveSelection(meta.definitionId, hit.faceIndex ?? 0, meta.occurrenceId);
-    onSelect(resolved?.semanticEntityId ?? null, resolved?.faceId ?? null);
+    const resolved = meta.edgeId
+      ? state.model?.describeEdgeSelection(meta.definitionId, meta.edgeId, meta.occurrenceId)
+      : state.model?.describeSelection(meta.definitionId, hit.faceIndex ?? 0, meta.occurrenceId);
+    onSelect(resolved?.semanticEntityId ?? null, resolved?.faceId ?? null, resolved);
   });
-  const state = { scene, renderer, perspective, orthographic, get camera() { return camera; }, set camera(value) { camera = value; }, controls, grid, group, model: null as ModelSession | null, selectedIds, hovered, invalidate,
+  const state = { scene, renderer, perspective, orthographic, get camera() { return camera; }, set camera(value) { camera = value; }, controls, grid, group, model: null as ModelSession | null, selectionMode: 'face' as 'face' | 'edge', selectedIds, hovered, invalidate,
     dispose() { cancelAnimationFrame(raf); resize.disconnect(); controls.dispose(); renderer.dispose(); host.replaceChildren(); } };
   invalidate();
   return state;
@@ -124,24 +134,68 @@ function loadModel(state: ReturnType<typeof createScene>, model: ModelSession | 
     mesh.matrix.fromArray(occurrence.transform); mesh.matrixAutoUpdate = false;
     mesh.userData = { definitionId: occurrence.definitionId, occurrenceId: occurrence.id } satisfies MeshMeta;
     state.group.add(mesh);
-    const edges = new THREE.LineSegments(new THREE.EdgesGeometry(geometry, 25), new THREE.LineBasicMaterial({ color: 0x323a35, transparent: true, opacity: 0.72 }));
-    edges.matrix.copy(mesh.matrix); edges.matrixAutoUpdate = false;
-    edges.userData = { definitionId: occurrence.definitionId, occurrenceId: occurrence.id, edge: true } satisfies MeshMeta;
-    edges.raycast = () => undefined;
-    state.group.add(edges);
+    // Triangle adjacency is display tessellation, not BRep topology. Only draw
+    // polylines supplied by the kernel's edge tessellator.
+    for (const edge of definitionEdges(model, occurrence.definitionId)) {
+      const edgePoints: number[] = [];
+      for (let i = 1; i < edge.points.length; i++) edgePoints.push(...edge.points[i - 1], ...edge.points[i]);
+      if (edge.closed && edge.points.length > 2) edgePoints.push(...edge.points[edge.points.length - 1], ...edge.points[0]);
+      if (!edgePoints.length) continue;
+      const edgeGeometry = new THREE.BufferGeometry();
+      edgeGeometry.setAttribute('position', new THREE.Float32BufferAttribute(edgePoints, 3));
+      const edges = new THREE.LineSegments(edgeGeometry, new THREE.LineBasicMaterial({ color: 0x323a35, transparent: true, opacity: 0.72 }));
+      edges.matrix.copy(mesh.matrix); edges.matrixAutoUpdate = false;
+      edges.userData = { definitionId: occurrence.definitionId, occurrenceId: occurrence.id, edgeId: edge.edgeId } satisfies MeshMeta;
+      state.group.add(edges);
+    }
   }
   fit(state);
 }
 
-function selectEntity(state: ReturnType<typeof createScene>, model: ModelSession | null, entityId: string | null) {
+function selectEntity(state: ReturnType<typeof createScene>, model: ModelSession | null, entityId: string | null, topologyId: string | null) {
+  for (const overlay of state.group.children.filter(object => (object.userData as MeshMeta).highlight)) {
+    state.group.remove(overlay); disposeObject(overlay);
+  }
   const selection = entityId && model ? model.selectionForEntity(entityId) : { occurrenceIds: [] };
   state.selectedIds = new Set(selection.occurrenceIds);
+  if (model && topologyId?.startsWith('edge:')) {
+    for (const definition of model.mesh.definitions) {
+      const edge = definition.edges?.find(item => item.edgeId === topologyId);
+      if (!edge || edge.points.length < 2) continue;
+      const base = state.group.children.find(object => object instanceof THREE.Mesh && (object.userData as MeshMeta).definitionId === definition.id) as THREE.Mesh | undefined;
+      if (!base) continue;
+      const points = edge.points.map(point => new THREE.Vector3(point[0], point[1], point[2]));
+      const curve = new THREE.CatmullRomCurve3(points, edge.closed);
+      const highlight = new THREE.Mesh(new THREE.TubeGeometry(curve, Math.max(points.length * 2, 8), 0.24, 6, edge.closed), new THREE.MeshBasicMaterial({ color: 0xffda69, depthTest: false }));
+      highlight.matrix.copy(base.matrix); highlight.matrixAutoUpdate = false; highlight.renderOrder = 3;
+      highlight.userData = { definitionId: definition.id, occurrenceId: (base.userData as MeshMeta).occurrenceId, highlight: true } satisfies MeshMeta;
+      highlight.raycast = () => undefined;
+      state.group.add(highlight);
+    }
+  }
+  if (model && entityId && 'ranges' in selection && selection.occurrenceIds.length === 0) {
+    for (const range of selection.ranges) {
+      const base = state.group.children.find(object => object instanceof THREE.Mesh && (object.userData as MeshMeta).definitionId === range.definitionId) as THREE.Mesh | undefined;
+      if (!base) continue;
+      const indices = base.geometry.getIndex()?.array.slice(range.startTriangle * 3, (range.startTriangle + range.triangleCount) * 3);
+      if (!indices?.length) continue;
+      const geometry = new THREE.BufferGeometry();
+      geometry.setAttribute('position', base.geometry.getAttribute('position'));
+      geometry.setAttribute('normal', base.geometry.getAttribute('normal'));
+      geometry.setIndex(Array.from(indices));
+      const overlay = new THREE.Mesh(geometry, new THREE.MeshBasicMaterial({ color: 0xffbb4f, transparent: true, opacity: 0.88, side: THREE.DoubleSide, depthTest: false, depthWrite: false }));
+      overlay.matrix.copy(base.matrix); overlay.matrixAutoUpdate = false; overlay.renderOrder = 2;
+      overlay.userData = { definitionId: range.definitionId, occurrenceId: (base.userData as MeshMeta).occurrenceId, highlight: true } satisfies MeshMeta;
+      overlay.raycast = () => undefined;
+      state.group.add(overlay);
+    }
+  }
   updateMaterials(state.group, state.selectedIds, state.hovered);
   state.invalidate();
 }
 
 function updateMaterials(group: THREE.Group, selectedIds: Set<string>, hovered: THREE.Mesh | null) {
-  for (const object of group.children) if (object instanceof THREE.Mesh) {
+  for (const object of group.children) if (object instanceof THREE.Mesh && !(object.userData as MeshMeta).highlight) {
     const selected = selectedIds.has((object.userData as MeshMeta).occurrenceId);
     (object.material as THREE.MeshStandardMaterial).color.set(selected ? 0xe7ad45 : object === hovered ? 0x78b9a4 : 0xb8beb3);
     (object.material as THREE.MeshStandardMaterial).emissive.set(selected ? 0x382406 : 0x000000);
@@ -156,6 +210,7 @@ function applyAppearance(state: ReturnType<typeof createScene>, theme: ThemeName
   (state.grid.material as THREE.Material).opacity = theme === 'mars' ? 0.28 : 0.4;
   (state.grid.material as THREE.Material).transparent = true;
   for (const object of state.group.children) if (object instanceof THREE.Mesh) {
+    if ((object.userData as MeshMeta).highlight) continue;
     const mat = object.material as THREE.MeshStandardMaterial;
     mat.wireframe = mode === 'wireframe';
     mat.flatShading = mode !== 'shaded'; mat.needsUpdate = true;
@@ -172,12 +227,17 @@ function applyViewCommand(state: ReturnType<typeof createScene>, mode: ViewMode,
   state.camera = mode === 'orthographic' ? state.orthographic : state.perspective;
   state.controls.object = state.camera as THREE.PerspectiveCamera;
   if (prior !== state.camera) state.camera.position.copy(prior.position);
-  const distance = Math.max(state.camera.position.length(), 100);
-  const positions: Record<string, THREE.Vector3> = { front: new THREE.Vector3(0, -distance, 0), top: new THREE.Vector3(0, 0, distance), right: new THREE.Vector3(distance, 0, 0), iso: new THREE.Vector3(distance, distance, distance) };
-  if (positions[command]) state.camera.position.copy(positions[command]);
+  const center = state.controls.target;
+  const distance = Math.max(state.camera.position.distanceTo(center), 100);
+  const directions: Record<string, THREE.Vector3> = { front: new THREE.Vector3(0, -1, 0), top: new THREE.Vector3(0, 0, 1), right: new THREE.Vector3(1, 0, 0), iso: new THREE.Vector3(1, 1, 1).normalize() };
+  if (directions[command]) state.camera.position.copy(center).addScaledVector(directions[command], distance);
   if (command === 'fit') fit(state);
   else if (command === 'fitselection') fitSelection(state);
-  else { state.camera.lookAt(0, 0, 0); state.controls.update(); state.invalidate(); }
+  else { state.camera.up.set(0, command === 'top' ? 1 : 0, command === 'top' ? 0 : 1); state.camera.lookAt(center); state.controls.update(); state.invalidate(); }
+}
+
+function definitionEdges(model: ModelSession, definitionId: string): readonly DisplayEdgePolyline[] {
+  return model.mesh.definitions.find(definition => definition.id === definitionId)?.edges ?? [];
 }
 
 function fit(state: ReturnType<typeof createScene>, objects: readonly THREE.Object3D[] = [state.group]) {

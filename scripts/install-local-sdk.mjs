@@ -12,7 +12,9 @@ run('npm', ['run', 'build'], sdk);
 run('npm', ['pack', '--pack-destination', output], sdk);
 const packages = (await readdir(output)).filter(name => name.endsWith('.tgz')).sort();
 if (!packages.length) throw new Error('The local @aetheris/cad pack did not produce a tarball.');
-run('npm', ['install'], helios);
+// The tarball keeps its preview version across local builds; a plain install
+// can retain an older node_modules copy even when its contents changed.
+run('npm', ['install', resolve(output, packages.at(-1)), '--force'], helios);
 
 function run(command, args, cwd) {
   const result = spawnSync(command, args, { cwd, stdio: 'inherit', shell: process.platform === 'win32' });

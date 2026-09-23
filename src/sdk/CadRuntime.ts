@@ -16,11 +16,12 @@ export interface CadRuntime {
 
 export class WebSdkCadRuntime implements CadRuntime {
   private cad: Aetheris | null = null;
+  private initializing: Promise<Aetheris> | null = null;
   private model: ModelSession | null = null;
   info: RuntimeInfo | null = null;
 
   async initialize() {
-    this.cad ??= await Aetheris.create();
+    this.cad ??= await (this.initializing ??= Aetheris.create());
     this.info = await this.cad.info();
     return this.info;
   }
@@ -43,7 +44,8 @@ export class WebSdkCadRuntime implements CadRuntime {
     await this.model?.dispose();
     await this.cad?.dispose();
     this.model = null;
-    this.cad = null;
+    // The WebAssembly module is page-lifetime state. Keep its transport for the
+    // next project; another Aetheris.create() cannot load the module again.
   }
 
   private requireModel() {
