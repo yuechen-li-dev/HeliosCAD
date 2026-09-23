@@ -1,0 +1,61 @@
+services:
+  postgres:
+    image: postgres:17
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: leviathan
+      POSTGRES_USER: leviathan
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U leviathan -d leviathan"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  server:
+    build:
+      context: ../Leviathan
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ASPNETCORE_URLS: http://+:8080
+      LEVIATHAN_DATA_DIR: /data
+      LEVIATHAN_ALLOW_UNSAFE_ADMIN: "false"
+      LEVIATHAN_POSTGRES_CONNECTION: Host=postgres;Database=leviathan;Username=leviathan;Password=${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}
+      LEVIATHAN_S3_ENDPOINT: ${LEVIATHAN_S3_ENDPOINT:?Set LEVIATHAN_S3_ENDPOINT}
+      LEVIATHAN_S3_BUCKET: ${LEVIATHAN_S3_BUCKET:?Set LEVIATHAN_S3_BUCKET}
+      LEVIATHAN_S3_REGION: ${LEVIATHAN_S3_REGION:-auto}
+      LEVIATHAN_S3_ACCESS_KEY: ${LEVIATHAN_S3_ACCESS_KEY:?Set LEVIATHAN_S3_ACCESS_KEY}
+      LEVIATHAN_S3_SECRET_KEY: ${LEVIATHAN_S3_SECRET_KEY:?Set LEVIATHAN_S3_SECRET_KEY}
+    volumes:
+      - leviathan_data:/data
+    expose:
+      - "8080"
+
+  web:
+    image: caddy:2
+    restart: unless-stopped
+    depends_on:
+      - server
+    environment:
+      HELIOS_HOST: ${HELIOS_HOST:?Set HELIOS_HOST}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./dist:/srv/helios:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+volumes:
+  postgres_data:
+  leviathan_data:
+  caddy_data:
+  caddy_config:

@@ -1,0 +1,15 @@
+{$HELIOS_HOST} {
+    encode zstd gzip
+    header Strict-Transport-Security "max-age=31536000"
+    handle /api/* {
+        reverse_proxy server:8080
+    }
+    handle /health/* {
+        reverse_proxy server:8080
+    }
+    handle {
+        root * /srv/helios
+        try_files {path} /index.html
+        file_server
+    }
+}

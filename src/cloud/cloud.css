@@ -1,0 +1,32 @@
+.cloud-page { min-height: 100vh; display: grid; place-items: center; padding: 32px; color: #e8eee9; background: radial-gradient(circle at 20% 10%, #263c39, #111b1b 52%, #0b1113); font-family: Inter, system-ui, sans-serif; }
+.cloud-card { width: min(100%, 520px); padding: 38px; border: 1px solid #42605a; border-radius: 18px; background: #172322; box-shadow: 0 28px 80px #050909a8; }
+.cloud-card h1 { margin: 12px 0 6px; font-size: 32px; letter-spacing: -.035em; }
+.cloud-card p { color: #a6b8b1; }
+.cloud-eyebrow { color: #c3ad70; font-size: 11px; font-weight: 700; letter-spacing: .19em; }
+.cloud-card form { display: grid; gap: 16px; margin-top: 28px; }
+.cloud-card label { display: grid; gap: 7px; color: #d9e3dc; font-size: 13px; }
+.cloud-card input { box-sizing: border-box; width: 100%; border: 1px solid #4e645e; border-radius: 8px; padding: 12px 14px; background: #0d1717; color: #f4f7f4; font: inherit; }
+.cloud-card input:focus { outline: 2px solid #c3ad70; outline-offset: 2px; }
+.cloud-card button { cursor: pointer; }
+.cloud-primary, .create-row button { border: 0; border-radius: 8px; padding: 13px 18px; background: #c3ad70; color: #101814; font-weight: 700; }
+.cloud-card button:disabled { opacity: .55; cursor: wait; }
+.cloud-text-button { border: 0; background: none; color: #d4c38a; font: inherit; }
+.auth-switch { display: block; margin: 25px auto 0; }
+.cloud-error { padding: 10px 12px; border: 1px solid #b86e6e; border-radius: 7px; background: #3b2225; color: #ffe1df !important; }
+.project-picker { width: min(100%, 790px); }
+.project-picker header { display: flex; align-items: start; justify-content: space-between; gap: 24px; }
+.create-row { display: flex !important; gap: 10px !important; }
+.project-list { margin-top: 24px; border-top: 1px solid #40534d; }
+.project-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 13px 0; border-bottom: 1px solid #354943; }
+.project-row > button:first-child { display: grid; gap: 5px; flex: 1; text-align: left; border: 0; background: none; color: #eef2ee; font: inherit; }
+.project-row span { color: #9aaea6; font-size: 12px; }
+.empty-projects { padding: 22px 0; }
+.helios-app.cloud-mode { grid-template-rows: 54px 42px minmax(0,1fr) 26px; }
+.cloud-project-bar { display: flex; align-items: center; gap: 14px; min-width: 0; padding: 0 14px; background: var(--panel-elevated); border-bottom: 1px solid var(--border); }
+.cloud-project-bar > button { border: 0; background: transparent; color: var(--accent-hover); cursor: pointer; }
+.cloud-project-bar > strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
+.cloud-editor-actions { display: flex; align-items: center; gap: 8px; margin-left: auto; }
+.cloud-editor-actions button { border: 1px solid #72847b; border-radius: 5px; padding: 5px 8px; background: transparent; color: inherit; cursor: pointer; }
+.cloud-editor-actions .cloud-save { border-color: #bca86e; color: #e5d49d; }
+.cloud-save-state { font-size: 11px; color: #e5d49d; white-space: nowrap; }
+@media (max-width: 620px) { .cloud-page { padding: 16px; } .cloud-card { padding: 24px; } .create-row { flex-direction: column; } }

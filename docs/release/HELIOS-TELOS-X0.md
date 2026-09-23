@@ -1,0 +1,11 @@
+# Helios Telos X0 release report
+
+**Verdict: Meaningful progression.** A real authenticated user can create, save, leave, and later reopen a Helios project in the local integrated stack. Production deployment remains unqualified until PostgreSQL, S3, and HTTPS are exercised on a real target.
+
+The product repo began empty. Its editor was copied from `Aetheris/demos/Aetherion.Helios`, retaining the public `@aetheris/cad` WASM boundary, viewport, inspector, source diagnostics, selection, and STEP path. New code adds the Leviathan API client, sign-up/sign-in, project picker, save state, conflict handling, and source download. The browser uses same-origin requests and refreshes CSRF tokens after authentication. The saved truth is Firmament source; inspector property overrides remain effective previews and are labeled as such. Edit the source to persist those changes.
+
+The Chrome browser witness registered a user, created a project, edited a valid Firmament box, rebuilt it, saved, closed the first browser context, signed in from a clean context, reopened exact source, rebuilt geometry, and downloaded a STEP file larger than 1 KB. A separate .NET integration test restarted Leviathan and verified exact saved source and revision, and denied another account read/write/delete. A stale save returned 409. The copied 26 editor tests and all 51 Leviathan server tests pass.
+
+One local Chrome observation measured create plus initial WASM build at 1,713 ms, save at 110 ms, sign-in plus project list at 107 ms, and reopen plus build at 1,064 ms. These are development-machine observations, not service-level targets. No production latency measurements exist yet.
+
+The checked-in production candidate is `compose.production.yaml` with Caddy, PostgreSQL, Leviathan, and an external HTTPS S3-compatible bucket. `docker compose config --quiet` passed. The Docker daemon was stopped, so images were not built or run; no external credentials, hostname, or deployment host were available. The server's PostgreSQL migrations and S3 adapter therefore remain unproven in a live environment. See Leviathan's `docs/telos-x0-real-identity-project-persistence.md` for security, storage, and deployment details.

@@ -1,0 +1,58 @@
+import { test, expect } from '@playwright/test';
+import { readFile, stat } from 'node:fs/promises';
+
+const source = 'Model TelosReopen {\n    Units: mm\n    Box Body { Size: [30mm, 20mm, 10mm] }\n}\n';
+
+test('register, model, save, return in a fresh browser context, rebuild, and export STEP', async ({ browser }) => {
+  const milliseconds: Record<string, number> = {};
+  const email = `telos-${Date.now()}@example.test`;
+  const password = 'Correct-Helios-Password-2026';
+  const first = await browser.newContext({ acceptDownloads: true });
+  const page = await first.newPage();
+  await page.goto('/');
+  await page.getByRole('button', { name: 'New to Helios? Create an account' }).click();
+  await page.getByLabel('Name').fill('Telos User');
+  await page.getByLabel('Email').fill(email);
+  await page.getByLabel('Password').fill(password);
+  await page.getByRole('button', { name: 'Create account' }).click();
+  await expect(page.getByRole('heading', { name: 'Your projects' })).toBeVisible();
+  await page.getByLabel('Project name').fill('Telos block');
+  let started = performance.now();
+  await page.getByRole('button', { name: 'Create project' }).click();
+  await expect(page.getByRole('textbox', { name: 'Firmament source' })).toBeVisible();
+  await expect(page.getByRole('textbox', { name: 'Firmament source' })).toBeEnabled();
+  milliseconds.createAndInitialBuild = Math.round(performance.now() - started);
+  await page.getByRole('textbox', { name: 'Firmament source' }).fill(source);
+  await page.locator('.rebuild-inline').click();
+  await expect(page.locator('.status-ready')).toContainText('READY');
+  started = performance.now();
+  await page.locator('.cloud-editor-actions .cloud-save').click();
+  await expect(page.locator('.cloud-save-state')).toHaveText('Saved');
+  milliseconds.save = Math.round(performance.now() - started);
+  await first.close();
+
+  const second = await browser.newContext({ acceptDownloads: true });
+  const returnPage = await second.newPage();
+  await returnPage.goto('/');
+  await returnPage.getByLabel('Email').fill(email);
+  await returnPage.getByLabel('Password').fill(password);
+  started = performance.now();
+  await returnPage.getByRole('button', { name: 'Sign in', exact: true }).click();
+  await expect(returnPage.getByRole('heading', { name: 'Your projects' })).toBeVisible();
+  milliseconds.signInAndList = Math.round(performance.now() - started);
+  started = performance.now();
+  await returnPage.getByRole('button', { name: /Telos block/ }).first().click();
+  await expect(returnPage.getByRole('textbox', { name: 'Firmament source' })).toHaveValue(source);
+  await expect(returnPage.locator('.status-ready')).toContainText('READY');
+  milliseconds.openAndBuild = Math.round(performance.now() - started);
+  await returnPage.screenshot({ path: 'test-results/telos-editor.png', fullPage: true });
+  const downloadPromise = returnPage.waitForEvent('download');
+  await returnPage.getByRole('button', { name: /Export STEP/ }).click();
+  const download = await downloadPromise;
+  expect(download.suggestedFilename()).toBe('Telos block.step');
+  const stepPath = (await download.path())!;
+  expect((await stat(stepPath)).size).toBeGreaterThan(1000);
+  expect((await readFile(stepPath, 'utf8')).startsWith('ISO-10303-21;')).toBe(true);
+  console.log('TELOS_X0_LOCAL_LATENCIES_MS', JSON.stringify(milliseconds));
+  await second.close();
+});
