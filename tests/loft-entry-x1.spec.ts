@@ -2,6 +2,7 @@ import { test, expect } from '@playwright/test';
 
 test('schema entry opens a buildable Loft with read-only authored fields', async ({ page }) => {
   await page.goto('/');
+  await page.getByRole('button', { name: 'My Projects' }).click();
   await page.getByRole('button', { name: 'New to Helios? Create an account' }).click();
   await page.getByLabel('Name').fill('Loft entry witness');
   await page.getByLabel('Email').fill(`loft-entry-${Date.now()}@example.test`);

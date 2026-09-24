@@ -5,6 +5,7 @@ test('Monaco consumes current Aetheris Helix completion and keeps source editabl
   const runtimeRequests: string[] = [];
   page.on('request', request => { if (request.url().includes('/aetheris-runtime')) runtimeRequests.push(request.url()); });
   await page.goto('/');
+  await page.getByRole('button', { name: 'My Projects' }).click();
   await page.getByRole('button', { name: 'New to Helios? Create an account' }).click();
   await page.getByLabel('Name').fill('LX browser witness');
   await page.getByLabel('Email').fill(`lx-${Date.now()}@example.test`);

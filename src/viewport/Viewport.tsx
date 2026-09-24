@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, type MutableRefObject } from 'react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import type { DisplayEdgePolyline, ModelSession, SelectionDescription } from '@aetheris/cad';
@@ -14,6 +14,7 @@ interface Props {
   viewCommand: string;
   selectionMode: 'face' | 'edge';
   onSelect(entityId: string | null, faceId: string | null, selection?: SelectionDescription | null): void;
+  captureRef?: MutableRefObject<(() => string) | null>;
 }
 
 type MeshMeta = { definitionId: string; occurrenceId: string; edgeId?: string; highlight?: boolean };
@@ -26,7 +27,8 @@ export function Viewport(props: Props) {
     if (!host.current) return;
     const sceneState = createScene(host.current, props.onSelect);
     state.current = sceneState;
-    return () => { sceneState.dispose(); state.current = null; };
+    if (props.captureRef) props.captureRef.current = sceneState.capture;
+    return () => { if (props.captureRef) props.captureRef.current = null; sceneState.dispose(); state.current = null; };
   }, []);
 
   useEffect(() => { if (state.current) loadModel(state.current, props.model); }, [props.model, props.model?.revision]);
@@ -110,6 +112,7 @@ function createScene(host: HTMLDivElement, onSelect: Props['onSelect']) {
     onSelect(resolved?.semanticEntityId ?? null, resolved?.faceId ?? null, resolved);
   });
   const state = { scene, renderer, perspective, orthographic, get camera() { return camera; }, set camera(value) { camera = value; }, controls, grid, group, model: null as ModelSession | null, selectionMode: 'face' as 'face' | 'edge', selectedIds, hovered, invalidate,
+    capture() { renderer.render(scene, camera); return renderer.domElement.toDataURL('image/png'); },
     dispose() { cancelAnimationFrame(raf); resize.disconnect(); controls.dispose(); renderer.dispose(); host.replaceChildren(); } };
   invalidate();
   return state;

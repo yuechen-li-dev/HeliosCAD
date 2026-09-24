@@ -4,6 +4,7 @@ import { replaceEditorSource } from './editor';
 test('through-hole wall selector copies into a valid PMI use site', async ({ page, context }) => {
   await context.grantPermissions(['clipboard-read', 'clipboard-write']);
   await page.goto('/');
+  await page.getByRole('button', { name: 'My Projects' }).click();
   await page.getByRole('button', { name: 'New to Helios? Create an account' }).click();
   await page.getByLabel('Name').fill('Hole Witness');
   await page.getByLabel('Email').fill(`hole-${Date.now()}@example.test`);

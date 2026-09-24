@@ -4,6 +4,7 @@ import { replaceEditorSource } from './editor';
 test('Box top face keeps its source selector through browser picking', async ({ page, context }) => {
   await context.grantPermissions(['clipboard-read', 'clipboard-write']);
   await page.goto('/');
+  await page.getByRole('button', { name: 'My Projects' }).click();
   await page.getByRole('button', { name: 'New to Helios? Create an account' }).click();
   await page.getByLabel('Name').fill('Correspondence Witness');
   await page.getByLabel('Email').fill(`correspondence-${Date.now()}@example.test`);

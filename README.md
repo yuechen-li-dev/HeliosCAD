@@ -2,6 +2,12 @@
 
 HeliosCAD is the code-first Firmament editor, using the public `@aetheris/cad` browser runtime. Leviathan owns sign-in, accounts, project ownership, revision metadata, and object storage. Firmament source is the saved project truth; the editor rebuilds geometry and exports STEP from that source.
 
+## Discover and publication
+
+The root page is a public model gallery. It renders checked-in PNG previews and asks Leviathan for recent Public publications; the Aetheris geometry Worker and editor code load only after entering an editor. Public detail pages show previews and Firmament source. An anonymous Fork keeps its intended model through Leviathan sign-in or registration, creates a separate private project, and opens that project directly in Helios. My Projects is available from the top navigation.
+
+An owner can publish the current saved and built project from the editor. Leviathan pins the publication to an immutable Telos revision and stores the captured PNG in its object store. Public reads use that revision even as the owner saves later private edits. Project deletion hides its publication. The checked-in Cartesian lamp is a STEP-backed reference with two source files; its shade is the editable gallery example because the current project/editor contract is single-source. See [the Discovery X0 report](docs/release/HELIOS-DISCOVERY-X0.md) for routes, access boundaries, qualification, and the remaining full-assembly editing limit.
+
 ## Editor architecture
 
 The single Firmament document is edited with Monaco in `src/source/SourcePanel.tsx`. Monaco owns cursor, selection, undo, indentation, and the visible markers. `src/source/FirmamentLanguageClient.ts` is the one adapter from the editor to the public Aetheris Web SDK LX contract. A page-thread runtime handles only completion and schema queries so completion does not wait behind a geometry build. `src/sdk/AetherisWorkerClient.ts` serializes heavy builds through one dedicated Aetheris WebAssembly Worker, retaining only the newest pending request. The SDK transfers mesh buffers and STEP bytes; the main thread keeps display, picking, project state, and save/reopen UI. Source and display revisions are shown separately, and late build results cannot replace newer source state. The selected model's source map still drives Go to Source and source cursor selection. Typing does not rebuild geometry. See [the Worker X1 report](docs/release/WEB-RUNTIME-WORKER-X1.md).

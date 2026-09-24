@@ -3,6 +3,7 @@ import { replaceEditorSource } from './editor';
 
 test('Hole Diameter Inspector edit rewrites Monaco source and rebuilds the wall', async ({ page }) => {
   await page.goto('/');
+  await page.getByRole('button', { name: 'My Projects' }).click();
   await page.getByRole('button', { name: 'New to Helios? Create an account' }).click();
   await page.getByLabel('Name').fill('Field rewrite witness');
   await page.getByLabel('Email').fill(`field-${Date.now()}@example.test`);
@@ -39,7 +40,8 @@ test('Hole Diameter Inspector edit rewrites Monaco source and rebuilds the wall'
   await expect(page.locator('.view-lines')).toContainText('Diameter: 12mm /* keep */');
   await page.locator('.cloud-editor-actions .cloud-save').click();
   await expect(page.locator('.cloud-save-state')).toHaveText('Saved');
-  await page.getByRole('button', { name: 'Projects' }).click();
+  await page.locator('.cloud-project-bar').getByRole('button', { name: 'Discover' }).click();
+  await page.getByRole('button', { name: 'My Projects' }).click();
   await expect(page.getByRole('heading', { name: 'Your projects' })).toBeVisible();
   await page.getByRole('button', { name: /Field rewrite/ }).first().click();
   await expect(page.locator('.view-lines')).toContainText('Diameter: 12mm /* keep */');

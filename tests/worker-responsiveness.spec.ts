@@ -5,6 +5,7 @@ test('Helix Worker build leaves Monaco, palette, view, save and heartbeat live',
   const runtimeRequests: string[] = [];
   page.on('request', request => { if (request.url().includes('/aetheris-runtime')) runtimeRequests.push(request.url()); });
   await page.goto('/');
+  await page.getByRole('button', { name: 'My Projects' }).click();
   await page.getByRole('button', { name: 'New to Helios? Create an account' }).click();
   await page.getByLabel('Name').fill('Worker Witness');
   await page.getByLabel('Email').fill(`worker-${Date.now()}@example.test`);

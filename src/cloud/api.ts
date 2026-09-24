@@ -60,3 +60,9 @@ export const openProject = (id: string) => request<Project>(`/api/projects/${enc
 export const createProject = (name: string, source: string) => request<Project>('/api/projects', { method: 'POST', body: JSON.stringify({ appId: 'helios', name, source }) });
 export const saveProject = (id: string, source: string, expectedRevisionId: string) => request<{ revisionId: string; contentHash: string; updatedAt: string }>(`/api/projects/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify({ source, expectedRevisionId }) });
 export const deleteProject = (id: string) => request<void>(`/api/projects/${encodeURIComponent(id)}`, { method: 'DELETE', body: '{}' });
+
+export interface PublicModel { id: string; title: string; description: string; category: string; creatorName: string; tags: string[]; publishedRevisionId: string; publishedAt: string; previewUrl: string; source?: string }
+export const listPublications = () => request<PublicModel[]>('/api/helios/publications');
+export const getPublication = (id: string) => request<PublicModel>(`/api/helios/publications/${encodeURIComponent(id)}`);
+export const forkPublication = (id: string) => request<Project>(`/api/helios/publications/${encodeURIComponent(id)}/fork`, { method: 'POST', body: '{}' });
+export const publishProject = (id: string, payload: { expectedRevisionId: string; title: string; description: string; category: string; tags: string[]; previewPngBase64: string }) => request<PublicModel>(`/api/projects/${encodeURIComponent(id)}/publish`, { method: 'POST', body: JSON.stringify(payload) });

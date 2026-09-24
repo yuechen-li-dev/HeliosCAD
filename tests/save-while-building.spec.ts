@@ -7,6 +7,7 @@ test('saving a changed source during a Worker build survives project reopen', as
   page.on('request', request => { if (request.method() === 'PUT' && /\/api\/projects\//.test(request.url())) savedSource = JSON.parse(request.postData() ?? '{}').source ?? ''; });
   page.on('response', async response => { if (response.request().method() === 'GET' && /\/api\/projects\/[^/]+$/.test(response.url())) reopenedSource = (await response.json()).source ?? ''; });
   await page.goto('/');
+  await page.getByRole('button', { name: 'My Projects' }).click();
   await page.getByRole('button', { name: 'New to Helios? Create an account' }).click();
   await page.getByLabel('Name').fill('Save Worker Witness');
   await page.getByLabel('Email').fill(`save-worker-${Date.now()}@example.test`);
@@ -24,7 +25,8 @@ test('saving a changed source during a Worker build survives project reopen', as
   await page.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(page.locator('.cloud-save-state')).toContainText('Saved');
   console.log('SAVE_WORKER_REQUEST_SOURCE', savedSource.slice(0, 160));
-  await page.getByRole('button', { name: 'Projects', exact: false }).click();
+  await page.locator('.cloud-project-bar').getByRole('button', { name: 'Discover' }).click();
+  await page.getByRole('button', { name: 'My Projects' }).click();
   await expect(page.getByRole('heading', { name: 'Your projects' })).toBeVisible();
   await page.locator('.project-row > button').first().click();
   await expect(page.locator('.monaco-editor')).toBeVisible();
