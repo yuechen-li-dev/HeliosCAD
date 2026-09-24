@@ -1,0 +1,33 @@
+import { test, expect } from '@playwright/test';
+
+test('schema entry opens a buildable Loft with read-only authored fields', async ({ page }) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: 'New to Helios? Create an account' }).click();
+  await page.getByLabel('Name').fill('Loft entry witness');
+  await page.getByLabel('Email').fill(`loft-entry-${Date.now()}@example.test`);
+  await page.getByLabel('Password').fill('Correct-Helios-Password-2026');
+  await page.getByRole('button', { name: 'Create account' }).click();
+  await expect(page.getByRole('heading', { name: 'Your projects' })).toBeVisible();
+  await page.getByLabel('Project name').fill('Loft entry');
+  await page.getByRole('button', { name: 'Create project' }).click();
+  await expect(page.locator('.status-ready')).toContainText('READY', { timeout: 120_000 });
+  await page.getByRole('button', { name: /Command Palette/ }).click();
+  await page.getByLabel('Search commands').fill('loft');
+  await page.getByRole('button', { name: 'New Loft Model' }).click();
+  await expect(page.locator('.status-ready')).toContainText('READY', { timeout: 120_000 });
+  await expect(page.locator('.statusbar')).toContainText('0 DIAGNOSTICS');
+  await expect(page.locator('.view-lines')).toContainText('Construction Plane LowerFrame');
+  await page.locator('.monaco-editor .view-line').filter({ hasText: 'Loft Body' }).click();
+  await expect(page.locator('.inspector')).toContainText('RearProfile');
+  await expect(page.locator('.inspector')).toContainText('LowerOutline');
+  await expect(page.locator('.inspector')).toContainText('Default');
+  await page.getByRole('button', { name: /Command Palette/ }).click();
+  await page.getByLabel('Search commands').fill('helix');
+  await page.getByRole('button', { name: 'New Helix Model' }).click();
+  await expect(page.locator('.status-ready')).toContainText('READY', { timeout: 120_000 });
+  await expect(page.locator('.statusbar')).toContainText('0 DIAGNOSTICS');
+  await page.locator('.monaco-editor .view-line').filter({ hasText: 'Helix Winding' }).click();
+  await expect(page.locator('.inspector')).toContainText('Radius');
+  await expect(page.locator('.inspector')).toContainText('6 mm');
+  await expect(page.locator('.inspector')).toContainText('Turns');
+});

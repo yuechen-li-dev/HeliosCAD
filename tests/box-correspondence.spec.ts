@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { replaceEditorSource } from './editor';
 
 test('Box top face keeps its source selector through browser picking', async ({ page, context }) => {
   await context.grantPermissions(['clipboard-read', 'clipboard-write']);
@@ -11,10 +12,10 @@ test('Box top face keeps its source selector through browser picking', async ({ 
   await expect(page.getByRole('heading', { name: 'Your projects' })).toBeVisible();
   await page.getByLabel('Project name').fill('Box correspondence');
   await page.getByRole('button', { name: 'Create project' }).click();
-  const editor = page.getByRole('textbox', { name: 'Firmament source' });
+  const editor = page.locator('.monaco-editor');
   await expect(editor).toBeVisible();
   await expect(page.locator('.status-ready')).toContainText('READY', { timeout: 120_000 });
-  await editor.fill('Model BoxWitness {\n    Units: mm\n    Box Body { Size: [40mm, 30mm, 8mm] }\n}\n');
+  await replaceEditorSource(page, 'Model BoxWitness {\n    Units: mm\n    Box Body { Size: [40mm, 30mm, 8mm] }\n}\n');
   await page.getByRole('button', { name: '↻ Rebuild' }).click();
   await expect(page.locator('.status-ready')).toContainText('READY', { timeout: 120_000 });
   await expect(page.locator('.statusbar')).toContainText('0 DIAGNOSTICS');
@@ -27,10 +28,12 @@ test('Box top face keeps its source selector through browser picking', async ({ 
   expect(bounds).not.toBeNull();
   await canvas.click({ position: { x: bounds!.width / 2, y: bounds!.height / 2 } });
   await expect(page.locator('.inspector')).toContainText('face(+Z)');
+  await expect(page.locator('.inspector')).toContainText('SEMANTIC FIELDS');
+  await expect(page.locator('.inspector')).toContainText('Size');
   await page.getByRole('button', { name: 'Copy Selector' }).click();
   expect(await page.evaluate(() => navigator.clipboard.readText())).toBe('face(+Z)');
-  await page.getByRole('button', { name: 'Go to Source' }).click();
-  expect(await editor.evaluate((element: HTMLTextAreaElement) => element.value.slice(element.selectionStart, element.selectionEnd))).toContain('Box Body');
+  await page.locator('.inspector-actions').getByRole('button', { name: 'Go to Source' }).click();
+  await expect(page.getByRole('textbox', { name: 'Editor content' })).toBeFocused();
 
   await page.getByRole('button', { name: 'Selection mode' }).click();
   await expect(page.getByRole('button', { name: 'Selection mode' })).toHaveText('PICK EDGE');
@@ -49,14 +52,10 @@ test('Box top face keeps its source selector through browser picking', async ({ 
   await canvas.click({ position: { x: bounds!.width / 2, y: bounds!.height / 2 } });
   await expect(page.locator('.inspector')).toContainText('face(-Y)');
 
-  await editor.evaluate((element: HTMLTextAreaElement) => {
-    element.focus();
-    element.setSelectionRange(element.value.indexOf('Size:'), element.value.indexOf('Size:'));
-    element.dispatchEvent(new KeyboardEvent('keyup', { key: 'ArrowRight', bubbles: true }));
-  });
+  await page.locator('.view-line').filter({ hasText: 'Size:' }).click();
   await expect(page.locator('.status-selection')).toHaveText('Box correspondence');
 
-  await editor.fill('Model BoxWitness {\n    Units: mm\n    Box Body { Size: [45mm, 30mm, 8mm] }\n}\n');
+  await replaceEditorSource(page, 'Model BoxWitness {\n    Units: mm\n    Box Body { Size: [45mm, 30mm, 8mm] }\n}\n');
   await page.getByRole('button', { name: '↻ Rebuild' }).click();
   await expect(page.locator('.status-ready')).toContainText('READY', { timeout: 120_000 });
   await page.getByRole('button', { name: 'TOP', exact: true }).click();
@@ -64,7 +63,7 @@ test('Box top face keeps its source selector through browser picking', async ({ 
   await expect(page.locator('.inspector')).toContainText('Body.face(+Z)');
   await expect(page.locator('.inspector')).toContainText('face(+Z)');
   await page.getByRole('button', { name: 'Reference Face in Source' }).click();
-  await expect(editor).toHaveValue(/Pmi \{ Datum SelectedFace1 \{ Target: face\(\+Z\) \} \}/);
+  await expect(page.locator('.view-lines')).toContainText('Pmi { Datum SelectedFace1 { Target: face(+Z) } }');
   await page.getByRole('button', { name: '↻ Rebuild' }).click();
   await expect(page.locator('.status-ready')).toContainText('READY', { timeout: 120_000 });
   await expect(page.locator('.statusbar')).toContainText('0 DIAGNOSTICS');

@@ -116,6 +116,7 @@ function createScene(host: HTMLDivElement, onSelect: Props['onSelect']) {
 }
 
 function loadModel(state: ReturnType<typeof createScene>, model: ModelSession | null) {
+  const started = performance.now();
   for (const child of [...state.group.children]) { state.group.remove(child); disposeObject(child); }
   state.model = model;
   if (!model) { state.invalidate(); return; }
@@ -150,6 +151,8 @@ function loadModel(state: ReturnType<typeof createScene>, model: ModelSession | 
     }
   }
   fit(state);
+  performance.clearMeasures('helios-display-update');
+  performance.measure('helios-display-update', { start: started, end: performance.now() });
 }
 
 function selectEntity(state: ReturnType<typeof createScene>, model: ModelSession | null, entityId: string | null, topologyId: string | null) {

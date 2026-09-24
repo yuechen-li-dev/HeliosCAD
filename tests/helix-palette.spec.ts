@@ -10,12 +10,12 @@ test('Helix palette command builds through the installed Aetheris runtime', asyn
   await expect(page.getByRole('heading', { name: 'Your projects' })).toBeVisible();
   await page.getByLabel('Project name').fill('Helix witness');
   await page.getByRole('button', { name: 'Create project' }).click();
-  await expect(page.getByRole('textbox', { name: 'Firmament source' })).toBeVisible();
+  await expect(page.locator('.monaco-editor')).toBeVisible();
   await expect(page.locator('.status-ready')).toContainText('READY', { timeout: 120_000 });
   await page.getByRole('button', { name: /Command Palette/ }).click();
   await page.getByLabel('Search commands').fill('Helix');
   await page.getByRole('button', { name: /New Helix Model/ }).click();
-  await expect(page.getByRole('textbox', { name: 'Firmament source' })).toHaveValue(/Helix Winding/);
+  await expect(page.locator('.view-lines')).toContainText('Helix Winding');
   await expect(page.locator('.status-ready')).toContainText('READY', { timeout: 120_000 });
   await expect(page.locator('.statusbar')).toContainText('1 DEFS');
   await page.getByRole('button', { name: /PROBLEMS/ }).click();

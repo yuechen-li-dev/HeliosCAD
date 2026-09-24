@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { readFile, stat } from 'node:fs/promises';
+import { replaceEditorSource } from './editor';
 
 const source = 'Model TelosReopen {\n    Units: mm\n    Box Body { Size: [30mm, 20mm, 10mm] }\n}\n';
 
@@ -19,17 +20,16 @@ test('register, model, save, return in a fresh browser context, rebuild, and exp
   await page.getByLabel('Project name').fill('Telos block');
   let started = performance.now();
   await page.getByRole('button', { name: 'Create project' }).click();
-  await expect(page.getByRole('textbox', { name: 'Firmament source' })).toBeVisible();
-  await expect(page.getByRole('textbox', { name: 'Firmament source' })).toBeEnabled();
+  await expect(page.locator('.monaco-editor')).toBeVisible();
   milliseconds.createAndInitialBuild = Math.round(performance.now() - started);
   await page.getByRole('button', { name: /Command Palette/ }).click();
   await page.getByLabel('Search commands').fill('insert box');
   await page.getByRole('button', { name: /Insert Box/ }).click();
-  await expect(page.getByRole('textbox', { name: 'Firmament source' })).toHaveValue(/Box HeliosBox1 \{ Size: \[30mm, 20mm, 10mm\] \}/);
+  await expect(page.locator('.view-lines')).toContainText('Box HeliosBox1');
   await page.locator('.rebuild-inline').click();
   await expect(page.locator('.status-ready')).toContainText('READY');
   await expect(page.locator('.statusbar')).toContainText('0 DIAGNOSTICS');
-  await page.getByRole('textbox', { name: 'Firmament source' }).fill(source);
+  await replaceEditorSource(page, source);
   await page.locator('.rebuild-inline').click();
   await expect(page.locator('.status-ready')).toContainText('READY');
   started = performance.now();
@@ -49,13 +49,13 @@ test('register, model, save, return in a fresh browser context, rebuild, and exp
   milliseconds.signInAndList = Math.round(performance.now() - started);
   started = performance.now();
   await returnPage.getByRole('button', { name: /Telos block/ }).first().click();
-  await expect(returnPage.getByRole('textbox', { name: 'Firmament source' })).toHaveValue(source);
+  await expect(returnPage.locator('.view-lines')).toContainText('Box Body');
   await expect(returnPage.locator('.status-ready')).toContainText('READY');
   milliseconds.openAndBuild = Math.round(performance.now() - started);
   await returnPage.locator('.viewport-canvas canvas').click({ position: { x: 400, y: 130 } });
   await expect(returnPage.locator('.inspector .identity-list').first()).toContainText('Face ID');
-  await returnPage.getByRole('button', { name: 'Go to Source' }).click();
-  await expect(returnPage.getByRole('textbox', { name: 'Firmament source' })).toBeFocused();
+  await returnPage.locator('.inspector-actions').getByRole('button', { name: 'Go to Source' }).click();
+  await expect(returnPage.getByRole('textbox', { name: 'Editor content' })).toBeFocused();
   await returnPage.screenshot({ path: 'test-results/telos-editor.png', fullPage: true });
   const downloadPromise = returnPage.waitForEvent('download');
   await returnPage.getByRole('button', { name: /Command Palette/ }).click();

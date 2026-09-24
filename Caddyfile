@@ -1,6 +1,10 @@
 {$HELIOS_HOST} {
     encode zstd gzip
     header Strict-Transport-Security "max-age=31536000"
+    @fingerprintedRuntime path_regexp ^/aetheris-runtime(-aot)?/_framework/.*\.[a-z0-9]{10,}\.(wasm|dll|js|dat)$
+    header @fingerprintedRuntime Cache-Control "public, max-age=31536000, immutable"
+    @runtimeBoot path /aetheris-runtime/_framework/dotnet.js /aetheris-runtime-aot/_framework/dotnet.js
+    header @runtimeBoot Cache-Control "public, max-age=300"
     handle /api/* {
         reverse_proxy server:8080
     }

@@ -1,0 +1,34 @@
+import { test, expect } from '@playwright/test';
+
+test('saving a changed source during a Worker build survives project reopen', async ({ page }) => {
+  test.setTimeout(150_000);
+  let savedSource = '';
+  let reopenedSource = '';
+  page.on('request', request => { if (request.method() === 'PUT' && /\/api\/projects\//.test(request.url())) savedSource = JSON.parse(request.postData() ?? '{}').source ?? ''; });
+  page.on('response', async response => { if (response.request().method() === 'GET' && /\/api\/projects\/[^/]+$/.test(response.url())) reopenedSource = (await response.json()).source ?? ''; });
+  await page.goto('/');
+  await page.getByRole('button', { name: 'New to Helios? Create an account' }).click();
+  await page.getByLabel('Name').fill('Save Worker Witness');
+  await page.getByLabel('Email').fill(`save-worker-${Date.now()}@example.test`);
+  await page.getByLabel('Password').fill('Correct-Helios-Password-2026');
+  await page.getByRole('button', { name: 'Create account' }).click();
+  await expect(page.getByRole('heading', { name: 'Your projects' })).toBeVisible();
+  await page.getByLabel('Project name').fill('Save during build');
+  await page.getByRole('button', { name: 'Create project' }).click();
+  await expect(page.locator('.status-ready')).toContainText('READY');
+  await page.getByRole('button', { name: /Command Palette/ }).click();
+  await page.getByLabel('Search commands').fill('Helix');
+  await page.getByRole('button', { name: /New Helix Model/ }).click();
+  await expect(page.locator('.view-lines')).toContainText('Helix Winding');
+  await expect(page.locator('.status-ready')).toContainText('Building');
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
+  await expect(page.locator('.cloud-save-state')).toContainText('Saved');
+  console.log('SAVE_WORKER_REQUEST_SOURCE', savedSource.slice(0, 160));
+  await page.getByRole('button', { name: 'Projects', exact: false }).click();
+  await expect(page.getByRole('heading', { name: 'Your projects' })).toBeVisible();
+  await page.locator('.project-row > button').first().click();
+  await expect(page.locator('.monaco-editor')).toBeVisible();
+  console.log('REOPEN_WORKER_RESPONSE_SOURCE', reopenedSource.slice(0, 160));
+  await expect(page.locator('.view-lines')).toContainText('Helix Winding', { timeout: 20_000 });
+  expect(savedSource).toContain('Helix Winding');
+});
