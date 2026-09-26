@@ -85,7 +85,7 @@ export const SourcePanel = forwardRef<SourcePanelHandle, Props>(function SourceP
     </div>
     <div className="code-editor" style={{ display: tab === 'source' ? undefined : 'none' }} aria-label="Firmament editor">
       <Editor path={`/document-${documentId.current}/${fileName}`} language="firmament" theme={theme === 'sirius' ? 'vs' : 'vs-dark'} value={source} onChange={value => { client.current?.update(value ?? '', fileName, model ?? null, selectedSelector ?? null); onSourceChange(value ?? ''); }} onMount={onMount}
-        options={{ fontSize: 12, lineNumbers: 'on', minimap: { enabled: false }, automaticLayout: true, readOnly: false, wordWrap: 'off', tabSize: 2, scrollBeyondLastLine: false, quickSuggestions: true, suggestOnTriggerCharacters: true }} />
+        options={{ fontSize: 14, lineNumbers: 'on', minimap: { enabled: false }, automaticLayout: true, readOnly: false, wordWrap: 'off', tabSize: 2, scrollBeyondLastLine: false, quickSuggestions: true, suggestOnTriggerCharacters: true }} />
     </div>
     {tab === 'diagnostics' && <div className="diagnostic-list">
       {diagnostics.length ? diagnostics.map((diagnostic, index) => <button key={`${diagnostic.code}-${index}`} className={`diagnostic ${diagnostic.severity}`} onClick={() => jumpToDiagnostic(diagnostic)}>

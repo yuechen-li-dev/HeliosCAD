@@ -143,6 +143,8 @@ vite.config.ts.timestamp-*
 .vite/
 vite.config.js
 vite.config.d.ts
+scripts/local-terminal.js
+scripts/local-terminal.d.ts
 test-results/
 playwright-report/
 .e2e-data/

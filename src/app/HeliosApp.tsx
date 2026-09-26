@@ -7,6 +7,9 @@ import { appendCenteredHole, appendFaceDatum, appendHoleWallDiameter, insertBox 
 import { CommandPalette, type PaletteCommand } from '../commands/CommandPalette';
 import { ProjectExplorer } from '../explorer/ProjectExplorer';
 import { Inspector } from '../inspector/Inspector';
+import { BottomDock } from './BottomDock';
+import { useShellLayout } from './shellLayout';
+import { matchKind } from 'machinalayout/match';
 import { SourcePanel, type SourcePanelHandle } from '../source/SourcePanel';
 import { Viewport } from '../viewport/Viewport';
 import type { BusyState, DisplayMode, ThemeName, ViewMode } from './types';
@@ -14,8 +17,10 @@ import type { Project } from '../cloud/api';
 
 const runtime = new WebSdkCadRuntime();
 const buildClient = new AetherisWorkerClient(runtime);
+type UtilityTab = { kind: 'files' } | { kind: 'inspector' } | { kind: 'git' } | { kind: 'llm' };
 
 export function HeliosApp({ project, onSave, onPublish, onBack, onSignOut }: { project?: Project; onSave?: (source: string) => Promise<void>; onPublish?: (payload: { expectedRevisionId: string; title: string; description: string; category: string; tags: string[]; previewPngBase64: string }) => Promise<void>; onBack?: () => void; onSignOut?: () => void } = {}) {
+  const shellLayout = useShellLayout();
   const [model, setModel] = useState<ModelSession | null>(null);
   const [semanticSchema, setSemanticSchema] = useState<SemanticSchema | null>(null);
   const [fieldProjection, setFieldProjection] = useState<ConstructProjection | null>(null);
@@ -48,6 +53,7 @@ export function HeliosApp({ project, onSave, onPublish, onBack, onSignOut }: { p
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [publishOpen, setPublishOpen] = useState(false);
   const [publishState, setPublishState] = useState('');
+  const [utilityTab, setUtilityTab] = useState<UtilityTab>({ kind: 'inspector' });
   const capturePreview = useRef<(() => string) | null>(null);
   const namedView = (view: 'front' | 'top' | 'right' | 'iso') => {
     setViewMode(view === 'iso' ? 'perspective' : 'orthographic');
@@ -235,7 +241,7 @@ export function HeliosApp({ project, onSave, onPublish, onBack, onSignOut }: { p
   return <div className={`helios-app${project ? ' cloud-mode' : ''}`}>
     <header className="topbar">
       <div className="brand"><span className="brand-mark">H</span><div><strong>HELIOS</strong><small>by Aetheris</small></div></div>
-      <nav className="workspace-tabs" aria-label="Workspace"><button onClick={() => fileInput.current?.click()}>Open File</button><button onClick={() => sourcePanel.current?.focusAt()}>Edit Source</button><button onClick={() => setViewCommand(`fit-${Date.now()}`)}>Fit View</button><button onClick={() => void rebuildSource()}>Rebuild</button><button onClick={() => void exportStep()}>Export STEP</button></nav>
+      <nav className="workspace-tabs" aria-label="Workspace"><button onClick={() => fileInput.current?.click()}>Open File</button><button onClick={() => sourcePanel.current?.focusAt()}>Edit Source</button><button onClick={() => setViewCommand(`fit-${Date.now()}`)}>Fit View</button><button className="build-action" onClick={() => void rebuildSource()}>Build</button><button onClick={() => void exportStep()}>Export STEP</button></nav>
       <div className="toolbar">
         <button className="palette-trigger" onClick={() => setPaletteOpen(true)}>⌕ <span>Command Palette</span><kbd>Ctrl+Shift+P</kbd></button>
       </div>
@@ -243,17 +249,29 @@ export function HeliosApp({ project, onSave, onPublish, onBack, onSignOut }: { p
       <input ref={fileInput} hidden type="file" accept=".firmament,.txt" onChange={async event => { const file = event.target.files?.[0]; if (file) { const value = await file.text(); setHistory([value]); setHistoryIndex(0); void open(value, file.name); } }} />
     </header>
     {project && <div className="cloud-project-bar"><button onClick={() => { if (saveState === 'Saved' || confirm('Leave this project with unsaved source?')) onBack?.(); }}>← Discover</button><strong>{project.name}</strong><span className="cloud-save-state" role="status">{saveState}</span><div className="cloud-editor-actions"><button className="cloud-save" onClick={() => void save()}>Save</button>{onPublish && <button onClick={() => { setPublishState(''); setPublishOpen(true); }}>Publish</button>}<button onClick={() => downloadText(source, sourceName)}>Download source</button><button onClick={() => { if (saveState === 'Saved' || confirm('Sign out with unsaved source?')) onSignOut?.(); }}>Sign out</button></div></div>}
-    <main className="workspace">
-      <ProjectExplorer projectName={project?.name ?? 'Local workspace'} fileName={sourceName} dirty={saveState !== 'Saved'} onOpen={() => fileInput.current?.click()} onNew={() => loadSample('new')} onReveal={() => sourcePanel.current?.focusAt()} />
-      <div className="center-stack">
+    <main className="workspace" ref={shellLayout.ref} style={shellLayout.style}>
+      <div className="workbench">
+        <SourcePanel ref={sourcePanel} fileName={sourceName} dirty={saveState !== 'Saved'} source={source} diagnostics={diagnostics} runtime={runtime} model={model} selectedSelector={selectedSelection?.selector} theme={theme} onSourceChange={value => editSource(value)} onCursorChange={onSourceCursor} onRebuild={() => void rebuildSource()} onDiagnosticClick={diagnostic => { if (diagnostic.source) setSelectedEntityId(null); }} />
+        <div className="viewport-pane">
         <div className="viewport-toolbar">
           <div><button onClick={() => namedView('front')}>FRONT</button><button onClick={() => namedView('top')}>TOP</button><button onClick={() => namedView('right')}>RIGHT</button><button onClick={() => namedView('iso')}>ISO</button><button onClick={() => setViewCommand(`fit-${Date.now()}`)}>FIT</button><button onClick={() => setViewCommand(`fitselection-${Date.now()}`)}>FIT SEL</button></div>
           <div><select aria-label="Display mode" value={displayMode} onChange={event => setDisplayMode(event.target.value as DisplayMode)}><option value="shaded">Shaded</option><option value="edges">Shaded with edges</option><option value="wireframe">Wireframe</option></select><button aria-label="Selection mode" onClick={() => { setSelectionMode(value => value === 'face' ? 'edge' : 'face'); setDisplayMode('edges'); }}>{selectionMode === 'face' ? 'PICK FACE' : 'PICK EDGE'}</button><button onClick={() => setViewMode(value => value === 'perspective' ? 'orthographic' : 'perspective')}>{viewMode === 'perspective' ? 'PERSP' : 'ORTHO'}</button></div>
         </div>
         <Viewport model={model} selectedEntityId={selectedEntityId} selectedTopologyId={selectedFaceId} theme={theme} displayMode={displayMode} viewMode={viewMode} viewCommand={viewCommand} selectionMode={selectionMode} onSelect={select} captureRef={capturePreview} />
-        <SourcePanel ref={sourcePanel} fileName={sourceName} dirty={saveState !== 'Saved'} source={source} diagnostics={diagnostics} runtime={runtime} model={model} selectedSelector={selectedSelection?.selector} theme={theme} onSourceChange={value => editSource(value)} onCursorChange={onSourceCursor} onRebuild={() => void rebuildSource()} onDiagnosticClick={diagnostic => { if (diagnostic.source) setSelectedEntityId(null); }} />
+        </div>
       </div>
-      <Inspector model={model} schema={semanticSchema} projection={fieldProjection} projectionCurrent={source === model?.source} entityId={selectedEntityId} faceId={selectedFaceId} selection={selectedSelection} diagnostics={diagnostics} onApply={applyProperty} onRewriteField={rewriteField} onGoToSource={reference => sourcePanel.current?.focusAt(reference)} onReferenceFace={referenceFace} onReferenceHoleWall={referenceHoleWall} />
+      <aside className="utility-dock" aria-label="Utility panel">
+        <div className="dock-tabs" role="tablist" aria-label="Utilities">{([['files', 'Files'], ['inspector', 'Inspector'], ['git', 'Git'], ['llm', 'LLM Author']] as const).map(([id, label]) => <button key={id} role="tab" aria-selected={utilityTab.kind === id} className={utilityTab.kind === id ? 'active' : ''} onClick={() => setUtilityTab({ kind: id })}>{label}</button>)}</div>
+        <div className="utility-content">
+          {matchKind(utilityTab, {
+            files: () => <ProjectExplorer projectName={project?.name ?? 'Local workspace'} fileName={sourceName} dirty={saveState !== 'Saved'} onOpen={() => fileInput.current?.click()} onNew={() => loadSample('new')} onReveal={() => sourcePanel.current?.focusAt()} />,
+            inspector: () => <Inspector model={model} schema={semanticSchema} projection={fieldProjection} projectionCurrent={source === model?.source} entityId={selectedEntityId} faceId={selectedFaceId} selection={selectedSelection} diagnostics={diagnostics} onApply={applyProperty} onRewriteField={rewriteField} onGoToSource={reference => sourcePanel.current?.focusAt(reference)} onReferenceFace={referenceFace} onReferenceHoleWall={referenceHoleWall} />,
+            git: () => <div className="dock-placeholder"><h2>Git</h2><p>Use the local Terminal for repository status and version control commands.</p><button onClick={() => setUtilityTab({ kind: 'files' })}>View files</button></div>,
+            llm: () => <div className="dock-placeholder"><h2>LLM Author</h2><p>Authoring assistance will appear here. Firmament in Monaco remains the editable source.</p></div>,
+          })}
+        </div>
+      </aside>
+      <BottomDock diagnostics={diagnostics} busy={busy} sourceName={sourceName} sourceRevision={sourceRevision} displayRevision={displayRevision} lastTiming={lastTiming} onDiagnosticClick={diagnostic => { if (diagnostic.source) sourcePanel.current?.focusAt(diagnostic.source); }} />
     </main>
     <footer className="statusbar"><span className="status-ready" role="status"><i />{busy ?? (model ? 'READY' : 'NO MODEL')}{buildStarted !== null ? ` ${elapsedSeconds.toFixed(1)}s` : ''}</span><span>{runtimeName}</span><span>SOURCE REV {sourceRevision} · DISPLAY REV {displayRevision ?? '—'}</span>{displayRevision !== sourceRevision && model && <span>MODEL OUT OF DATE</span>}<span>{model?.mesh.definitions.length ?? 0} DEFS · {model?.mesh.occurrences.length ?? 0} OCC</span><span className={diagnostics.length ? 'has-diagnostics' : ''}>{diagnostics.length ? `⚠ ${diagnostics.length}` : '✓ 0'} DIAGNOSTICS</span>{lastTiming && <span>{lastTiming.label} {lastTiming.milliseconds.toFixed(0)}MS</span>}{phaseTiming && <span title="Last successful Worker build phases">{phaseTiming}</span>}<span className="status-selection">{selectedEntityId ? `${model?.entity(selectedEntityId)?.name ?? selectedEntityId}${selectedFaceId ? ` · ${selectedFaceId}` : ''}` : 'NO SELECTION'}</span><span>{viewMode.toUpperCase()}</span><span>{theme.toUpperCase()}</span>{busy === 'Worker failed' && <button onClick={() => { void buildClient.restart().then(() => submitBuild(source, sourceName)).catch(error => setDiagnostics([toDiagnostic(error, 'HELIOS-WORKER-RESTART')])); }}>Restart Worker</button>}</footer>
     {paletteOpen && <CommandPalette commands={paletteCommands} onClose={() => setPaletteOpen(false)} />}

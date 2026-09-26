@@ -16,6 +16,8 @@ The current SDK exposes completion and compiled selector candidates. It does not
 
 ## Local development
 
+For a quick local shell review without Leviathan, run `npm run dev -- --host 127.0.0.1` and open `http://127.0.0.1:4173/local`. This development-only route starts the single-file editor with the built-in bracket sample. The right dock has Files, Inspector, Git, and LLM Author tabs; Git and LLM Author are placeholders. The bottom Terminal runs local PowerShell through the Vite dev server on loopback. See [the MVP UX X0 note](docs/release/HELIOS-MVP-UX-X0.md) and its 1440p screenshot.
+
 Keep `HeliosCAD`, `Leviathan`, and `Aetheris` as sibling checkouts. For local iteration, run `npm run sdk:install` to build the fast non-AOT Aetheris SDK tarball in `Aetheris/artifacts/local/helios-sdk`. The Vite dev server uses that runtime for both LX and the Worker. Then:
 
 ```powershell
