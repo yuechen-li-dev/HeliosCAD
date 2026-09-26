@@ -1,4 +1,4 @@
-import { Aetheris, type ConstructProjection, type Diagnostic, type LanguageCompletion, type ModelSession, type ProjectedValue, type RuntimeInfo, type SemanticSchema, type UnitValue } from '@aetheris/cad';
+import { Aetheris, type ConstructProjection, type Diagnostic, type LanguageAnalysis, type LanguageCompletion, type LanguageFormat, type LanguageHover, type ModelSession, type ProjectedValue, type RuntimeInfo, type SemanticSchema, type SourceReference, type UnitValue } from '@aetheris/cad';
 
 export interface OpenResult { model: ModelSession | null; diagnostics: readonly Diagnostic[] }
 
@@ -14,6 +14,10 @@ export interface CadRuntime {
   restart(): Promise<RuntimeInfo>;
   session(): ModelSession | null;
   complete(source: string, offset: number, sourceName: string, revision: string): Promise<LanguageCompletion>;
+  analyze(source: string, sourceName: string, revision: string): Promise<LanguageAnalysis>;
+  hover(source: string, offset: number, sourceName: string, revision: string): Promise<LanguageHover | null>;
+  definition(source: string, offset: number, sourceName: string, revision: string): Promise<SourceReference | null>;
+  format(source: string, sourceName: string, revision: string): Promise<LanguageFormat>;
   schema(): Promise<SemanticSchema>;
   describeConstruct(semanticId: string): Promise<ConstructProjection>;
   rewriteField(source: string, projection: ConstructProjection, fieldId: string, value: ProjectedValue): ReturnType<ModelSession['rewriteField']>;
@@ -52,6 +56,26 @@ export class WebSdkCadRuntime implements CadRuntime {
   async complete(source: string, offset: number, sourceName: string, revision: string) {
     const cad = await this.initializeLanguage();
     return cad.language.complete(source, offset, { sourceName, sourceRevision: revision });
+  }
+
+  async analyze(source: string, sourceName: string, revision: string) {
+    const cad = await this.initializeLanguage();
+    return cad.language.analyze(source, { sourceName, sourceRevision: revision });
+  }
+
+  async hover(source: string, offset: number, sourceName: string, revision: string) {
+    const cad = await this.initializeLanguage();
+    return cad.language.hover(source, offset, { sourceName, sourceRevision: revision });
+  }
+
+  async definition(source: string, offset: number, sourceName: string, revision: string) {
+    const cad = await this.initializeLanguage();
+    return cad.language.definition(source, offset, { sourceName, sourceRevision: revision });
+  }
+
+  async format(source: string, sourceName: string, revision: string) {
+    const cad = await this.initializeLanguage();
+    return cad.language.format(source, { sourceName, sourceRevision: revision });
   }
 
   async schema() {

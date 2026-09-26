@@ -17,3 +17,7 @@ class ResizeObserverStub {
   disconnect() {}
 }
 globalThis.ResizeObserver = ResizeObserverStub as typeof ResizeObserver;
+window.matchMedia ??= query => ({ matches: false, media: query, onchange: null,
+  addListener: () => undefined, removeListener: () => undefined,
+  addEventListener: () => undefined, removeEventListener: () => undefined,
+  dispatchEvent: () => false });

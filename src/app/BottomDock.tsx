@@ -11,10 +11,11 @@ interface Props {
   sourceRevision: number;
   displayRevision: number | null;
   lastTiming: { label: string; milliseconds: number } | null;
+  events: readonly string[];
   onDiagnosticClick(diagnostic: Diagnostic): void;
 }
 
-export function BottomDock({ diagnostics, busy, sourceName, sourceRevision, displayRevision, lastTiming, onDiagnosticClick }: Props) {
+export function BottomDock({ diagnostics, busy, sourceName, sourceRevision, displayRevision, lastTiming, events, onDiagnosticClick }: Props) {
   const [tab, setTab] = useState<DockTab>('terminal');
   const [command, setCommand] = useState('');
   const [terminalOutput, setTerminalOutput] = useState('');
@@ -45,8 +46,8 @@ export function BottomDock({ diagnostics, busy, sourceName, sourceRevision, disp
         <pre ref={outputRef} aria-label="Terminal output">{terminalAvailable ? terminalOutput || 'Starting local PowerShell…' : 'Local terminal is available with npm run dev.'}</pre>
         {terminalAvailable && <div className="terminal-command"><span>PS&gt;</span><input aria-label="Terminal command" value={command} onChange={event => setCommand(event.target.value)} onKeyDown={event => { if (event.key === 'Enter') runCommand(); }} placeholder="Enter a command" /><button onClick={runCommand}>Run</button></div>}
       </div>
-      {tab === 'output' && <div className="dock-output"><p>{busy ?? 'Ready'} · {sourceName}</p><p>Source revision {sourceRevision} · displayed model revision {displayRevision ?? '—'}</p>{lastTiming && <p>{lastTiming.label} · {lastTiming.milliseconds.toFixed(0)} ms</p>}{displayRevision !== sourceRevision && displayRevision !== null && <p>Showing the last successful build.</p>}</div>}
-      {tab === 'errors' && <div className="dock-errors">{diagnostics.length ? diagnostics.map((diagnostic, index) => <button key={`${diagnostic.code}-${index}`} onClick={() => onDiagnosticClick(diagnostic)}><span className={diagnostic.severity}>{diagnostic.severity}</span><strong>{diagnostic.code}</strong><span>{diagnostic.message}</span><small>{diagnostic.source ? `${diagnostic.source.source}:${diagnostic.source.line}` : ''}</small></button>) : <p>No build diagnostics.</p>}</div>}
+      {tab === 'output' && <div className="dock-output"><p>{busy ?? 'Ready'} · {sourceName}</p><p>Source revision {sourceRevision} · displayed model revision {displayRevision ?? '—'}</p>{lastTiming && <p>{lastTiming.label} · {lastTiming.milliseconds.toFixed(0)} ms</p>}{displayRevision !== sourceRevision && displayRevision !== null && <p>Showing the last successful build.</p>}{events.map((event, index) => <p key={index}>{event}</p>)}</div>}
+      {tab === 'errors' && <div className="dock-errors">{diagnostics.length ? diagnostics.map((diagnostic, index) => <button key={`${diagnostic.code}-${index}`} onClick={() => onDiagnosticClick(diagnostic)}><span className={diagnostic.severity}>{diagnostic.severity}</span><span>{diagnostic.source ? `${diagnostic.source.source}:${diagnostic.source.line}:${diagnostic.source.column}` : sourceName}</span><span>{diagnostic.message}</span><small>{diagnostic.code}</small></button>) : <p>No language or build diagnostics.</p>}</div>}
     </div>
   </section>;
 }

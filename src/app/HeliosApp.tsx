@@ -28,6 +28,8 @@ export function HeliosApp({ project, onSave, onPublish, onBack, onSignOut }: { p
   const [sourceName, setSourceName] = useState(project ? `${project.name}.firmament` : 'editable-bracket.firmament');
   const [saveState, setSaveState] = useState('Saved');
   const [diagnostics, setDiagnostics] = useState<readonly Diagnostic[]>([]);
+  const [liveDiagnostics, setLiveDiagnostics] = useState<readonly Diagnostic[]>([]);
+  const [outputEvents, setOutputEvents] = useState<string[]>([]);
   const [selectedEntityId, setSelectedEntityId] = useState<string | null>(null);
   const [selectedFaceId, setSelectedFaceId] = useState<string | null>(null);
   const [selectedSelection, setSelectedSelection] = useState<SelectionDescription | null>(null);
@@ -55,6 +57,9 @@ export function HeliosApp({ project, onSave, onPublish, onBack, onSignOut }: { p
   const [publishState, setPublishState] = useState('');
   const [utilityTab, setUtilityTab] = useState<UtilityTab>({ kind: 'inspector' });
   const capturePreview = useRef<(() => string) | null>(null);
+  const shownDiagnostics = [...liveDiagnostics, ...diagnostics.filter(item => !liveDiagnostics.some(live =>
+    live.code === item.code && live.source?.start === item.source?.start))];
+  const pushOutput = (message: string) => setOutputEvents(events => [...events.slice(-79), message]);
   const namedView = (view: 'front' | 'top' | 'right' | 'iso') => {
     setViewMode(view === 'iso' ? 'perspective' : 'orthographic');
     setViewCommand(`${view}-${Date.now()}`);
@@ -67,11 +72,14 @@ export function HeliosApp({ project, onSave, onPublish, onBack, onSignOut }: { p
     setSourceName(name);
     setSaveState('Unsaved');
     setDiagnostics([]);
+    setLiveDiagnostics([]);
   };
 
   const acceptBuild = (result: BuildResult) => {
     if (result.status === 'superseded' || result.request.sourceRevision !== sourceRevisionRef.current) return;
     setDiagnostics(result.diagnostics);
+    pushOutput(result.status === 'completed' ? `Build finished in ${result.milliseconds.toFixed(0)} ms · ${result.diagnostics.length} diagnostics` :
+      `Build failed · ${result.diagnostics.length} diagnostics`);
     if (result.status === 'completed' && result.model) {
       const snapshot = snapshotSession(result.model);
       setModel(snapshot);
@@ -92,6 +100,7 @@ export function HeliosApp({ project, onSave, onPublish, onBack, onSignOut }: { p
     const submission = ++latestSubmission.current;
     setBusy(runtime.info ? 'Building' : 'Initializing Aetheris Worker');
     setBuildStarted(performance.now());
+    pushOutput(`Build started · ${name} · revision ${revision}`);
     const result = await buildClient.submit(value, name, revision);
     if (runtime.info) setRuntimeName(`WASM Worker · ${runtime.info.packageVersion}`);
     if (submission === latestSubmission.current) acceptBuild(result);
@@ -178,8 +187,9 @@ export function HeliosApp({ project, onSave, onPublish, onBack, onSignOut }: { p
     }
     if (revision !== sourceRevisionRef.current) return;
     setBusy('Exporting');
-    try { const bytes = await runtime.exportSTEP(); if (revision !== sourceRevisionRef.current) return; downloadBlob(new Blob([Uint8Array.from(bytes).buffer], { type: 'model/step' }), `${stripExtension(sourceName)}.step`); setLastTiming({ label: 'STEP DOWNLOAD STARTED', milliseconds: performance.now() - started }); }
-    catch (error) { setDiagnostics([toDiagnostic(error, 'HELIOS-EXPORT')]); if (isWorkerFailure(error)) setBusy('Worker failed'); }
+    pushOutput(`STEP export started · ${sourceName}`);
+    try { const bytes = await runtime.exportSTEP(); if (revision !== sourceRevisionRef.current) return; downloadBlob(new Blob([Uint8Array.from(bytes).buffer], { type: 'model/step' }), `${stripExtension(sourceName)}.step`); setLastTiming({ label: 'STEP DOWNLOAD STARTED', milliseconds: performance.now() - started }); pushOutput(`STEP download started · ${bytes.length} bytes · ${(performance.now() - started).toFixed(0)} ms`); }
+    catch (error) { setDiagnostics([toDiagnostic(error, 'HELIOS-EXPORT')]); pushOutput(`STEP export failed · ${error instanceof Error ? error.message : String(error)}`); if (isWorkerFailure(error)) setBusy('Worker failed'); }
     finally { setBusy(value => value === 'Exporting' ? null : value); }
   };
   const commitHistory = (value: string) => { const next = [...history.slice(0, historyIndex + 1), value]; setHistory(next); setHistoryIndex(next.length - 1); };
@@ -229,6 +239,7 @@ export function HeliosApp({ project, onSave, onPublish, onBack, onSignOut }: { p
     }),
     { id: 'insert-hole', label: 'Insert Hole', detail: 'Append a centered through hole', run: addHole },
     { id: 'rebuild', label: 'Rebuild Model', detail: 'Ctrl+Enter', run: () => void rebuildSource() },
+    { id: 'format', label: 'Format Document', detail: 'Aetheris canonical formatter', run: () => void sourcePanel.current?.formatDocument() },
     { id: 'export', label: 'Export STEP', run: () => void exportStep() },
     { id: 'save', label: 'Save', detail: onSave ? 'Save project source' : 'Download Firmament source', run: () => onSave ? void save() : downloadText(source, sourceName) },
     { id: 'open', label: 'Open File', run: () => fileInput.current?.click() },
@@ -251,7 +262,7 @@ export function HeliosApp({ project, onSave, onPublish, onBack, onSignOut }: { p
     {project && <div className="cloud-project-bar"><button onClick={() => { if (saveState === 'Saved' || confirm('Leave this project with unsaved source?')) onBack?.(); }}>← Discover</button><strong>{project.name}</strong><span className="cloud-save-state" role="status">{saveState}</span><div className="cloud-editor-actions"><button className="cloud-save" onClick={() => void save()}>Save</button>{onPublish && <button onClick={() => { setPublishState(''); setPublishOpen(true); }}>Publish</button>}<button onClick={() => downloadText(source, sourceName)}>Download source</button><button onClick={() => { if (saveState === 'Saved' || confirm('Sign out with unsaved source?')) onSignOut?.(); }}>Sign out</button></div></div>}
     <main className="workspace" ref={shellLayout.ref} style={shellLayout.style}>
       <div className="workbench">
-        <SourcePanel ref={sourcePanel} fileName={sourceName} dirty={saveState !== 'Saved'} source={source} diagnostics={diagnostics} runtime={runtime} model={model} selectedSelector={selectedSelection?.selector} theme={theme} onSourceChange={value => editSource(value)} onCursorChange={onSourceCursor} onRebuild={() => void rebuildSource()} onDiagnosticClick={diagnostic => { if (diagnostic.source) setSelectedEntityId(null); }} />
+        <SourcePanel ref={sourcePanel} fileName={sourceName} dirty={saveState !== 'Saved'} source={source} diagnostics={shownDiagnostics} runtime={runtime} model={model} selectedSelector={selectedSelection?.selector} theme={theme} onSourceChange={value => editSource(value)} onCursorChange={onSourceCursor} onRebuild={() => void rebuildSource()} onLiveDiagnostics={setLiveDiagnostics} onLanguageError={error => { setDiagnostics([toDiagnostic(error, 'FIRMAMENT-FORMAT')]); pushOutput(`Format refused · ${error instanceof Error ? error.message : String(error)}`); }} onDiagnosticClick={diagnostic => { if (diagnostic.source) setSelectedEntityId(null); }} />
         <div className="viewport-pane">
         <div className="viewport-toolbar">
           <div><button onClick={() => namedView('front')}>FRONT</button><button onClick={() => namedView('top')}>TOP</button><button onClick={() => namedView('right')}>RIGHT</button><button onClick={() => namedView('iso')}>ISO</button><button onClick={() => setViewCommand(`fit-${Date.now()}`)}>FIT</button><button onClick={() => setViewCommand(`fitselection-${Date.now()}`)}>FIT SEL</button></div>
@@ -271,9 +282,9 @@ export function HeliosApp({ project, onSave, onPublish, onBack, onSignOut }: { p
           })}
         </div>
       </aside>
-      <BottomDock diagnostics={diagnostics} busy={busy} sourceName={sourceName} sourceRevision={sourceRevision} displayRevision={displayRevision} lastTiming={lastTiming} onDiagnosticClick={diagnostic => { if (diagnostic.source) sourcePanel.current?.focusAt(diagnostic.source); }} />
+      <BottomDock diagnostics={shownDiagnostics} busy={busy} sourceName={sourceName} sourceRevision={sourceRevision} displayRevision={displayRevision} lastTiming={lastTiming} events={outputEvents} onDiagnosticClick={diagnostic => { if (diagnostic.source) sourcePanel.current?.focusAt(diagnostic.source); }} />
     </main>
-    <footer className="statusbar"><span className="status-ready" role="status"><i />{busy ?? (model ? 'READY' : 'NO MODEL')}{buildStarted !== null ? ` ${elapsedSeconds.toFixed(1)}s` : ''}</span><span>{runtimeName}</span><span>SOURCE REV {sourceRevision} · DISPLAY REV {displayRevision ?? '—'}</span>{displayRevision !== sourceRevision && model && <span>MODEL OUT OF DATE</span>}<span>{model?.mesh.definitions.length ?? 0} DEFS · {model?.mesh.occurrences.length ?? 0} OCC</span><span className={diagnostics.length ? 'has-diagnostics' : ''}>{diagnostics.length ? `⚠ ${diagnostics.length}` : '✓ 0'} DIAGNOSTICS</span>{lastTiming && <span>{lastTiming.label} {lastTiming.milliseconds.toFixed(0)}MS</span>}{phaseTiming && <span title="Last successful Worker build phases">{phaseTiming}</span>}<span className="status-selection">{selectedEntityId ? `${model?.entity(selectedEntityId)?.name ?? selectedEntityId}${selectedFaceId ? ` · ${selectedFaceId}` : ''}` : 'NO SELECTION'}</span><span>{viewMode.toUpperCase()}</span><span>{theme.toUpperCase()}</span>{busy === 'Worker failed' && <button onClick={() => { void buildClient.restart().then(() => submitBuild(source, sourceName)).catch(error => setDiagnostics([toDiagnostic(error, 'HELIOS-WORKER-RESTART')])); }}>Restart Worker</button>}</footer>
+    <footer className="statusbar"><span className="status-ready" role="status"><i />{busy ?? (model ? 'READY' : 'NO MODEL')}{buildStarted !== null ? ` ${elapsedSeconds.toFixed(1)}s` : ''}</span><span>{runtimeName}</span><span>SOURCE REV {sourceRevision} · DISPLAY REV {displayRevision ?? '—'}</span>{displayRevision !== sourceRevision && model && <span>MODEL OUT OF DATE</span>}<span>{model?.mesh.definitions.length ?? 0} DEFS · {model?.mesh.occurrences.length ?? 0} OCC</span><span className={shownDiagnostics.length ? 'has-diagnostics' : ''}>{shownDiagnostics.length ? `⚠ ${shownDiagnostics.length}` : '✓ 0'} DIAGNOSTICS</span>{lastTiming && <span>{lastTiming.label} {lastTiming.milliseconds.toFixed(0)}MS</span>}{phaseTiming && <span title="Last successful Worker build phases">{phaseTiming}</span>}<span className="status-selection">{selectedEntityId ? `${model?.entity(selectedEntityId)?.name ?? selectedEntityId}${selectedFaceId ? ` · ${selectedFaceId}` : ''}` : 'NO SELECTION'}</span><span>{viewMode.toUpperCase()}</span><span>{theme.toUpperCase()}</span>{busy === 'Worker failed' && <button onClick={() => { void buildClient.restart().then(() => submitBuild(source, sourceName)).catch(error => setDiagnostics([toDiagnostic(error, 'HELIOS-WORKER-RESTART')])); }}>Restart Worker</button>}</footer>
     {paletteOpen && <CommandPalette commands={paletteCommands} onClose={() => setPaletteOpen(false)} />}
     {publishOpen && onPublish && project && <div className="publish-backdrop"><form className="publish-dialog" aria-label="Publish model" onSubmit={event => { event.preventDefault(); const fields = new FormData(event.currentTarget); if (saveState !== 'Saved' || !model || model.source !== source || displayRevision !== sourceRevision) { setPublishState('Save and rebuild the current source before publishing.'); return; } const png = capturePreview.current?.(); if (!png?.startsWith('data:image/png;base64,')) { setPublishState('A preview could not be captured.'); return; } setPublishState('Publishing…'); void onPublish({ expectedRevisionId: project.revisionId, title: String(fields.get('title')).trim(), description: String(fields.get('description')).trim(), category: String(fields.get('category')), tags: String(fields.get('tags')).split(',').map(x => x.trim()).filter(Boolean), previewPngBase64: png.slice('data:image/png;base64,'.length) }).then(() => { setPublishOpen(false); setPublishState(''); }).catch(error => setPublishState(error instanceof Error ? error.message : 'Publish failed')); }}><h2>Publish model</h2><p>Publish the saved revision and this viewport view. Later edits stay private until you publish again.</p><label>Title<input name="title" defaultValue={project.name} maxLength={160} required /></label><label>Description<textarea name="description" maxLength={2000} /></label><label>Category<select name="category"><option>Mechanical</option><option>Assemblies</option><option>Sheet Metal</option><option>Surface</option><option>Furniture</option><option>Architecture</option><option>Game Assets</option></select></label><label>Tags, separated by commas<input name="tags" /></label>{publishState && <p role="status">{publishState}</p>}<div><button type="button" onClick={() => setPublishOpen(false)}>Cancel</button><button type="submit">Publish</button></div></form></div>}
   </div>;
