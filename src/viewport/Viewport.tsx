@@ -11,6 +11,8 @@ import type { DisplayMode, ThemeName, ViewMode } from "../app/types";
 import { LegacyViewport } from "./LegacyViewport";
 
 interface Props {
+  aaMode?: import("@aetheris/three-telos").TelosAAMode;
+  aaDebug?: import("@aetheris/three-telos").TelosAADebug;
   model: ModelSession | null;
   selectedEntityId: string | null;
   selectedTopologyId: string | null;
@@ -52,6 +54,7 @@ function TelosViewport(props: Props) {
     const current = host.current;
     if (!current) return;
     const value = latest.current;
+    current.setAA(value.aaMode ?? "SpatialOnly", value.aaDebug ?? "color");
     const scene: TelosScene = value.model
       ? fromDisplayMesh(value.model.mesh)
       : { meshes: [], lines: [], fields: [] };
