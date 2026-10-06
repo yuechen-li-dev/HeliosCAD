@@ -16,13 +16,14 @@
   },
   "dependencies": {
     "@aetheris/cad": "file:../Aetheris/artifacts/local/helios-sdk/aetheris-cad-2.0.0-preview.3.tgz",
+    "@aetheris/three-telos": "file:../Aetheris/Aetheris.Web.Runtime/telos",
     "@monaco-editor/react": "^4.7.0",
     "@vitejs/plugin-react": "latest",
     "machinalayout": "^0.7.0",
     "monaco-editor": "^0.56.0",
     "react": "latest",
     "react-dom": "latest",
-    "three": "latest",
+    "three": "0.183.2",
     "typescript": "latest",
     "vite": "latest"
   },
@@ -33,7 +34,7 @@
     "@types/node": "^26.6.3",
     "@types/react": "latest",
     "@types/react-dom": "latest",
-    "@types/three": "latest",
+    "@types/three": "0.183.1",
     "jsdom": "latest",
     "vitest": "latest"
   }
