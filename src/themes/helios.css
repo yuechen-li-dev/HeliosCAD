@@ -105,3 +105,30 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .statusbar { display: flex; align-items: center; gap: 0; background: var(--panel-elevated); border-top: 1px solid var(--border); color: var(--text-secondary); font-size: 9px; letter-spacing: .05em; }.statusbar > span { height: 100%; display: flex; align-items: center; padding: 0 10px; border-right: 1px solid var(--border); white-space: nowrap; }.statusbar .status-ready { color: var(--success); }.status-ready i { width: 6px; height: 6px; margin-right: 6px; border-radius: 50%; background: currentColor; }.statusbar .status-selection { flex: 1; overflow: hidden; text-overflow: ellipsis; }.has-diagnostics { color: var(--warning); }
 .busy-overlay { position: fixed; top: 64px; left: 50%; transform: translateX(-50%); z-index: 20; display: flex; align-items: center; gap: 9px; padding: 9px 14px; background: var(--panel-elevated); border: 1px solid var(--border-strong); box-shadow: 0 8px 25px var(--shadow); color: var(--text-primary); }.spinner { width: 13px; height: 13px; border: 2px solid var(--border-strong); border-top-color: var(--accent); border-radius: 50%; animation: spin .7s linear infinite; }@keyframes spin { to { transform: rotate(360deg); } }
 @media (max-width: 1150px) { .workspace-tabs button { padding: 0 6px; }.source-authority { display: none; } }
+.viewport-empty {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: 12px;
+  padding: 24px;
+  text-align: center;
+  font: 14px/1.5 system-ui, sans-serif;
+}
+.viewport-empty strong { font-size: 20px; font-weight: 500; }
+.viewport-empty small { opacity: .7; margin-top: 8px; }
+.viewport-status {
+  position: absolute;
+  left: 16px;
+  bottom: 40px;
+  max-width: calc(100% - 32px);
+  padding: 10px 14px;
+  border: 1px solid var(--text-secondary);
+  border-radius: 6px;
+  color: var(--text-primary);
+  background: var(--viewport-bg);
+  font: 13px/1.5 system-ui, sans-serif;
+  z-index: 100;
+}
+.viewport-error { border-color: #b56c56; }
+.viewport-status button { display: block; margin-top: 8px; padding: 5px 10px; cursor: pointer; }

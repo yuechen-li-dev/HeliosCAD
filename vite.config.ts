@@ -1,4 +1,5 @@
 import { defineConfig } from 'vitest/config';
+import { fileURLToPath } from 'node:url';
 import react from '@vitejs/plugin-react';
 import { aetherisCad } from '@aetheris/cad/vite';
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
@@ -45,6 +46,6 @@ function localTerminal(): Plugin {
 
 export default defineConfig({
   plugins: [aetherisCad(), react(), localTerminal()],
-  server: { port: 4173, proxy: { '/api': 'http://127.0.0.1:5189' } },
+  server: { port: 4173, fs: { allow: [fileURLToPath(new URL('.', import.meta.url)), fileURLToPath(new URL('../Aetheris/Aetheris.Web.Runtime/telos', import.meta.url))] }, proxy: { '/api': 'http://127.0.0.1:5189' } },
   test: { include: ['src/**/*.test.ts', 'src/**/*.test.tsx'], environment: 'jsdom', setupFiles: './src/test/setup.ts', css: true }
 });

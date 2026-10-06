@@ -51,6 +51,8 @@ export function HeliosApp({ project, onSave, onPublish, onBack, onSignOut }: { p
   const [history, setHistory] = useState([bracketSource]);
   const [historyIndex, setHistoryIndex] = useState(0);
   const fileInput = useRef<HTMLInputElement>(null);
+  const projectDocuments = useRef<Readonly<Record<string,string>>>({});
+  const [projectFileNames, setProjectFileNames] = useState<string[]>([]);
   const sourcePanel = useRef<SourcePanelHandle>(null);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [publishOpen, setPublishOpen] = useState(false);
@@ -101,7 +103,7 @@ export function HeliosApp({ project, onSave, onPublish, onBack, onSignOut }: { p
     setBusy(runtime.info ? 'Building' : 'Initializing Aetheris Worker');
     setBuildStarted(performance.now());
     pushOutput(`Build started · ${name} · revision ${revision}`);
-    const result = await buildClient.submit(value, name, revision);
+    const result = await buildClient.submit(value, name, revision, projectDocuments.current);
     if (runtime.info) setRuntimeName(`WASM Worker · ${runtime.info.packageVersion}`);
     if (submission === latestSubmission.current) acceptBuild(result);
     if (submission === latestSubmission.current && result.request.sourceRevision !== sourceRevisionRef.current) {
@@ -257,7 +259,16 @@ export function HeliosApp({ project, onSave, onPublish, onBack, onSignOut }: { p
         <button className="palette-trigger" onClick={() => setPaletteOpen(true)}>⌕ <span>Command Palette</span><kbd>Ctrl+Shift+P</kbd></button>
       </div>
       <div className="top-actions"><button onClick={() => navigateHistory(-1)} disabled={historyIndex === 0} title="Undo">↶</button><button onClick={() => navigateHistory(1)} disabled={historyIndex === history.length - 1} title="Redo">↷</button><select aria-label="Theme" value={theme} onChange={event => setTheme(event.target.value as ThemeName)}><option value="mars">Mars</option><option value="sirius">Sirius</option></select></div>
-      <input ref={fileInput} hidden type="file" accept=".firmament,.txt" onChange={async event => { const file = event.target.files?.[0]; if (file) { const value = await file.text(); setHistory([value]); setHistoryIndex(0); void open(value, file.name); } }} />
+      <input ref={fileInput} hidden type="file" multiple accept=".firmament,.firmasm,.txt" onChange={async event => {
+        const files = Array.from(event.target.files ?? []); if (!files.length) return;
+        const entries = await Promise.all(files.map(async file => [file.name, await file.text()] as const));
+        if (new Set(entries.map(([name])=>name)).size !== entries.length) { setDiagnostics([toDiagnostic(new Error('Choose files with unique project-relative names.'), 'project-duplicate-path')]); return; }
+        projectDocuments.current = Object.fromEntries(entries); setProjectFileNames(entries.map(([name])=>name));
+        setHistory([entries[0][1]]); setHistoryIndex(0); void open(entries[0][1], entries[0][0]);
+      }} />
+      {projectFileNames.length > 1 && <select aria-label="Project document" value={sourceName} onChange={event => {
+        const name = event.target.value; void open(projectDocuments.current[name], name);
+      }}>{projectFileNames.map(name => <option key={name}>{name}</option>)}</select>}
     </header>
     {project && <div className="cloud-project-bar"><button onClick={() => { if (saveState === 'Saved' || confirm('Leave this project with unsaved source?')) onBack?.(); }}>← Discover</button><strong>{project.name}</strong><span className="cloud-save-state" role="status">{saveState}</span><div className="cloud-editor-actions"><button className="cloud-save" onClick={() => void save()}>Save</button>{onPublish && <button onClick={() => { setPublishState(''); setPublishOpen(true); }}>Publish</button>}<button onClick={() => downloadText(source, sourceName)}>Download source</button><button onClick={() => { if (saveState === 'Saved' || confirm('Sign out with unsaved source?')) onSignOut?.(); }}>Sign out</button></div></div>}
     <main className="workspace" ref={shellLayout.ref} style={shellLayout.style}>
@@ -268,7 +279,7 @@ export function HeliosApp({ project, onSave, onPublish, onBack, onSignOut }: { p
           <div><button onClick={() => namedView('front')}>FRONT</button><button onClick={() => namedView('top')}>TOP</button><button onClick={() => namedView('right')}>RIGHT</button><button onClick={() => namedView('iso')}>ISO</button><button onClick={() => setViewCommand(`fit-${Date.now()}`)}>FIT</button><button onClick={() => setViewCommand(`fitselection-${Date.now()}`)}>FIT SEL</button></div>
           <div><select aria-label="Display mode" value={displayMode} onChange={event => setDisplayMode(event.target.value as DisplayMode)}><option value="shaded">Shaded</option><option value="edges">Shaded with edges</option><option value="wireframe">Wireframe</option></select><button aria-label="Selection mode" onClick={() => { setSelectionMode(value => value === 'face' ? 'edge' : 'face'); setDisplayMode('edges'); }}>{selectionMode === 'face' ? 'PICK FACE' : 'PICK EDGE'}</button><button onClick={() => setViewMode(value => value === 'perspective' ? 'orthographic' : 'perspective')}>{viewMode === 'perspective' ? 'PERSP' : 'ORTHO'}</button></div>
         </div>
-        <Viewport model={model} selectedEntityId={selectedEntityId} selectedTopologyId={selectedFaceId} theme={theme} displayMode={displayMode} viewMode={viewMode} viewCommand={viewCommand} selectionMode={selectionMode} onSelect={select} captureRef={capturePreview} />
+        <Viewport busyMessage={busy === 'Worker failed' ? null : busy} errorMessage={shownDiagnostics.some(item => item.severity === 'error') ? 'Build failed. The last valid model remains visible; see Problems for details.' : null} model={model} selectedEntityId={selectedEntityId} selectedTopologyId={selectedFaceId} theme={theme} displayMode={displayMode} viewMode={viewMode} viewCommand={viewCommand} selectionMode={selectionMode} onSelect={select} captureRef={capturePreview} />
         </div>
       </div>
       <aside className="utility-dock" aria-label="Utility panel">

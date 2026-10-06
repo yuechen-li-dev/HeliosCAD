@@ -6,9 +6,9 @@
   "scripts": {
     "sdk:install": "node scripts/install-local-sdk.mjs",
     "sdk:install:production": "node scripts/install-local-sdk.mjs --production",
-    "dev": "vite",
-    "build": "tsc -b && vite build",
-    "build:fast": "tsc -b && vite build --mode development",
+    "dev": "vite --config vite.config.ts",
+    "build": "tsc -b && vite build --config vite.config.ts",
+    "build:fast": "tsc -b && vite build --config vite.config.ts --mode development",
     "test": "vitest run",
     "test:e2e": "playwright test",
     "test:watch": "vitest",

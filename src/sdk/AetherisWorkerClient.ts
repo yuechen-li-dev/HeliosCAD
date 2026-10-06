@@ -8,6 +8,7 @@ export interface BuildRequest {
   readonly sourceRevision: number;
   readonly source: string;
   readonly sourceName: string;
+  readonly projectDocuments?: Readonly<Record<string,string>>;
 }
 export type BuildResult =
   | { readonly status: 'completed' | 'failed'; readonly request: BuildRequest; readonly model: ModelSession | null; readonly diagnostics: readonly Diagnostic[]; readonly milliseconds: number }
@@ -24,8 +25,8 @@ export class AetherisWorkerClient {
 
   constructor(private readonly runtime: CadRuntime) {}
 
-  submit(source: string, sourceName: string, sourceRevision: number): Promise<BuildResult> {
-    const request: BuildRequest = { version: BUILD_PROTOCOL_VERSION, requestId: ++this.nextId, sourceRevision, source, sourceName };
+  submit(source: string, sourceName: string, sourceRevision: number, projectDocuments?: Readonly<Record<string,string>>): Promise<BuildResult> {
+    const request: BuildRequest = { version: BUILD_PROTOCOL_VERSION, requestId: ++this.nextId, sourceRevision, source, sourceName, projectDocuments };
     return new Promise(resolve => {
       if (this.pending) this.pending.resolve({ status: 'superseded', request: this.pending.request });
       this.pending = { request, resolve };
@@ -53,11 +54,11 @@ export class AetherisWorkerClient {
       let model: ModelSession | null;
       let diagnostics: readonly Diagnostic[];
       if (this.runtime.session() && this.runtime.session()!.sourceName === request.sourceName) {
-        const result = await this.runtime.setSource(request.source, request.sourceName, request.sourceRevision);
+        const result = await this.runtime.setSource(request.source, request.sourceName, request.sourceRevision, request.projectDocuments);
         model = result.success ? this.runtime.session() : null;
         diagnostics = result.diagnostics;
       } else {
-        const result = await this.runtime.open(request.source, request.sourceName, request.sourceRevision);
+        const result = await this.runtime.open(request.source, request.sourceName, request.sourceRevision, request.projectDocuments);
         model = result.model;
         diagnostics = result.diagnostics;
       }

@@ -5,8 +5,8 @@ export interface OpenResult { model: ModelSession | null; diagnostics: readonly 
 export interface CadRuntime {
   readonly info: RuntimeInfo | null;
   initialize(): Promise<RuntimeInfo>;
-  open(source: string, sourceName: string, sourceRevision?: number): Promise<OpenResult>;
-  setSource(source: string, sourceName: string, sourceRevision?: number): ReturnType<ModelSession['setSource']>;
+  open(source: string, sourceName: string, sourceRevision?: number, projectDocuments?: Readonly<Record<string,string>>): Promise<OpenResult>;
+  setSource(source: string, sourceName: string, sourceRevision?: number, projectDocuments?: Readonly<Record<string,string>>): ReturnType<ModelSession['setSource']>;
   setProperty(id: string, value: UnitValue): ReturnType<ModelSession['setProperty']>;
   rebuild(): ReturnType<ModelSession['rebuild']>;
   exportSTEP(): Promise<Uint8Array>;
@@ -37,9 +37,9 @@ export class WebSdkCadRuntime implements CadRuntime {
     return this.info;
   }
 
-  async open(source: string, sourceName: string, sourceRevision?: number) {
+  async open(source: string, sourceName: string, sourceRevision?: number, projectDocuments?: Readonly<Record<string,string>>) {
     await this.initialize();
-    const result = await this.cad!.compile(source, { sourceName, sourceRevision: sourceRevision?.toString() });
+    const result = await this.cad!.compile(source, { sourceName, sourceRevision: sourceRevision?.toString(), projectDocuments });
     if (result.model) {
       const previous = this.model;
       this.model = result.model;
@@ -48,7 +48,7 @@ export class WebSdkCadRuntime implements CadRuntime {
     return result;
   }
 
-  setSource(source: string, sourceName: string, sourceRevision?: number) { return this.requireModel().setSource(source, { sourceName, sourceRevision: sourceRevision?.toString() }); }
+  setSource(source: string, sourceName: string, sourceRevision?: number, projectDocuments?: Readonly<Record<string,string>>) { return this.requireModel().setSource(source, { sourceName, sourceRevision: sourceRevision?.toString(), projectDocuments }); }
   setProperty(id: string, value: UnitValue) { return this.requireModel().setProperty(id, value); }
   rebuild() { return this.requireModel().rebuild(); }
   exportSTEP() { return this.requireModel().exportSTEP(); }
