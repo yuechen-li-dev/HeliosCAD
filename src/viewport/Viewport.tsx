@@ -4,17 +4,23 @@ import {
   useEffect,
   useRef,
   useState,
+  useMemo,
   type MutableRefObject,
 } from "react";
 import {
   TelosHost,
   fromDisplayMesh,
   clearColor,
+  inspectSurfaces,
+  inspectionFaceKey,
+  surfaceInspectionFaces,
+  type SurfaceInspectionMode,
   type TelosScene,
   type TelosMesh,
 } from "@aetheris/three-telos";
 import type { ModelSession, SelectionDescription } from "@aetheris/cad";
 import type { DisplayMode, ThemeName, ViewMode } from "../app/types";
+import { HELIOS_PRESENTATIONS } from "./presentation";
 const LegacyViewport = lazy(() =>
   import("./LegacyViewport").then((module) => ({
     default: module.LegacyViewport,
@@ -75,11 +81,19 @@ function TelosViewport(props: Props & { onRetry(): void }) {
     viewKey = useRef<string | null>(null);
   const [diagnostic, setDiagnostic] = useState<string | null>(null);
   const [ready, setReady] = useState(false);
+  const [inspectionMode, setInspectionMode] = useState<SurfaceInspectionMode>("normal");
+  const [isolatedFaceKey, setIsolatedFaceKey] = useState("");
+  const inspectionFaces = useMemo(() => props.model
+    ? surfaceInspectionFaces(fromDisplayMesh(props.model.mesh)) : [], [props.model, props.model?.revision]);
+  const isolatedFace = inspectionFaces.find(face => face.key === isolatedFaceKey);
+  const inspection = useRef({ mode: inspectionMode, face: isolatedFace });
+  inspection.current = { mode: inspectionMode, face: isolatedFace };
   const apply = () => {
     const current = host.current;
     if (!current) return;
     const value = latest.current;
     current.setAA(value.aaMode ?? "SpatialOnly", value.aaDebug ?? "color");
+    current.setPresentation(HELIOS_PRESENTATIONS[value.theme]);
     const scene: TelosScene = value.model
       ? fromDisplayMesh(value.model.mesh)
       : { meshes: [], lines: [], fields: [] };
@@ -127,7 +141,15 @@ function TelosViewport(props: Props & { onRetry(): void }) {
           ? [0.18, 0.22, 0.2, 0.85]
           : [0.3, 0.35, 0.32, 0.85],
     }));
-    current.setScene({ ...scene, meshes, lines, fields: scene.fields.map(f=>({...f, selected:selectedIds.has(f.identity.occurrenceId), visible:value.displayMode !== "wireframe"})) });
+    const displayScene = { ...scene, meshes, lines, fields: scene.fields.map(f=>({...f, selected:selectedIds.has(f.identity.occurrenceId), visible:value.displayMode !== "wireframe"})) };
+    current.setScene(inspectSurfaces(inspection.current.mode === "normal" && !inspection.current.face ? displayScene : scene,
+      inspection.current.mode, inspection.current.face));
+    canvas.current?.setAttribute("data-surface-inspection", JSON.stringify({ mode: inspection.current.mode,
+      isolatedFace: inspection.current.face ?? null,
+      usesFieldProxy: scene.fields.some(field => field.proxy) && (!!inspection.current.face || inspection.current.mode === "patches"),
+      visibleMeshes: current.scene.meshes.filter(mesh => mesh.visible !== false && !mesh.overlay).length,
+      visibleFields: current.scene.fields.filter(field => field.visible !== false).length,
+      visibleEdges: current.scene.lines.filter(line => line.visible !== false && line.identity.edgeId !== undefined).length }));
     current.grid = true;
     current.gridPlane = "xy";
     current.background = clearColor(
@@ -174,6 +196,12 @@ function TelosViewport(props: Props & { onRetry(): void }) {
       current.camera.update();
     }
     current.invalidate();
+    if (canvas.current) {
+      const state = JSON.parse(canvas.current.getAttribute("data-surface-inspection") ?? "{}");
+      canvas.current.setAttribute("data-surface-inspection", JSON.stringify({ ...state,
+        camera: { position: current.camera.position.toArray(), target: current.camera.target.toArray(),
+          up: current.camera.up.toArray(), span: current.camera.span, mode: current.camera.mode } }));
+    }
   };
   useEffect(() => {
     let disposed = false;
@@ -189,6 +217,9 @@ function TelosViewport(props: Props & { onRetry(): void }) {
       if (!current) return;
       const value = latest.current,
         hit = current.picker.pick(pixel(event), value.selectionMode);
+      element.setAttribute("data-surface-inspection-pick", JSON.stringify(hit ?? null));
+      if (inspection.current.mode !== "normal" && hit?.faceId !== undefined)
+        setIsolatedFaceKey(inspectionFaceKey(hit.occurrenceId, hit.faceId));
       const selection =
         hit && hit.definitionId
           ? hit.edgeId
@@ -261,7 +292,8 @@ function TelosViewport(props: Props & { onRetry(): void }) {
   }, []);
   useEffect(() => {
     apply();
-  }, [props]);
+  }, [props, inspectionMode, isolatedFaceKey]);
+  useEffect(() => { setIsolatedFaceKey(""); }, [props.model?.id, props.model?.revision]);
   return (
     <section
       className="viewport-shell"
@@ -270,6 +302,27 @@ function TelosViewport(props: Props & { onRetry(): void }) {
       aria-busy={!ready || !!props.busyMessage}
     >
       <div className="viewport-canvas" ref={container} data-testid="viewport">
+        {inspectionFaces.length > 0 && <details style={{ position: "absolute", bottom: 12, left: 12, zIndex: 3,
+          padding: 8, maxWidth: 390, color: props.theme === "mars" ? "#eef4f1" : "#17221f",
+          background: props.theme === "mars" ? "#17221f" : "#f4f5f2" }}>
+          <summary>Surface / trim inspection</summary>
+          <label>View <select aria-label="Surface inspection view" value={inspectionMode}
+            onChange={event => setInspectionMode(event.target.value as SurfaceInspectionMode)}>
+            <option value="normal">Normal</option><option value="surfaces">Surfaces only</option>
+            <option value="wire">BRep wire only</option><option value="overlay">Translucent + wire</option>
+            <option value="patches">Face colours + wire</option>
+          </select></label>
+          <div><label>Face <select aria-label="Isolated display face" value={isolatedFaceKey}
+            style={{ maxWidth: 300 }} onChange={event => setIsolatedFaceKey(event.target.value)}>
+            <option value="">All faces</option>{inspectionFaces.map(face => <option key={face.key} value={face.key}>
+              {face.occurrenceId} · {face.faceId}</option>)}
+          </select></label></div>
+          <small>Red lines are source BRep edges. Views preserve the camera. Click a surface to isolate it.
+            {props.model?.mesh.definitions.some(definition => definition.cir?.qualification === "cir-qualified") &&
+              " Face colours and isolated faces use the retained BRep mesh proxy; whole-model views show the field."}
+            {isolatedFace && " Wire shows occurrence edges; this packet has no face-edge adjacency."}
+          </small>
+        </details>}
         {!!props.model?.mesh.cameras?.length && <select aria-label="Scene camera" style={{position:"absolute",left:12,top:48,zIndex:2}}
           defaultValue="" onChange={event=>{ const camera=props.model?.mesh.cameras?.find(c=>c.name===event.target.value); if(camera && host.current) { host.current.camera.applyDisplayCamera(camera); host.current.invalidate(); } else if (!event.target.value && host.current) { host.current.fit(); host.current.invalidate(); } }}>
           <option value="">Fit view</option>{props.model.mesh.cameras.map(c=><option key={c.name}>{c.name}</option>)}

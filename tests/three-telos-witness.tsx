@@ -6,6 +6,7 @@ import {
   type SelectionDescription,
 } from "@aetheris/cad";
 import { Viewport } from "../src/viewport/Viewport";
+import type { ThemeName } from "../src/app/types";
 import source from "../../Aetheris/fixtures/three-telos/model.firmament?raw";
 declare global {
   interface Window {
@@ -22,6 +23,7 @@ function Witness() {
     [selected, setSelected] = useState<SelectionDescription | null>(null),
     [command, setCommand] = useState("iso-0");
   const [error, setError] = useState("");
+  const [theme,setTheme] = useState<ThemeName>("mars");
   useEffect(() => {
     let runtime: Aetheris | null = null;
     let cancelled = false;
@@ -56,12 +58,14 @@ function Witness() {
       <h1>Real Helios wrapper + Firmament WASM</h1>
       <button onClick={() => setCommand("top-" + Date.now())}>Top</button>
       <button onClick={() => void refresh()}>Refresh</button>
+      <button onClick={() => setTheme("mars")}>Mars viewport</button>
+      <button onClick={() => setTheme("sirius")}>Sirius viewport</button>
       <div style={{ width: 800, height: 600, position: "relative" }}>
         <Viewport
           model={model}
           selectedEntityId={selected?.semanticEntityId ?? null}
           selectedTopologyId={selected?.faceId ?? null}
-          theme="mars"
+          theme={theme}
           displayMode="edges"
           viewMode="orthographic"
           viewCommand={command}
