@@ -25,6 +25,7 @@ The workspace has resizable source/viewport and bottom panes, a collapsible util
 Run `npm run dev -- --host 127.0.0.1` and open `http://127.0.0.1:4173/` for the showcase without an account or Leviathan. `/local` opens the bracket editor directly and is also available in the production bundle. The optional Terminal · local tab runs PowerShell only through the Vite development server on loopback. A built browser deployment has no terminal tab.
 
 Refresh canonical source copies with `node scripts/sync-showcase.mts`; the manifest records upstream paths and SHA-256 hashes. Keep generated screenshots and downloads under ignored `artifacts/local/`.
+The ATLAS example now uses source-owned rigid components, keyed hardware sites and five articulated/mounting interfaces. Its ten canonical modules and native wireframe are synchronized together; see [the construction and qualification notes](../Aetheris/docs/public/demos/industrial-atlas-modernization.md).
 
 Keep `HeliosCAD`, `Leviathan`, and `Aetheris` as sibling checkouts. For local iteration, run `npm run sdk:install` to build the fast non-AOT Aetheris SDK tarball in `Aetheris/artifacts/local/helios-sdk`. The Vite dev server uses that runtime for both LX and the Worker. Then:
 

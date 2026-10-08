@@ -9,19 +9,61 @@
     "project": "atlas",
     "origin": "fixtures/Canonical/AssemblyInterfaces/IndustrialAtlas/atlas-industrial.firmament",
     "document": "atlas-industrial.firmament",
-    "sha256": "058cdd0b869fbe4295932304eddd3a66668dda2a0eee6c18bb836679ac4c8d7f"
+    "sha256": "1e414a93d779e5d297429e2e03bbc882c859f0173f1fa770190c48a5aec78d1e"
+  },
+  {
+    "project": "atlas",
+    "origin": "fixtures/Canonical/AssemblyInterfaces/IndustrialAtlas/base.firmament",
+    "document": "base.firmament",
+    "sha256": "69f2c860a670152b2abbcaada6ec1035b57405d6ed897c0f95230b9ea052f96d"
+  },
+  {
+    "project": "atlas",
+    "origin": "fixtures/Canonical/AssemblyInterfaces/IndustrialAtlas/fore-arm.firmament",
+    "document": "fore-arm.firmament",
+    "sha256": "8aa730ab714564bb220aacde6e51b6501c831fcdba3f89de046dadc4bf581e67"
   },
   {
     "project": "atlas",
     "origin": "fixtures/Canonical/AssemblyInterfaces/IndustrialAtlas/fore-housing.firmament",
     "document": "fore-housing.firmament",
-    "sha256": "b3bd751c6b56332047d1c761b7dfdf4f9e0f427a79b677fee54d9570b083f414"
+    "sha256": "8ade754de5fe8cc544d1590365fd60cd6915bad22c57b8a6b8cca599d312a8ba"
+  },
+  {
+    "project": "atlas",
+    "origin": "fixtures/Canonical/AssemblyInterfaces/IndustrialAtlas/gripper.firmament",
+    "document": "gripper.firmament",
+    "sha256": "b758412e23a4b1568f5d92d2b99558c4cd8bb838bad9ba9fa39a2b5f63e8c2f4"
+  },
+  {
+    "project": "atlas",
+    "origin": "fixtures/Canonical/AssemblyInterfaces/IndustrialAtlas/hardware.firmament",
+    "document": "hardware.firmament",
+    "sha256": "a26f9e23cfee883f85b0598030549cdb05670e66cb8dde76bf37091cae236a08"
+  },
+  {
+    "project": "atlas",
+    "origin": "fixtures/Canonical/AssemblyInterfaces/IndustrialAtlas/joint-covers.firmament",
+    "document": "joint-covers.firmament",
+    "sha256": "b7834768346c10a5cedb45e4bb66ccc45b1c88a1220b71bb6658c488807ea592"
+  },
+  {
+    "project": "atlas",
+    "origin": "fixtures/Canonical/AssemblyInterfaces/IndustrialAtlas/materials.firmament",
+    "document": "materials.firmament",
+    "sha256": "cacb3c5d6d017a9ba5485fe7e5d5cf06c4ece7a2bd2a88dff5f54dcd042812bd"
+  },
+  {
+    "project": "atlas",
+    "origin": "fixtures/Canonical/AssemblyInterfaces/IndustrialAtlas/upper-arm.firmament",
+    "document": "upper-arm.firmament",
+    "sha256": "608a88ed3affd59b12509369c252294451321b551872c9e758abc842dce64085"
   },
   {
     "project": "atlas",
     "origin": "fixtures/Canonical/AssemblyInterfaces/IndustrialAtlas/upper-housing.firmament",
     "document": "upper-housing.firmament",
-    "sha256": "f00d8cb9b976db7b748f23c613bcfbd28509068df9c15bb6d78e7ae7f861db5f"
+    "sha256": "eccc1630099e7fd70aaf92630d902e301d94f6887d046f1fbb4cf53535f3fc0a"
   },
   {
     "project": "guitar",

@@ -88,7 +88,7 @@ for (const [title, file, capture] of [['Industrial ATLAS', 'atlas-industrial.fir
       }, { timeout: 540_000, intervals: [1000, 2000, 5000] }).not.toBe('busy');
     } finally {
       await page.screenshot({ path: `${evidence}/${capture}-completion.png` });
-      await writeFile(`${evidence}/${capture}-completion.json`, JSON.stringify({ milliseconds: Date.now() - started, status: await page.locator('.statusbar').innerText(), problems: await page.locator('.dock-errors').innerText().catch(() => ''), errors }, null, 2));
+      await writeFile(`${evidence}/${capture}-completion.json`, JSON.stringify({ milliseconds: Date.now() - started, status: await page.locator('.statusbar').innerText(), problems: (await page.locator('.dock-errors').allTextContents()).join('\n'), errors }, null, 2));
     }
     await expect(page.locator('.status-ready')).toContainText('READY');
     await expect(page.locator('.statusbar')).toContainText('0 DIAGNOSTICS');

@@ -3,6 +3,27 @@ import { mkdir } from 'node:fs/promises';
 import { assemblySource } from '../src/sdk/samples';
 import { replaceEditorSource } from './editor';
 
+test('hero rolls statements, pauses on request and respects reduced motion', async ({ page }) => {
+  await page.goto('/');
+  const track = page.locator('.hero-statement-track');
+  const transform = () => track.evaluate(element => getComputedStyle(element).transform);
+  expect(await page.locator('h1 .welcome-cad').evaluate(element => getComputedStyle(element).fontWeight)).toBe('250');
+  await expect.poll(transform, { timeout: 8000 }).not.toBe('matrix(1, 0, 0, 1, 0, 0)');
+  await page.getByRole('button', { name: 'Pause statements', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Resume statements', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  const stopped = await transform();
+  await page.waitForTimeout(800);
+  expect(await transform()).toBe(stopped);
+  await page.getByRole('button', { name: 'Resume statements', exact: true }).click();
+  await page.getByRole('button', { name: 'Pause statements', exact: true }).press('Tab');
+  await page.mouse.move(0, 0);
+  await expect.poll(transform).not.toBe(stopped);
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  expect(await track.evaluate(element => getComputedStyle(element).animationName)).toBe('none');
+  expect(await transform()).toBe('none');
+  await expect(page.getByRole('button', { name: 'Pause statements', exact: true })).toBeHidden();
+});
+
 test('wireframe catalog stays light until opened and carries the chosen theme into the real editor', async ({ page }) => {
   const evidence = 'artifacts/local/p4-03/wireframe-gallery';
   await mkdir(evidence, { recursive: true });
@@ -10,7 +31,7 @@ test('wireframe catalog stays light until opened and carries the chosen theme in
   page.on('request', request => { if (/\.wasm|\/_framework\//.test(request.url())) runtimeRequests.push(request.url()); });
   await page.goto('/');
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'sirius');
-  await expect(page.getByRole('heading', { name: 'Helios', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'HeliosCAD', exact: true })).toBeVisible();
   await expect.poll(() => page.locator('.showcase-image img').evaluateAll(images => images.length === 5 && images.every(image => (image as HTMLImageElement).complete && (image as HTMLImageElement).naturalWidth > 0))).toBe(true);
   const sources = await page.locator('.showcase-image img').evaluateAll(images => images.map(image => image.getAttribute('src')!));
   for (const source of sources) {

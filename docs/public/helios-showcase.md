@@ -8,6 +8,10 @@ Search or filter, then click a card to open its intact source project. New brows
 the white **Sirius** theme; **Dark** switches to the original green-and-gold **Mars**
 palette. The choice follows you into the editor and is remembered across reloads.
 
+The **HeliosCAD** hero sets CAD in a lighter Inter weight. A short statement rolls
+up every five seconds, with one line visible at a time. Hover, keyboard focus or
+the pause control stops it; reduced-motion preferences keep the first line static.
+
 ATLAS's card uses an explicitly recorded bent-arm presentation pose, evaluated by
 Aetheris's assembly kinematics. Opening the canonical example retains its authored
 zero pose. The card texture is a subtle presentation overlay; SVG geometry remains
