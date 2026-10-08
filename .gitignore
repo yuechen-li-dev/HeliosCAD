@@ -148,3 +148,6 @@ scripts/local-terminal.d.ts
 test-results/
 playwright-report/
 .e2e-data/
+artifacts/local/
+scripts/wireframes/bin/
+scripts/wireframes/obj/

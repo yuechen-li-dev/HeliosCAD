@@ -68,7 +68,8 @@ export class AetherisWorkerClient {
       else job.resolve({ status: 'superseded', request });
     } catch (error) {
       if (generation === this.generation) console.error('Aetheris Worker build failed', error);
-      const diagnostic: Diagnostic = { severity: 'error', code: 'HELIOS-WORKER', message: error instanceof Error ? error.message : String(error) };
+      const diagnostic: Diagnostic = { severity: 'error', code: 'HELIOS-WORKER', message: error instanceof Error ? error.message : String(error),
+        details: error instanceof Error && 'details' in error && typeof error.details === 'string' ? error.details : undefined };
       if (generation === this.generation) job.resolve({ status: 'failed', request: job.request, model: null, diagnostics: [diagnostic], milliseconds: performance.now() - started });
       else job.resolve({ status: 'superseded', request: job.request });
     } finally {

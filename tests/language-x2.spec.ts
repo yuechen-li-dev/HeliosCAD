@@ -2,6 +2,7 @@ import { expect, test } from '@playwright/test';
 import { replaceEditorSource } from './editor';
 
 test('Aetheris language intelligence drives Monaco at 1440p', async ({ page }) => {
+  await page.setViewportSize({ width: 2560, height: 1440 });
   await page.goto('/local');
   await expect(page.locator('.status-ready')).toContainText('READY', { timeout: 120_000 });
   await expect(page.locator('.monaco-editor')).toHaveAttribute('data-uri', /\.firmament$/);
@@ -16,7 +17,7 @@ test('Aetheris language intelligence drives Monaco at 1440p', async ({ page }) =
   await page.keyboard.press('Escape');
 
   await replaceEditorSource(page, 'Model M {\n Units: mm\n Thread T {\n Wrong: 1mm\n }\n Box Body { Size: [8mm, 8mm, 8mm] }\n}');
-  await page.getByRole('tab', { name: /Error List/ }).click();
+  await page.getByRole('tab', { name: /Problems/ }).click();
   await expect(page.locator('.dock-errors')).toContainText('thread field invalid', { timeout: 30_000 });
   await page.locator('.dock-errors button').first().click();
   await expect(page.getByRole('textbox', { name: 'Editor content' })).toBeFocused();
@@ -44,6 +45,6 @@ test('Aetheris language intelligence drives Monaco at 1440p', async ({ page }) =
   await page.getByRole('button', { name: 'Build', exact: true }).click();
   await expect(page.locator('.status-ready')).toContainText('READY', { timeout: 120_000 });
   await expect(page.locator('.statusbar')).toContainText('1 DEFS');
-  await page.getByRole('tab', { name: 'Terminal' }).click();
-  await page.screenshot({ path: 'docs/release/HELIOS-LANGUAGE-X2-2560x1440.png', fullPage: true });
+  await page.getByRole('tab', { name: 'Terminal · local' }).click();
+  await page.screenshot({ path: 'artifacts/local/p4-03/HELIOS-LANGUAGE-X2-2560x1440.png', fullPage: true });
 });

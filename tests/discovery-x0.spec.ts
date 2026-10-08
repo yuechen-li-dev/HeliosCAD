@@ -6,7 +6,7 @@ const password = 'Discovery-Correct-Password-2026!';
 
 test('gallery remains readable on mobile in Mars and Sirius', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.goto('/');
+  await page.goto('/discover');
   await expect(page.locator('.gallery-card')).toHaveCount(8);
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
   for (const card of await page.locator('.gallery-card').all()) {
@@ -40,7 +40,7 @@ test('Cartesian lamp shows its two authored sources and exact STEP artifact', as
 test('anonymous discovery, source, auth-then-fork, and real editor', async ({ page }) => {
   const runtimeRequests: string[] = [];
   page.on('request', request => { if (/aetheris|worker|\.wasm/i.test(request.url())) runtimeRequests.push(request.url()); });
-  await page.goto('/');
+  await page.goto('/discover');
   await expect(page.getByRole('heading', { name: 'Explore models. Make one yours.' })).toBeVisible();
   await expect(page.locator('.gallery-card')).toHaveCount(8);
   console.log('DISCOVERY_HOME_VISIBLE_MS', await page.evaluate(() => Math.round(performance.now())));
@@ -69,7 +69,7 @@ test('anonymous discovery, source, auth-then-fork, and real editor', async ({ pa
 });
 
 test('publish saved revision and keep private edits out of public detail', async ({ browser, page }) => {
-  await page.goto('/');
+  await page.goto('/discover');
   await page.getByRole('button', { name: 'My Projects' }).click();
   await page.getByRole('button', { name: 'New to Helios? Create an account' }).click();
   await page.getByLabel('Name').fill('Publisher');

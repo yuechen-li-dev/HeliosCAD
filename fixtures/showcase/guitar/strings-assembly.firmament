@@ -1,0 +1,72 @@
+// Definition-local points are bound after the fixed assembly has been placed.
+Template<D: Length,Tail: Point3,Nut: Point3,Post: Point3> Struct GuitarString {
+ WireRoute String {
+  diameter: D;
+  material: Standard.Materials.StainlessSteel.304_Annealed;
+  minimumBendRadius: 4mm;
+  Path {
+   Start { at: Tail; }
+   Corner NutBreak { at: Nut; radius: 4mm; }
+   End { at: Post; }
+  }
+ }
+}
+Subassembly GuitarStrings {
+ <Assembly GuitarStrings>
+  <Part String0 = GuitarString<D:0.28mm>>
+   material: Steel;
+   Placement { from: Origin; to: World; }
+   bind {
+    Tail { At: Point3(-25.5mm,0mm,0mm); On: GuitarX0.Bridge.TailStringPlane; }
+    Nut { At: Point2(NutLayout.Crossings.String0.X,0mm); On: GuitarX0.Neck.StringPlane; }
+    Post { At: Point3(0mm,0mm,0mm); On: GuitarX0.Neck.StringLowE; }
+   }
+  </Part>
+  <Part String1 = GuitarString<D:0.36mm>>
+   material: Steel;
+   Placement { from: Origin; to: World; }
+   bind {
+    Tail { At: Point3(-15.3mm,0mm,0mm); On: GuitarX0.Bridge.TailStringPlane; }
+    Nut { At: Point2(NutLayout.Crossings.String1.X,0mm); On: GuitarX0.Neck.StringPlane; }
+    Post { At: Point3(0mm,0mm,0mm); On: GuitarX0.Neck.StringA; }
+   }
+  </Part>
+  <Part String2 = GuitarString<D:0.44mm>>
+   material: Steel;
+   Placement { from: Origin; to: World; }
+   bind {
+    Tail { At: Point3(-5.1mm,0mm,0mm); On: GuitarX0.Bridge.TailStringPlane; }
+    Nut { At: Point2(NutLayout.Crossings.String2.X,0mm); On: GuitarX0.Neck.StringPlane; }
+    Post { At: Point3(0mm,0mm,0mm); On: GuitarX0.Neck.StringD; }
+   }
+  </Part>
+  <Part String3 = GuitarString<D:0.52mm>>
+   material: Steel;
+   Placement { from: Origin; to: World; }
+   bind {
+    Tail { At: Point3(5.1mm,0mm,0mm); On: GuitarX0.Bridge.TailStringPlane; }
+    Nut { At: Point2(NutLayout.Crossings.String3.X,0mm); On: GuitarX0.Neck.StringPlane; }
+    Post { At: Point3(0mm,0mm,0mm); On: GuitarX0.Neck.StringG; }
+   }
+  </Part>
+  <Part String4 = GuitarString<D:0.6mm>>
+   material: Steel;
+   Placement { from: Origin; to: World; }
+   bind {
+    Tail { At: Point3(15.3mm,0mm,0mm); On: GuitarX0.Bridge.TailStringPlane; }
+    Nut { At: Point2(NutLayout.Crossings.String4.X,0mm); On: GuitarX0.Neck.StringPlane; }
+    Post { At: Point3(0mm,0mm,0mm); On: GuitarX0.Neck.StringB; }
+   }
+  </Part>
+  <Part String5 = GuitarString<D:0.68mm>>
+   material: Steel;
+   Placement { from: Origin; to: World; }
+   bind {
+    Tail { At: Point3(25.5mm,0mm,0mm); On: GuitarX0.Bridge.TailStringPlane; }
+    Nut { At: Point2(NutLayout.Crossings.String5.X,0mm); On: GuitarX0.Neck.StringPlane; }
+    Post { At: Point3(0mm,0mm,0mm); On: GuitarX0.Neck.StringHighE; }
+   }
+  </Part>
+ </Assembly>
+ anchor: GuitarStrings;
+}

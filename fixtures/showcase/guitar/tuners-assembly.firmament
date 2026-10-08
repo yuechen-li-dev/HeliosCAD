@@ -1,0 +1,35 @@
+include "tuner.firmament";
+
+// Mounting sites are expressed in the headstock-front coordinate system.
+Linear Sites BassTunerSites {
+ keys: [Low, Middle, High];
+ start: [-27mm,58mm,0mm];
+ step: [0mm,36mm,0mm];
+}
+Mirrored Sites TrebleTunerSites From BassTunerSites { Across: YZ; }
+
+Subassembly GuitarTuners {
+ <Assembly GuitarTuners>
+  Pattern BassRow over BassTunerSites {
+   site => <Assembly Tuner = GuitarTuner>
+    Placement { from: Mount; to: World; translateLocal: [site.X,site.Y,site.Z]; }
+   </Assembly>
+  }
+  Pattern TrebleRow over TrebleTunerSites {
+   site => <Assembly Tuner = GuitarTuner>
+    Placement { from: Mount; to: World; translateLocal: [site.X,site.Y,site.Z];
+                rotateLocal: { axis: Z; angle: 180deg } }
+   </Assembly>
+  }
+ </Assembly>
+ anchor: GuitarTuners;
+
+ expose {
+  DatumFrame StringLowE = BassRow.Low.Tuner.StringEntry;
+  DatumFrame StringA = BassRow.Middle.Tuner.StringEntry;
+  DatumFrame StringD = BassRow.High.Tuner.StringEntry;
+  DatumFrame StringHighE = TrebleRow.Low.Tuner.StringEntry;
+  DatumFrame StringB = TrebleRow.Middle.Tuner.StringEntry;
+  DatumFrame StringG = TrebleRow.High.Tuner.StringEntry;
+ }
+}

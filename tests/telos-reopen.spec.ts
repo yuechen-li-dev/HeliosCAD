@@ -10,7 +10,7 @@ test('register, model, save, return in a fresh browser context, rebuild, and exp
   const password = 'Correct-Helios-Password-2026';
   const first = await browser.newContext({ acceptDownloads: true });
   const page = await first.newPage();
-  await page.goto('/');
+  await page.goto('/discover');
   await page.getByRole('button', { name: 'My Projects' }).click();
   await page.getByRole('button', { name: 'New to Helios? Create an account' }).click();
   await page.getByLabel('Name').fill('Telos User');
@@ -41,7 +41,7 @@ test('register, model, save, return in a fresh browser context, rebuild, and exp
 
   const second = await browser.newContext({ acceptDownloads: true });
   const returnPage = await second.newPage();
-  await returnPage.goto('/');
+  await returnPage.goto('/discover');
   await returnPage.getByRole('button', { name: 'My Projects' }).click();
   await returnPage.getByLabel('Email').fill(email);
   await returnPage.getByLabel('Password').fill(password);

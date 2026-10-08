@@ -1,0 +1,29 @@
+include "materials.firmament";
+// Compatibility entry; prefer guitar.firmasm.
+// GUITAR-SURFACING-X0: composition root. Geometry and local layout live in modules.
+include "hardware-definitions.firmament";
+include "body-assembly.firmament";
+include "neck-assembly.firmament";
+include "electronics-assembly.firmament";
+include "bridge-assembly.firmament";
+include "strings-assembly.firmament";
+Assembly GuitarX0 {
+ <Assembly GuitarX0>
+  <Assembly Body = GuitarBody>
+   Placement { from: Origin; to: World; }
+  </Assembly>
+  <Assembly Neck = GuitarNeck>
+   Placement { from: Origin; to: World; }
+  </Assembly>
+  <Assembly Electronics = GuitarElectronics>
+   Placement { from: Origin; to: World; }
+  </Assembly>
+  <Assembly Bridge = GuitarBridge>
+   Placement { from: Origin; to: World; }
+  </Assembly>
+  <Assembly Strings = GuitarStrings>
+   Placement { from: Origin; to: World; }
+  </Assembly>
+ </Assembly>
+ anchor: GuitarX0;
+}

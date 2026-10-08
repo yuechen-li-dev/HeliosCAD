@@ -1,0 +1,78 @@
+import { test, expect } from '@playwright/test';
+import { mkdir } from 'node:fs/promises';
+import { assemblySource } from '../src/sdk/samples';
+import { replaceEditorSource } from './editor';
+
+test('wireframe catalog stays light until opened and carries the chosen theme into the real editor', async ({ page }) => {
+  const evidence = 'artifacts/local/p4-03/wireframe-gallery';
+  await mkdir(evidence, { recursive: true });
+  const runtimeRequests: string[] = [];
+  page.on('request', request => { if (/\.wasm|\/_framework\//.test(request.url())) runtimeRequests.push(request.url()); });
+  await page.goto('/');
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'sirius');
+  await expect(page.getByRole('heading', { name: 'Helios', exact: true })).toBeVisible();
+  await expect.poll(() => page.locator('.showcase-image img').evaluateAll(images => images.length === 5 && images.every(image => (image as HTMLImageElement).complete && (image as HTMLImageElement).naturalWidth > 0))).toBe(true);
+  const sources = await page.locator('.showcase-image img').evaluateAll(images => images.map(image => image.getAttribute('src')!));
+  for (const source of sources) {
+    expect(source).toMatch(/\/wireframes\/\w+\.svg$/);
+    const response = await page.request.get(source); expect(response.ok()).toBe(true);
+    const svg = await response.text();
+    expect(svg).toContain('<polyline'); expect(svg).toContain('stroke="#000000"');
+    expect(svg).not.toContain('<image'); expect(svg).not.toContain('<text');
+  }
+  expect(runtimeRequests).toEqual([]);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(1920);
+  expect(await page.locator('.welcome-shell').evaluate(el => el.scrollWidth === el.clientWidth)).toBe(true);
+  await page.screenshot({ path: `${evidence}/light.png` });
+  await page.setViewportSize({ width: 1280, height: 800 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(1280);
+  expect(await page.locator('.welcome-shell').evaluate(el => el.scrollWidth === el.clientWidth)).toBe(true);
+  await page.screenshot({ path: `${evidence}/narrow.png` });
+  await page.setViewportSize({ width: 390, height: 844 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(390);
+  expect(await page.locator('.welcome-shell').evaluate(el => el.scrollWidth === el.clientWidth)).toBe(true);
+  await page.screenshot({ path: `${evidence}/mobile.png` });
+  await page.setViewportSize({ width: 1920, height: 1080 });
+  await page.getByRole('button', { name: 'Use dark theme' }).click();
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'mars');
+  expect(await page.locator('.welcome-shell').evaluate(el => getComputedStyle(el).backgroundColor)).toBe('rgb(12, 16, 14)');
+  await page.reload();
+  await expect(page.getByRole('button', { name: 'Use light theme' })).toBeVisible();
+  await expect.poll(() => page.locator('.showcase-image img').evaluateAll(images => images.length === 5 && images.every(image => (image as HTMLImageElement).complete && (image as HTMLImageElement).naturalWidth > 0))).toBe(true);
+  await page.locator('.showcase-image img').evaluateAll(async images => { await Promise.all(images.map(image => (image as HTMLImageElement).decode())); });
+  await page.screenshot({ path: `${evidence}/dark.png` });
+  expect(runtimeRequests).toEqual([]);
+  await page.getByRole('button', { name: 'New part', exact: true }).click();
+  await expect(page.locator('.status-ready')).toContainText('READY');
+  await expect(page.locator('.workspace-identity')).toContainText('Untitled part');
+  await expect(page.locator('.view-lines')).toContainText('Model Untitled');
+  await expect(page.getByLabel('Theme')).toHaveValue('mars');
+  await expect(page.locator('[data-display-host="three-telos"] canvas')).toBeVisible();
+  expect(await page.locator('.monaco-editor').first().evaluate(el => getComputedStyle(el).backgroundColor)).toBe('rgb(16, 23, 19)');
+  await page.screenshot({ path: `${evidence}/studio-dark.png` });
+  await page.getByLabel('Theme').selectOption('sirius');
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'sirius');
+  await page.screenshot({ path: `${evidence}/studio-light.png` });
+  await page.getByLabel('Theme').selectOption('mars');
+  await page.getByRole('button', { name: 'Helios home', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Use light theme' })).toBeVisible();
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'mars');
+  await page.getByRole('button', { name: 'Use light theme' }).click();
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'sirius');
+});
+
+test('New assembly opens an editable starter and rebuilds through the real SDK', async ({ page }) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: 'New assembly', exact: true }).click();
+  await expect(page.locator('.status-ready')).toContainText('READY');
+  await expect(page.locator('.workspace-identity')).toContainText('Untitled assembly');
+  await expect(page.locator('.statusbar')).toContainText('2 DEFS · 3 OCC');
+  await replaceEditorSource(page, assemblySource.replace('H: 8mm', 'H: 12mm'));
+  await page.getByRole('button', { name: 'Build', exact: true }).click();
+  await expect(page.locator('.status-ready')).toContainText('READY');
+  await expect(page.locator('.statusbar')).toContainText('0 DIAGNOSTICS');
+  await expect(page.locator('.view-lines')).toContainText('H: 12mm');
+  const download = page.waitForEvent('download');
+  await page.getByRole('button', { name: 'Export STEP', exact: true }).click();
+  expect((await download).suggestedFilename()).toMatch(/\.step$/);
+});

@@ -1,0 +1,21 @@
+include "body-profile.firmament";
+Model IvoryBinding {
+ units: mm
+ Record BodyStation { Height: Length; Scale: Float }
+ Static Stations: Set<BodyStation> {
+  S0 => BodyStation { Height: 38mm; Scale: 1 }
+  S1 => BodyStation { Height: 40mm; Scale: 1 }
+ }
+ SectionChain IvoryBinding {
+  continuity: G0
+  Pattern Sections over Stations {
+   s => Section Station {
+    frame: Plane { origin: [0mm,0mm,s.Height]; normal: [0,0,1]; up: [0,1,0] }
+    profile: BodySection<Ratio: s.Scale>
+    seam: LowerTreble_Span0
+   }
+  }
+  start: Cap
+  end: Cap
+ }
+}

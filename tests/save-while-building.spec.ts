@@ -6,7 +6,7 @@ test('saving a changed source during a Worker build survives project reopen', as
   let reopenedSource = '';
   page.on('request', request => { if (request.method() === 'PUT' && /\/api\/projects\//.test(request.url())) savedSource = JSON.parse(request.postData() ?? '{}').source ?? ''; });
   page.on('response', async response => { if (response.request().method() === 'GET' && /\/api\/projects\/[^/]+$/.test(response.url())) reopenedSource = (await response.json()).source ?? ''; });
-  await page.goto('/');
+  await page.goto('/discover');
   await page.getByRole('button', { name: 'My Projects' }).click();
   await page.getByRole('button', { name: 'New to Helios? Create an account' }).click();
   await page.getByLabel('Name').fill('Save Worker Witness');

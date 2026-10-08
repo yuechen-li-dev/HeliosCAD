@@ -1,0 +1,224 @@
+[
+  {
+    "project": "bolt",
+    "origin": "fixtures/Thread/hexbolt-showcase.firmament",
+    "document": "hexbolt-showcase.firmament",
+    "sha256": "0a9ff648b24dae18ae762ccb466405ce1b46c82e99f342d3335cd5c34d7de6db"
+  },
+  {
+    "project": "atlas",
+    "origin": "fixtures/Canonical/AssemblyInterfaces/IndustrialAtlas/atlas-industrial.firmament",
+    "document": "atlas-industrial.firmament",
+    "sha256": "058cdd0b869fbe4295932304eddd3a66668dda2a0eee6c18bb836679ac4c8d7f"
+  },
+  {
+    "project": "atlas",
+    "origin": "fixtures/Canonical/AssemblyInterfaces/IndustrialAtlas/fore-housing.firmament",
+    "document": "fore-housing.firmament",
+    "sha256": "b3bd751c6b56332047d1c761b7dfdf4f9e0f427a79b677fee54d9570b083f414"
+  },
+  {
+    "project": "atlas",
+    "origin": "fixtures/Canonical/AssemblyInterfaces/IndustrialAtlas/upper-housing.firmament",
+    "document": "upper-housing.firmament",
+    "sha256": "f00d8cb9b976db7b748f23c613bcfbd28509068df9c15bb6d78e7ae7f861db5f"
+  },
+  {
+    "project": "guitar",
+    "origin": "fixtures/Canonical/AssemblyInterfaces/GuitarX0/CarvedMaple.firmament",
+    "document": "CarvedMaple.firmament",
+    "sha256": "2a0fadeadc67541aa0c1138b4450691f54453c814d78be597e68117492e74afb"
+  },
+  {
+    "project": "guitar",
+    "origin": "fixtures/Canonical/AssemblyInterfaces/GuitarX0/IvoryBinding.firmament",
+    "document": "IvoryBinding.firmament",
+    "sha256": "63a59354c8aa2601c12f4ed86e3c3750e79c94b7d8e20e09af1fd7f93dd036a2"
+  },
+  {
+    "project": "guitar",
+    "origin": "fixtures/Canonical/AssemblyInterfaces/GuitarX0/MahoganyBack.firmament",
+    "document": "MahoganyBack.firmament",
+    "sha256": "23b571f651678a6b873b07ab7cd6fb00ea09e798b12ecb602ec6ad97703bde95"
+  },
+  {
+    "project": "guitar",
+    "origin": "fixtures/Canonical/AssemblyInterfaces/GuitarX0/Neck.firmament",
+    "document": "Neck.firmament",
+    "sha256": "a548fd21df44ea6b46f77b1b435b61ddc40c3fc600421643f62161200e16dccc"
+  },
+  {
+    "project": "guitar",
+    "origin": "fixtures/Canonical/AssemblyInterfaces/GuitarX0/body-assembly.firmament",
+    "document": "body-assembly.firmament",
+    "sha256": "765b2171017bb9a4f69e1aa05f8e905f93ce1cd9f3199556156c3b860ec97e14"
+  },
+  {
+    "project": "guitar",
+    "origin": "fixtures/Canonical/AssemblyInterfaces/GuitarX0/body-outline.firmament",
+    "document": "body-outline.firmament",
+    "sha256": "413d96a0e9d5496f158dbf4f7571078fdd583ba173307edd604980fbaee46c13"
+  },
+  {
+    "project": "guitar",
+    "origin": "fixtures/Canonical/AssemblyInterfaces/GuitarX0/body-profile.firmament",
+    "document": "body-profile.firmament",
+    "sha256": "d4f47f6273331a13a11e883d366a7ada8656093669f5660707e9f886517b3865"
+  },
+  {
+    "project": "guitar",
+    "origin": "fixtures/Canonical/AssemblyInterfaces/GuitarX0/bridge-assembly.firmament",
+    "document": "bridge-assembly.firmament",
+    "sha256": "bc6c33c70f276a3dcf9c16789dc4b631a012a8b7ebe5ae80a792609311eb3006"
+  },
+  {
+    "project": "guitar",
+    "origin": "fixtures/Canonical/AssemblyInterfaces/GuitarX0/electronics-assembly.firmament",
+    "document": "electronics-assembly.firmament",
+    "sha256": "db3d8c3403c27650e9ed081a9876657f02e05d64937fefdb91c5f2ce4c10e615"
+  },
+  {
+    "project": "guitar",
+    "origin": "fixtures/Canonical/AssemblyInterfaces/GuitarX0/guitar-x0.firmament",
+    "document": "guitar-x0.firmament",
+    "sha256": "341f2518852d4ef4d3f0c73313793b3d2ce24b5cd50d7815555b2bd9123bf2d9"
+  },
+  {
+    "project": "guitar",
+    "origin": "fixtures/Canonical/AssemblyInterfaces/GuitarX0/guitar.firmasm",
+    "document": "guitar.firmasm",
+    "sha256": "10c11dd2fa4361c87d14e22d318348ce18be0925119496184e846a603b1ca2db"
+  },
+  {
+    "project": "guitar",
+    "origin": "fixtures/Canonical/AssemblyInterfaces/GuitarX0/hardware-definitions.firmament",
+    "document": "hardware-definitions.firmament",
+    "sha256": "5e5977bcf3094f29f80897228791358c6d3f0677bd589be5eb3b33ae77272a78"
+  },
+  {
+    "project": "guitar",
+    "origin": "fixtures/Canonical/AssemblyInterfaces/GuitarX0/hardware-layout.firmament",
+    "document": "hardware-layout.firmament",
+    "sha256": "b8b1fa90be962e3d12f2992f0a3c69b8f44bb5692ec191d11bfd07ef3e5a4ec0"
+  },
+  {
+    "project": "guitar",
+    "origin": "fixtures/Canonical/AssemblyInterfaces/GuitarX0/knob.firmament",
+    "document": "knob.firmament",
+    "sha256": "0ce866fa7811b18ce4748ab02a32677a84afddd2d151deb3cd04708d2b0c4944"
+  },
+  {
+    "project": "guitar",
+    "origin": "fixtures/Canonical/AssemblyInterfaces/GuitarX0/materials.firmament",
+    "document": "materials.firmament",
+    "sha256": "1978adbcc974d243e6cd2180cb6b816f9bd4f80d5f91641fa77e66902266baa4"
+  },
+  {
+    "project": "guitar",
+    "origin": "fixtures/Canonical/AssemblyInterfaces/GuitarX0/neck-assembly.firmament",
+    "document": "neck-assembly.firmament",
+    "sha256": "d6f5aed86e6531b587d1dbd59cbd9e427e7412b188acbace1e3f3a55bbfac8cd"
+  },
+  {
+    "project": "guitar",
+    "origin": "fixtures/Canonical/AssemblyInterfaces/GuitarX0/neck-profile.firmament",
+    "document": "neck-profile.firmament",
+    "sha256": "366a80573166ad8946ced8609aba6f834d1eb689f69e86571cb3937184835b2c"
+  },
+  {
+    "project": "guitar",
+    "origin": "fixtures/Canonical/AssemblyInterfaces/GuitarX0/pickup.firmament",
+    "document": "pickup.firmament",
+    "sha256": "bf53a6bfdeee13d984d549dfae14b297c0cac0e39016f5203d62812a1f239e49"
+  },
+  {
+    "project": "guitar",
+    "origin": "fixtures/Canonical/AssemblyInterfaces/GuitarX0/pickups-assembly.firmament",
+    "document": "pickups-assembly.firmament",
+    "sha256": "aec1c5cebc631a9939c8155ec988eb757d94eec53e43927712247b778daa4b4f"
+  },
+  {
+    "project": "guitar",
+    "origin": "fixtures/Canonical/AssemblyInterfaces/GuitarX0/selector.firmament",
+    "document": "selector.firmament",
+    "sha256": "3e2de414dbdfc7c85526705f380923fc923ca662df2bb3d5bbb065c85109b566"
+  },
+  {
+    "project": "guitar",
+    "origin": "fixtures/Canonical/AssemblyInterfaces/GuitarX0/string-low-e.firmament",
+    "document": "string-low-e.firmament",
+    "sha256": "064c251c9ed033cb94ad525e29c412b54e10deb28c708476c7360c7b329bfd95"
+  },
+  {
+    "project": "guitar",
+    "origin": "fixtures/Canonical/AssemblyInterfaces/GuitarX0/strings-assembly.firmament",
+    "document": "strings-assembly.firmament",
+    "sha256": "d547605d2c4d2832ad9f973cdf50cb86bc499f7e3d4dd90b9bec72247b4aeaeb"
+  },
+  {
+    "project": "guitar",
+    "origin": "fixtures/Canonical/AssemblyInterfaces/GuitarX0/tuner.firmament",
+    "document": "tuner.firmament",
+    "sha256": "c36c2e99422591957ea6b02b1d9d759506eb0c40e7c96ebb662219d77fe0b5ae"
+  },
+  {
+    "project": "guitar",
+    "origin": "fixtures/Canonical/AssemblyInterfaces/GuitarX0/tuners-assembly.firmament",
+    "document": "tuners-assembly.firmament",
+    "sha256": "de831b9c6e8022219d44d81bc32777cab24b902396f103630742ef08dcb78e4e"
+  },
+  {
+    "project": "house",
+    "origin": "fixtures/Canonical/Scene/WarmModernHouse/components.firmament",
+    "document": "components.firmament",
+    "sha256": "488bcaca467561da28042258bea9be38768dc449dc8d7865eab655b2abe0f697"
+  },
+  {
+    "project": "house",
+    "origin": "fixtures/Canonical/Scene/WarmModernHouse/dining.firmament",
+    "document": "dining.firmament",
+    "sha256": "4e0ae32e99813f340f3ecd4d2c01fa443c9baed9d3d5b08dfa302e2f6173ba86"
+  },
+  {
+    "project": "house",
+    "origin": "fixtures/Canonical/Scene/WarmModernHouse/entry.firmament",
+    "document": "entry.firmament",
+    "sha256": "c5478cec0df98a1c53b36e86d99baeaa1b0cce349d674205b357e6749418eade"
+  },
+  {
+    "project": "house",
+    "origin": "fixtures/Canonical/Scene/WarmModernHouse/house.firmament",
+    "document": "house.firmament",
+    "sha256": "a79d626161ac5cc2010ef320c545ce43d8ffd4e87ffc841ba5614809e4c4431e"
+  },
+  {
+    "project": "house",
+    "origin": "fixtures/Canonical/Scene/WarmModernHouse/island.firmament",
+    "document": "island.firmament",
+    "sha256": "b6524cf6fc5af92fea76f93f4e6697ba6d8a25f3a16b25091a85c028dbd188b9"
+  },
+  {
+    "project": "house",
+    "origin": "fixtures/Canonical/Scene/WarmModernHouse/kitchen.firmament",
+    "document": "kitchen.firmament",
+    "sha256": "ef7e75e210af1cf0d08e0bcce43a1056476f038ea629afab788fa749a4890637"
+  },
+  {
+    "project": "house",
+    "origin": "fixtures/Canonical/Scene/WarmModernHouse/living.firmament",
+    "document": "living.firmament",
+    "sha256": "94a5fb1479441ba72b81d5d6c4aa1000881dfbbc81bf17235df409c676f08a0c"
+  },
+  {
+    "project": "house",
+    "origin": "fixtures/Canonical/Scene/WarmModernHouse/media.firmament",
+    "document": "media.firmament",
+    "sha256": "db14a6281720315a6695d253dc944d1a117eae0cb1ff1e65cd77072d86e48ac7"
+  },
+  {
+    "project": "bracket",
+    "origin": "HeliosCAD/src/sdk/samples.ts#bracketSource",
+    "document": "bracket.firmament",
+    "sha256": "7e5b1f2de84f347fd1e2944a82a7f40c5dd12d278e23743b0dd787a72cfb3245"
+  }
+]

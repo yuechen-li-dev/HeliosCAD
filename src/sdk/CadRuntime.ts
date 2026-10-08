@@ -3,6 +3,7 @@ import { Aetheris, type ConstructProjection, type Diagnostic, type LanguageAnaly
 export interface OpenResult { model: ModelSession | null; diagnostics: readonly Diagnostic[] }
 
 export interface CadRuntime {
+  setProjectContext?(root: string | null, documents: Readonly<Record<string,string>>): void;
   readonly info: RuntimeInfo | null;
   initialize(): Promise<RuntimeInfo>;
   open(source: string, sourceName: string, sourceRevision?: number, projectDocuments?: Readonly<Record<string,string>>): Promise<OpenResult>;
@@ -24,6 +25,12 @@ export interface CadRuntime {
 }
 
 export class WebSdkCadRuntime implements CadRuntime {
+  private disposed = false;
+  private projectRoot: string | undefined;
+  private projectDocuments: Readonly<Record<string,string>> | undefined;
+  setProjectContext(root: string | null, documents: Readonly<Record<string,string>>) {
+    this.projectRoot = root ?? undefined; this.projectDocuments = root ? documents : undefined;
+  }
   private cad: Aetheris | null = null;
   private initializing: Promise<Aetheris> | null = null;
   private languageCad: Aetheris | null = null;
@@ -32,7 +39,9 @@ export class WebSdkCadRuntime implements CadRuntime {
   info: RuntimeInfo | null = null;
 
   async initialize() {
-    this.cad ??= await (this.initializing ??= Aetheris.create({ worker: true }));
+    const cad = this.cad ?? await (this.initializing ??= Aetheris.create({ worker: true }));
+    if (this.disposed) { cad.terminate(); throw new Error('This workspace has closed.'); }
+    this.cad = cad;
     this.info = await this.cad.info();
     return this.info;
   }
@@ -60,7 +69,7 @@ export class WebSdkCadRuntime implements CadRuntime {
 
   async analyze(source: string, sourceName: string, revision: string) {
     const cad = await this.initializeLanguage();
-    return cad.language.analyze(source, { sourceName, sourceRevision: revision });
+    return cad.language.analyze(source, { sourceName, sourceRevision: revision, projectRoot: this.projectRoot, projectDocuments: this.projectDocuments });
   }
 
   async hover(source: string, offset: number, sourceName: string, revision: string) {
@@ -88,10 +97,15 @@ export class WebSdkCadRuntime implements CadRuntime {
   }
 
   async dispose() {
-    // The SDK runtimes are page-lifetime resources and are reused between projects.
+    this.disposed = true;
+    void this.initializing?.then(cad => cad.terminate()).catch(() => undefined);
+    this.cad?.terminate(); this.languageCad?.terminate();
+    this.cad = null; this.languageCad = null; this.model = null;
+    this.initializing = null; this.languageInitializing = null; this.info = null;
   }
 
   async restart() {
+    this.disposed = false;
     this.cad?.terminate();
     this.cad = null;
     this.initializing = null;
@@ -101,7 +115,9 @@ export class WebSdkCadRuntime implements CadRuntime {
   }
 
   private async initializeLanguage() {
-    this.languageCad ??= await (this.languageInitializing ??= Aetheris.create());
+    const cad = this.languageCad ?? await (this.languageInitializing ??= Aetheris.create());
+    if (this.disposed) { cad.terminate(); throw new Error('This workspace has closed.'); }
+    this.languageCad = cad;
     return this.languageCad;
   }
 

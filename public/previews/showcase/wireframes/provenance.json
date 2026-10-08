@@ -1,0 +1,76 @@
+[
+  {
+    "id": "atlas",
+    "source": "fixtures/showcase/atlas/atlas-industrial.firmament",
+    "kind": "Assembly",
+    "projection": "placed-topology-edges",
+    "hiddenBoundaries": [],
+    "occurrences": 60,
+    "edgeCount": 495,
+    "state": {
+      "Shoulder": -65,
+      "Elbow": 100,
+      "GripLeft": 4,
+      "GripRight": 4
+    },
+    "background": "#f4f0e6",
+    "view": "IsometricZUp",
+    "sha256": "8d82857152287708f0fbbff5e5b59303c5be429f33f6ab8f944d740fa779e061"
+  },
+  {
+    "id": "guitar",
+    "source": "fixtures/showcase/guitar/guitar.firmasm",
+    "kind": "Assembly",
+    "projection": "placed-topology-edges",
+    "hiddenBoundaries": [],
+    "occurrences": 99,
+    "edgeCount": 2034,
+    "state": {},
+    "background": "#f4f0e6",
+    "view": "IsometricZUp",
+    "sha256": "f25921a8ddc63ff543c759b3ca7497b099cc3232b7077ad5531f6d499ffe1bc6"
+  },
+  {
+    "id": "house",
+    "source": "fixtures/showcase/house/house.firmament",
+    "kind": "Scene",
+    "projection": "placed-topology-edges",
+    "hiddenBoundaries": [
+      "main.ceiling",
+      "main.southWall",
+      "hall.ceiling"
+    ],
+    "occurrences": 149,
+    "edgeCount": 2112,
+    "state": {},
+    "background": "#f4f0e6",
+    "view": "IsometricZUp",
+    "sha256": "2623cc51469dc9a8483f2d8b0c4c1cdc4fc0f2e223cc90f52a006e002ec894f7"
+  },
+  {
+    "id": "bracket",
+    "source": "fixtures/showcase/bracket/bracket.firmament",
+    "kind": "Part",
+    "projection": "exact-brep-edges-and-trimmed-isolines",
+    "hiddenBoundaries": [],
+    "occurrences": 1,
+    "edgeCount": 15,
+    "state": {},
+    "background": "#f4f0e6",
+    "view": "IsometricZUp",
+    "sha256": "c513b37357c65e8a5b67b46b37fd3e45a3211bc9064fef0f41f4175a82930324"
+  },
+  {
+    "id": "bolt",
+    "source": "fixtures/showcase/bolt/hexbolt-showcase.firmament",
+    "kind": "Part",
+    "projection": "exact-brep-edges-and-trimmed-isolines",
+    "hiddenBoundaries": [],
+    "occurrences": 1,
+    "edgeCount": 689,
+    "state": {},
+    "background": "#f4f0e6",
+    "view": "IsometricZUp",
+    "sha256": "0799bb21bd9b74a14f0e967140726a831278425e26c157d0dde35f80094e2264"
+  }
+]

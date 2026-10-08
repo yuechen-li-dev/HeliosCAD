@@ -1,0 +1,16 @@
+schema WireForm
+Model GuitarLowE {
+ WireRoute String {
+  diameter: 0.68mm;
+  material: Standard.Materials.StainlessSteel.304_Annealed;
+  minimumBendRadius: 4mm;
+  Path {
+   Start { at: Point3(25.5mm,-75mm,65mm); }
+   Corner NutBreak { at: Point3(18mm,658mm,65mm); radius: 4mm; }
+   End {
+    at: Point3(27mm,58mm,20mm);
+    On { From: World; TranslateLocal: [0mm,660mm,48mm]; RotateLocal: { axis: X; angle: -13deg } }
+   }
+  }
+ }
+}

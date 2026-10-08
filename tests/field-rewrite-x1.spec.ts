@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test';
 import { replaceEditorSource } from './editor';
 
 test('Hole Diameter Inspector edit rewrites Monaco source and rebuilds the wall', async ({ page }) => {
-  await page.goto('/');
+  await page.goto('/discover');
   await page.getByRole('button', { name: 'My Projects' }).click();
   await page.getByRole('button', { name: 'New to Helios? Create an account' }).click();
   await page.getByLabel('Name').fill('Field rewrite witness');
@@ -46,7 +46,7 @@ test('Hole Diameter Inspector edit rewrites Monaco source and rebuilds the wall'
   await page.getByRole('button', { name: /Field rewrite/ }).first().click();
   await expect(page.locator('.view-lines')).toContainText('Diameter: 12mm /* keep */');
   await expect(page.locator('.status-ready')).toContainText('READY', { timeout: 120_000 });
-  await page.getByRole('button', { name: 'ISO', exact: true }).click();
+  await page.getByRole('button', { name: 'Iso', exact: true }).click();
   const canvas = page.locator('.viewport-canvas canvas');
   let wallPicked = false;
   for (const [x, y] of [[382, 132], [380, 135], [385, 134], [382, 138], [377, 133], [389, 133]]) {

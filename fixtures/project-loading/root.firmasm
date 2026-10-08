@@ -1,0 +1,10 @@
+include "block.firmament";
+Assembly SharedBlocks {
+  <Assembly SharedBlocks>
+    <Part Fixed = WebBlock<H: 10mm>></Part>
+    <Part Moving = WebBlock<H: 10mm>>
+      Placement ImportedOccurrence = [1,0,0,0, 0,1,0,0, 0,0,1,0, 20,0,0,1];
+    </Part>
+  </Assembly>
+  Anchor: SharedBlocks.Fixed;
+}

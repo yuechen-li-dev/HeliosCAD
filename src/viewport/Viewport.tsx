@@ -81,6 +81,7 @@ function TelosViewport(props: Props & { onRetry(): void }) {
     viewKey = useRef<string | null>(null);
   const [diagnostic, setDiagnostic] = useState<string | null>(null);
   const [ready, setReady] = useState(false);
+  const [authoredCamera, setAuthoredCamera] = useState('');
   const [inspectionMode, setInspectionMode] = useState<SurfaceInspectionMode>("normal");
   const [isolatedFaceKey, setIsolatedFaceKey] = useState("");
   const inspectionFaces = useMemo(() => props.model
@@ -167,6 +168,11 @@ function TelosViewport(props: Props & { onRetry(): void }) {
       viewKey.current = view;
       current.camera.mode = value.viewMode;
       const command = value.viewCommand.split("-")[0];
+      if (command !== 'authored') setAuthoredCamera('');
+      if (command === 'authored' && value.model?.mesh.cameras?.[0]) {
+        const camera = value.model.mesh.cameras[0];
+        current.camera.applyDisplayCamera(camera); setAuthoredCamera(camera.name);
+      }
       const directions: Record<string, [number, number, number]> = {
         front: [0, -1, 0],
         top: [0, 0, 1],
@@ -292,7 +298,9 @@ function TelosViewport(props: Props & { onRetry(): void }) {
   }, []);
   useEffect(() => {
     apply();
-  }, [props, inspectionMode, isolatedFaceKey]);
+  }, [props.model, props.model?.revision, props.selectedEntityId, props.selectedTopologyId,
+    props.theme, props.displayMode, props.viewMode, props.viewCommand, props.aaMode, props.aaDebug,
+    inspectionMode, isolatedFaceKey]);
   useEffect(() => { setIsolatedFaceKey(""); }, [props.model?.id, props.model?.revision]);
   return (
     <section
@@ -324,7 +332,7 @@ function TelosViewport(props: Props & { onRetry(): void }) {
           </small>
         </details>}
         {!!props.model?.mesh.cameras?.length && <select aria-label="Scene camera" style={{position:"absolute",left:12,top:48,zIndex:2}}
-          defaultValue="" onChange={event=>{ const camera=props.model?.mesh.cameras?.find(c=>c.name===event.target.value); if(camera && host.current) { host.current.camera.applyDisplayCamera(camera); host.current.invalidate(); } else if (!event.target.value && host.current) { host.current.fit(); host.current.invalidate(); } }}>
+          value={authoredCamera} onChange={event=>{ setAuthoredCamera(event.target.value); const camera=props.model?.mesh.cameras?.find(c=>c.name===event.target.value); if(camera && host.current) { host.current.camera.applyDisplayCamera(camera); host.current.invalidate(); } else if (!event.target.value && host.current) { host.current.fit(); host.current.invalidate(); } }}>
           <option value="">Fit view</option>{props.model.mesh.cameras.map(c=><option key={c.name}>{c.name}</option>)}
         </select>}
         <canvas

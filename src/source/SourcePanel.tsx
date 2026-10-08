@@ -21,25 +21,25 @@ monaco.editor.defineTheme('helios-mars', {
   base: 'vs-dark', inherit: true,
   rules: [
     { token: 'keyword', foreground: 'C99A4C', fontStyle: 'bold' },
-    { token: 'construct', foreground: 'E4BD75', fontStyle: 'bold' },
+    { token: 'construct', foreground: 'DFB878', fontStyle: 'bold' },
     { token: 'type', foreground: 'B8C6B6' },
-    { token: 'field', foreground: 'B9CDB9' },
+    { token: 'field', foreground: 'B8C3D0' },
     { token: 'identifier', foreground: 'E4E8DB' },
     { token: 'number', foreground: '95C69E' },
     { token: 'unit', foreground: '78B68C' },
     { token: 'value', foreground: '91C7A0' },
     { token: 'selector', foreground: 'C4B681' },
     { token: 'string', foreground: 'A6C28C' },
-    { token: 'comment', foreground: '758D7B', fontStyle: 'italic' },
+    { token: 'comment', foreground: '7C8B9A', fontStyle: 'italic' },
     { token: 'punctuation', foreground: '829086' },
   ],
-  colors: { 'editor.background': '#101713', 'editor.foreground': '#E4E8DB', 'editorCursor.foreground': '#D7AD62',
-    'editor.selectionBackground': '#486C50', 'editor.inactiveSelectionBackground': '#334B39',
-    'editor.lineHighlightBackground': '#1A261E', 'editorLineNumber.foreground': '#6C8273',
-    'editorLineNumber.activeForeground': '#B2C2AD', 'editorIndentGuide.background1': '#2E3F33',
+  colors: { 'editor.background': '#101713', 'editor.foreground': '#F0EADB', 'editorCursor.foreground': '#C99843',
+    'editor.selectionBackground': '#394936', 'editor.inactiveSelectionBackground': '#283528',
+    'editor.lineHighlightBackground': '#1C2520', 'editorLineNumber.foreground': '#738273',
+    'editorLineNumber.activeForeground': '#B8C6B6', 'editorIndentGuide.background1': '#303B34',
     'editorWidget.background': '#1C2520', 'editorWidget.border': '#48544C',
-    'editorSuggestWidget.selectedBackground': '#314538', 'editorHoverWidget.background': '#1C2520',
-    'scrollbarSlider.background': '#3C534399', 'scrollbarSlider.hoverBackground': '#57755FBB',
+    'editorSuggestWidget.selectedBackground': '#354535', 'editorHoverWidget.background': '#1C2520',
+    'scrollbarSlider.background': '#48544C80', 'scrollbarSlider.hoverBackground': '#647563BB',
     'editorError.foreground': '#D86850', 'editorWarning.foreground': '#D79245' }
 });
 monaco.editor.defineTheme('helios-sirius', {
@@ -50,9 +50,9 @@ monaco.editor.defineTheme('helios-sirius', {
     { token: 'value', foreground: '317F56' }, { token: 'string', foreground: '43774D' },
     { token: 'comment', foreground: '718174', fontStyle: 'italic' }, { token: 'punctuation', foreground: '839087' }
   ],
-  colors: { 'editor.background': '#ECEEEA', 'editor.foreground': '#252B28', 'editorCursor.foreground': '#A66E16',
-    'editor.selectionBackground': '#C9DCC8', 'editor.lineHighlightBackground': '#DFE7DF',
-    'editorWidget.background': '#F5F4EF', 'editorWidget.border': '#AEB4AF', 'editorError.foreground': '#B83E2D' }
+  colors: { 'editor.background': '#FFFFFF', 'editor.foreground': '#111111', 'editorCursor.foreground': '#111111',
+    'editor.selectionBackground': '#DADAD4', 'editor.lineHighlightBackground': '#F0F0EA',
+    'editorWidget.background': '#FAFAF7', 'editorWidget.border': '#111111', 'editorError.foreground': '#B83E2D' }
 });
 
 export interface SourcePanelHandle { focusAt(reference?: SourceReference): void; cursor(): number; insert(value: string, offset?: number): void; replace(reference: SourceReference, expected: string, replacement: string): boolean; formatDocument(): Promise<void> }
@@ -66,6 +66,8 @@ interface Props {
 
 export const SourcePanel = forwardRef<SourcePanelHandle, Props>(function SourcePanel({ source, diagnostics, runtime, model, selectedSelector, theme = 'mars', onSourceChange, onRebuild, onDiagnosticClick, onCursorChange, onInsert, onLiveDiagnostics, onLanguageError, fileName = 'model.firmament', dirty, disabled = false }, ref) {
   const [tab, setTab] = useState<'source' | 'diagnostics'>('source');
+  const [wordWrap, setWordWrap] = useState(() => localStorage.getItem('helios-word-wrap') === 'on');
+  useEffect(() => { localStorage.setItem('helios-word-wrap', wordWrap ? 'on' : 'off'); }, [wordWrap]);
   const editor = useRef<Monaco.editor.IStandaloneCodeEditor | null>(null);
   const documentId = useRef(0);
   if (documentId.current === 0) documentId.current = ++nextDocumentId;
@@ -140,6 +142,12 @@ export const SourcePanel = forwardRef<SourcePanelHandle, Props>(function SourceP
   const onMount: OnMount = instance => {
     editor.current = instance;
     instance.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, () => onRebuildRef.current());
+    instance.addCommand(monaco.KeyMod.Alt | monaco.KeyCode.KeyZ, () => setWordWrap(value => !value));
+    // A self-hosted proportional font can arrive after Monaco's first measurement.
+    // Refresh its layout once Inter loads so cursor and wrap positions stay exact.
+    void window.document.fonts.load('14px "Inter Variable"').then(() => {
+      if (editor.current === instance && instance.getDomNode()?.isConnected) { monaco.editor.remeasureFonts(); instance.layout(); }
+    });
     const reportCursor = () => { const position = instance.getPosition(); const offset = position ? instance.getModel()?.getOffsetAt(position) ?? -1 : -1; if (offset >= 0) { lastCursor.current = offset; onCursorChangeRef.current?.(offset); } };
     instance.onDidChangeCursorPosition(() => { if (instance.hasTextFocus()) reportCursor(); });
     instance.onDidFocusEditorText(reportCursor);
@@ -150,11 +158,12 @@ export const SourcePanel = forwardRef<SourcePanelHandle, Props>(function SourceP
     <div className="bottom-tabs">
       <button className={tab === 'source' ? 'active' : ''} onClick={() => setTab('source')}>{fileName} {dirty ? '●' : ''}</button>
       <button className={tab === 'diagnostics' ? 'active' : ''} onClick={() => setTab('diagnostics')}>PROBLEMS <span className={diagnostics.some(item => item.severity === 'error') ? 'badge error' : 'badge'}>{diagnostics.length}</span></button>
+      <button className="word-wrap-toggle" aria-label="Toggle word wrap" aria-pressed={wordWrap} title="Word wrap · Alt+Z" onClick={() => { setTab('source'); setWordWrap(value => !value); }}>{wordWrap ? 'Wrap on' : 'Wrap'}</button>
       <button className="rebuild-inline" onClick={onRebuild} disabled={disabled}>↻ Rebuild</button>
     </div>
     <div className="code-editor" style={{ display: tab === 'source' ? undefined : 'none' }} aria-label="Firmament editor">
       <Editor path={`/document-${documentId.current}/${fileName}`} language="firmament" theme={theme === 'sirius' ? 'helios-sirius' : 'helios-mars'} value={source} onChange={value => { client.current?.update(value ?? '', fileName, model ?? null, selectedSelector ?? null); onSourceChange(value ?? ''); }} onMount={onMount}
-        options={{ fontFamily: 'Consolas, monospace', fontSize: 14, lineNumbers: 'on', minimap: { enabled: false }, automaticLayout: true, readOnly: false, wordWrap: 'off', tabSize: 2, scrollBeyondLastLine: false, quickSuggestions: true, suggestOnTriggerCharacters: true, wordBasedSuggestions: 'off', 'semanticHighlighting.enabled': true }} />
+        options={{ fontFamily: '"Inter Variable", Inter, sans-serif', fontSize: 14, fontWeight: '400', lineNumbers: 'on', minimap: { enabled: false }, automaticLayout: true, readOnly: false, wordWrap: wordWrap ? 'on' : 'off', wrappingStrategy: 'advanced', scrollbar: { vertical: 'visible', verticalScrollbarSize: 14, horizontalScrollbarSize: 10, useShadows: false }, tabSize: 2, scrollBeyondLastLine: false, quickSuggestions: true, suggestOnTriggerCharacters: true, wordBasedSuggestions: 'off', 'semanticHighlighting.enabled': true }} />
     </div>
     {tab === 'diagnostics' && <div className="diagnostic-list">
       {diagnostics.length ? diagnostics.map((diagnostic, index) => <button key={`${diagnostic.code}-${index}`} className={`diagnostic ${diagnostic.severity}`} onClick={() => jumpToDiagnostic(diagnostic)}>

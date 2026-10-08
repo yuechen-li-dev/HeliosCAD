@@ -12,7 +12,7 @@ const model = fakeModel({ sourceName: 'editable-bracket.firmament' });
 
 describe('Helios IDE shell', () => {
   beforeEach(() => { localStorage.clear(); vi.clearAllMocks(); vi.stubGlobal('URL', { ...URL, createObjectURL: vi.fn(() => 'blob:helios-test'), revokeObjectURL: vi.fn() }); vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => undefined); runtimeMock.open.mockResolvedValue({ model, diagnostics: [] }); runtimeMock.restart.mockResolvedValue(runtimeMock.info); runtimeMock.schema.mockResolvedValue({ version: 'firmament-semantic-schema/1', constructs: [{ id: 'Helix', entry: helixModelSource }] }); runtimeMock.describeConstruct.mockRejectedValue(new Error('No projection in fake model')); runtimeMock.setSource.mockResolvedValue(ok()); runtimeMock.setProperty.mockResolvedValue(ok()); runtimeMock.rebuild.mockResolvedValue(ok()); runtimeMock.exportSTEP.mockResolvedValue(new Uint8Array([1])); runtimeMock.session.mockImplementation(() => runtimeMock.open.mock.calls.length ? model : null); });
-  it('shows the active file in the Files dock', async () => { render(<HeliosApp />); await waitFor(() => expect(runtimeMock.open).toHaveBeenCalled()); fireEvent.click(screen.getByRole('tab', { name: 'Files' })); expect(screen.getByRole('region', { name: 'Project explorer' })).toHaveTextContent('editable-bracket.firmament'); expect(screen.queryByRole('region', { name: 'Model browser' })).not.toBeInTheDocument(); });
+  it('shows the active file in the Files dock', async () => { render(<HeliosApp />); await waitFor(() => expect(runtimeMock.open).toHaveBeenCalled()); fireEvent.click(screen.getByRole('tab', { name: 'Files' })); expect(screen.getByRole('region', { name: 'Project explorer' })).toHaveTextContent('editable-bracket.firmament'); expect(screen.getByRole('region', { name: 'Model browser' })).toBeVisible(); });
   it('persists Sirius', async () => { render(<HeliosApp />); fireEvent.change(screen.getByLabelText('Theme'), { target: { value: 'sirius' } }); await waitFor(() => expect(localStorage.getItem('helios-theme')).toBe('sirius')); });
   it('reveals semantic face identity from viewport selection', async () => { render(<HeliosApp />); await waitFor(() => expect(runtimeMock.open).toHaveBeenCalled()); fireEvent.click(screen.getByTestId('viewport')); expect(screen.getByText('Plate', { selector: '.entity-hero strong' })).toBeVisible(); expect(screen.getByText('face:top', { selector: 'dd' })).toBeVisible(); });
   it('inserts a valid box from the palette', async () => { render(<HeliosApp />); await waitFor(() => expect(runtimeMock.open).toHaveBeenCalled()); fireEvent.click(screen.getByRole('button', { name: /Command Palette/ })); fireEvent.change(screen.getByLabelText('Search commands'), { target: { value: 'insert box' } }); fireEvent.click(screen.getByRole('button', { name: /Insert Box/ })); expect((screen.getByLabelText('Firmament source') as HTMLTextAreaElement).value).toContain('Box HeliosBox1 { Size: [30mm, 20mm, 10mm] }'); });
@@ -20,4 +20,26 @@ describe('Helios IDE shell', () => {
   it('rebuilds changed source through the SDK session', async () => { render(<HeliosApp />); const source = await screen.findByLabelText('Firmament source'); fireEvent.change(source, { target: { value: 'Model Changed {}' } }); fireEvent.click(screen.getByText('↻ Rebuild')); await waitFor(() => expect(runtimeMock.setSource).toHaveBeenCalledWith('Model Changed {}', 'editable-bracket.firmament', expect.any(Number), {})); });
   it('exports STEP through the palette', async () => { render(<HeliosApp />); await waitFor(() => expect(runtimeMock.open).toHaveBeenCalled()); fireEvent.click(screen.getByRole('button', { name: /Command Palette/ })); fireEvent.click(within(screen.getByRole('dialog', { name: 'Command palette' })).getByRole('button', { name: 'Export STEP' })); await waitFor(() => expect(runtimeMock.exportSTEP).toHaveBeenCalledOnce()); });
   it('exposes Worker restart after a transport failure', async () => { runtimeMock.open.mockRejectedValueOnce(new Error('worker died')); render(<HeliosApp />); fireEvent.click(await screen.findByRole('button', { name: 'Restart Worker' })); await waitFor(() => expect(runtimeMock.restart).toHaveBeenCalledOnce()); await waitFor(() => expect(screen.getByRole('status').textContent).toContain('READY')); });
+  it('builds the project root with an edited module and marks only that file unsaved', async () => {
+    render(<HeliosApp initialWorkspace={{ title: 'Shared project', root: 'root.firmasm', documents: { 'root.firmasm': 'Assembly Shared {}', 'block.firmament': 'Model Block {}' } }} />);
+    await waitFor(() => expect(runtimeMock.open).toHaveBeenCalledWith('Assembly Shared {}', 'root.firmasm', 0, expect.any(Object)));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Build' })).toBeEnabled());
+    fireEvent.click(screen.getByRole('tab', { name: 'Files' }));
+    const explorer = screen.getByRole('region', { name: 'Project explorer' });
+    fireEvent.click(within(explorer).getByRole('button', { name: 'block.firmament' }));
+    fireEvent.change(screen.getByLabelText('Firmament source'), { target: { value: 'Model EditedBlock {}' } });
+    fireEvent.click(within(explorer).getByRole('button', { name: 'root.firmasm' }));
+    expect(within(explorer).getByRole('button', { name: 'root.firmasm' })).not.toHaveTextContent('●');
+    expect(within(explorer).getByRole('button', { name: /block.firmament/ })).toHaveTextContent('●');
+    fireEvent.click(screen.getByRole('button', { name: 'Build' }));
+    await waitFor(() => expect(runtimeMock.open).toHaveBeenLastCalledWith('Assembly Shared {}', 'root.firmasm', 1, { 'root.firmasm': 'Assembly Shared {}', 'block.firmament': 'Model EditedBlock {}' }));
+  });
+  it('new document commands clear the previous project snapshot', async () => {
+    render(<HeliosApp initialWorkspace={{ title: 'Shared project', root: 'root.firmasm', documents: { 'root.firmasm': 'Assembly Shared {}', 'block.firmament': 'Model Block {}' } }} />);
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Build' })).toBeEnabled());
+    fireEvent.click(screen.getByRole('button', { name: /Command Palette/ }));
+    fireEvent.change(screen.getByLabelText('Search commands'), { target: { value: 'helix' } });
+    fireEvent.click(screen.getByRole('button', { name: /New Helix Model/ }));
+    await waitFor(() => expect(runtimeMock.open).toHaveBeenLastCalledWith(expect.stringContaining('Helix Winding'), 'helix.firmament', expect.any(Number), {}));
+  });
 });

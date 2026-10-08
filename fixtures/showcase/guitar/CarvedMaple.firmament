@@ -1,0 +1,25 @@
+include "body-profile.firmament";
+Model CarvedMaple {
+ units: mm
+ Record BodyStation { Height: Length; Scale: Float }
+ Static Stations: Set<BodyStation> {
+  S0 => BodyStation { Height: 40mm; Scale: 0.992 }
+  S1 => BodyStation { Height: 43mm; Scale: 0.955 }
+  S2 => BodyStation { Height: 48mm; Scale: 0.84 }
+  S3 => BodyStation { Height: 52mm; Scale: 0.76 }
+  S4 => BodyStation { Height: 53mm; Scale: 0.72 }
+ }
+ SectionChain CarvedMaple {
+  continuity: G1
+  Pattern Sections over Stations {
+   s => Section Station {
+    frame: Plane { origin: [0mm,0mm,s.Height]; normal: [0,0,1]; up: [0,1,0] }
+    profile: BodySection<Ratio: s.Scale>
+    seam: LowerTreble_Span0
+   }
+  }
+  start: Cap
+  end: Cap
+ }
+ expose { Semantic TopSeat { DatumFrame Frame = CarvedMaple.Section.Sections_S4.Frame; } }
+}

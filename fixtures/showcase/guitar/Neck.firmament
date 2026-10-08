@@ -1,0 +1,51 @@
+include "neck-profile.firmament";
+Model Neck {
+ units: mm
+ Function halfWidth(y: Length) -> Length = (56mm - 13 * (y - 120mm) / 540) / 2;
+ Function ellipseHandle(v: Length) -> Length = v * 0.55228475;
+ Function seatHandle(v: Length) -> Length = v / 3;
+ // Direction cosines retain the frame's 13deg orientation, not extra part precision.
+ Function headSeatY(s: Length) -> Length = 660mm + s * 0.9743700647852352 + 14mm * 0.224951054343865;
+ Function headSeatZ(s: Length) -> Length = 48mm - s * 0.224951054343865 + 14mm * 0.9743700647852352;
+ Record NeckStation { Y: Length; Depth: Length }
+ // PreNut preserves the shaft's straight taper before the short head transition.
+ Static Stations: Set<NeckStation> {
+  Heel => NeckStation { Y: 145mm; Depth: 40mm }
+  HeelShoulder => NeckStation { Y: 195mm; Depth: 36mm }
+  HeelBlend => NeckStation { Y: 220mm; Depth: 13.285714mm }
+  ShaftStart => NeckStation { Y: 240mm; Depth: 13mm }
+  ShaftMiddle => NeckStation { Y: 440mm; Depth: 10.142857mm }
+  PreNut => NeckStation { Y: 630mm; Depth: 7.428571mm }
+  NutApproach => NeckStation { Y: 650mm; Depth: 7.142857mm }
+  Nut => NeckStation { Y: 660mm; Depth: 7mm }
+ }
+ SectionChain Neck {
+  continuity: G1
+  Pattern Sections over Stations {
+   s => Section Station {
+    frame: Plane { origin: [0mm,s.Y,55mm]; normal: [0,1,0]; up: [0,0,1] }
+    profile: NeckBack<HalfWidth: halfWidth(s.Y), WidthHandle: ellipseHandle(halfWidth(s.Y)), Depth: s.Depth, DepthHandle: ellipseHandle(s.Depth), SeatHandle: seatHandle(halfWidth(s.Y))>
+    seam: Edge0
+   }
+  }
+  // The headstock begins at the nut and tips back 13deg. Two short D-sections
+  // carry the D-section into its rectangular root; the cap is buried in the slab.
+  // NutMount remains the same interior section, so board/tuner placement stays put.
+  Section HeadBlend {
+   frame: Plane { origin: [0mm,headSeatY(8mm),headSeatZ(8mm)]; normal: [0,0.9743700647852352,-0.224951054343865]; up: [0,0.224951054343865,0.9743700647852352] }
+   profile: NeckBack<HalfWidth:24mm, WidthHandle:ellipseHandle(24mm), Depth:14mm, DepthHandle:ellipseHandle(14mm), SeatHandle:seatHandle(24mm)>
+   seam: Edge0
+  }
+  Section HeadMerge {
+   frame: Plane { origin: [0mm,headSeatY(18mm),headSeatZ(18mm)]; normal: [0,0.9743700647852352,-0.224951054343865]; up: [0,0.224951054343865,0.9743700647852352] }
+   profile: HeadRoot<HalfWidth:27.125mm, Depth:14mm>
+   seam: Edge0
+  }
+  start: Cap
+  end: Cap
+ }
+ expose {
+  Semantic NutMount { DatumFrame Frame = Neck.Section.Sections_Nut.Frame; }
+  Semantic HeelMount { DatumFrame Frame = Neck.Section.Sections_Heel.Frame; }
+ }
+}

@@ -1,0 +1,5 @@
+Template < H: Length > Struct WebBlock {
+  Circle2 Circle { Center: [0mm,0mm] Radius: 4mm }
+  Profile Section { Loop Outer { Circle |> TraceLoop } }
+  Extrude Body { Profile: Section From: 0mm To: H }
+}

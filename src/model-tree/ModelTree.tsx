@@ -39,7 +39,7 @@ export function ModelTree({ tree, selectedId, onSelect }: Props) {
         {kinds.map(option => <option key={option} value={option}>{option}</option>)}
       </select>
     </div>
-    <div className="tree-scroll">
+    <div className="tree-scroll" role="tree" aria-label="Compiled model hierarchy">
       {tree ? <TreeNode node={nodes.get(tree.rootId)!} nodes={nodes} selectedId={selectedId} visible={visible} onSelect={onSelect} depth={0} /> : <div className="empty-state">No model loaded</div>}
     </div>
   </section>;
@@ -52,11 +52,11 @@ function TreeNode({ node, nodes, selectedId, visible, onSelect, depth }: { node:
   const matches = !visible || visible.has(node.id) || children.some(child => visible.has(child.id));
   if (!matches) return null;
   return <div className="tree-branch">
-    <div className={`tree-row ${selectedId === node.id ? 'selected' : ''}`} style={{ paddingLeft: 10 + depth * 14 }} onClick={() => onSelect(node.id)} data-entity-id={node.id}>
+    <div role="treeitem" tabIndex={0} aria-selected={selectedId === node.id} aria-expanded={children.length ? open : undefined} className={`tree-row ${selectedId === node.id ? 'selected' : ''}`} style={{ paddingLeft: 10 + depth * 14 }} onClick={() => onSelect(node.id)} onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onSelect(node.id); } if (event.key === 'ArrowRight') setOpen(true); if (event.key === 'ArrowLeft') setOpen(false); }} data-entity-id={node.id}>
       <button className="disclosure" aria-label={`${open ? 'Collapse' : 'Expand'} ${node.name}`} onClick={event => { event.stopPropagation(); setOpen(value => !value); }}>{children.length ? (open ? '⌄' : '›') : '·'}</button>
       <span className={`kind-icon kind-${node.kind.toLowerCase()}`}>{kindGlyph(node.kind)}</span>
       <span className="tree-name">{node.name}</span>
-      <span className="tree-kind">{node.kind}</span>
+      <span className="tree-kind" title={node.kind}>{node.kind.endsWith('Materializer') ? 'Solid' : node.kind}</span>
     </div>
     {open && children.map(child => <TreeNode key={child.id} node={child} nodes={nodes} selectedId={selectedId} visible={visible} onSelect={onSelect} depth={depth + 1} />)}
   </div>;

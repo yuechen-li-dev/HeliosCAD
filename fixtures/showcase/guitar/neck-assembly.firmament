@@ -1,0 +1,103 @@
+include "tuners-assembly.firmament";
+
+// All Functions evaluate during compilation; lengths remain dimension checked.
+Function fretDistance(n: Int, scale: Length) -> Length =
+ scale * (1.0 - Pow(2.0, -n / 12.0));
+Function fretWidth(distance: Length) -> Length =
+ 42mm + 13mm * ((distance + 2mm) / 540mm);
+
+Concept Struct NutLayout {
+ Points<Point2> Crossings {
+  keys: [String0, String1, String2, String3, String4, String5];
+  Linear { start: Point2(-18mm, 0mm); step: [7.2mm, 0mm]; }
+ }
+}
+Concept Struct FretboardLayout {
+ Points<Point2> Positions {
+  Series {
+   index: n; first: 1; count: 22; keyPrefix: Fret;
+   position: Point2(0mm, -fretDistance(n, 628mm));
+  }
+ }
+ // Authored marker stations use 0.1mm resolution; compiler math stays precise.
+ Points<Point2> InlayPositions {
+  Linear {
+   start: Point2(0mm,0mm);
+   direction: [0,-1];
+   Stations {
+    Fret3: 84.2mm;
+    Fret5: 143.5mm;
+    Fret7: 196.4mm;
+    Fret9: 243.5mm;
+    Fret12: 304.7mm;
+    Fret15: 356.1mm;
+    Fret17: 385.8mm;
+    Fret19: 412.2mm;
+    Fret21: 435.7mm;
+   }
+  }
+ }
+
+}
+
+Subassembly GuitarNeck {
+ <Assembly GuitarNeck>
+  <Part Neck = SectionChainFile<"Neck.firmament">>
+   material: Mahogany;
+   Placement { from: Origin; to: World; translateLocal: [0mm,0mm,0mm]; }
+  </Part>
+  <Part BoardBinding = Board<H:5mm>>
+   material: IvoryPolymer;
+   Placement { from: Origin; to: World; translateLocal: [0mm,0mm,55mm]; }
+  </Part>
+  <Part Rosewood = Board<H:2mm>>
+   material: Rosewood;
+   Placement { from: Origin; to: World; translateLocal: [0mm,0mm,60mm]; }
+  </Part>
+  // Neck's section chain fills the first 16mm; the slab starts inside that loft.
+  <Part Headstock = Head<H:14mm,RootStart:16mm,RootHalfWidth:26.5mm,RootWidth:53mm>>
+   material: Mahogany;
+   Placement { from: Base.Frame; to: HeadTilt.Frame; }
+  </Part>
+  <Part HeadVeneer = Head<H:1mm>>
+   material: Ebony;
+  </Part>
+  <Part NutScarf = HeadstockScarf<L:43mm>>
+   material: Mahogany;
+   Placement { from: Mount.Frame; to: GuitarNeck.Headstock.Base.Frame; }
+  </Part>
+  <Part Nut = Panel<L:44mm,W:4mm,H:3mm,R:1mm>>
+   material: IvoryPolymer;
+   Placement { from: Origin; to: World; translateLocal: [0mm,658mm,62mm]; }
+  </Part>
+  Pattern Frets over FretboardLayout.Positions {
+   point => <Part Fret = Panel<L:fretWidth(-point.Position.Y),W:1.2mm,H:1mm,R:0.5mm>>
+   material: Steel with { appearance: PolishedNickel; };
+    Placement {
+     from: BottomSeat.Frame; to: FretboardDatum.Frame;
+     translateLocal: [point.Position.X, point.Position.Y, 0mm];
+    }
+   </Part>
+  }
+  Pattern PearlInlays over FretboardLayout.InlayPositions {
+   point => <Part Inlay = Panel<L:25mm,W:12mm,H:0.3mm,R:1mm>>
+   material: MotherOfPearl;
+    Placement {
+     from: BottomSeat.Frame; to: InlayDatum.Frame;
+     translateLocal: [point.Position.X, point.Position.Y, 0mm];
+    }
+   </Part>
+  }
+  <Assembly Tuners = GuitarTuners>
+   // Front includes the 14mm headstock; 1mm seats on its veneer.
+   Placement { from: Origin; to: GuitarNeck.Headstock.Front.Frame; translateLocal: [0mm,0mm,1mm]; }
+  </Assembly>
+ </Assembly>
+ FrameTransform InlayDatum { from: GuitarNeck.Rosewood.MarkerOrigin.Frame; }
+ FrameTransform FretboardDatum { from: GuitarNeck.Nut.BottomSeat.Frame; }
+ FrameTransform NutWorld { from: GuitarNeck.Neck.NutMount.Frame; normal: [0,1,0]; up: [0,0,1]; translateLocal: [0mm,-7mm,0mm]; }
+ FrameTransform HeadTilt { from: NutWorld.Frame; rotateLocal: { axis: X; angle: -13deg } }
+ Interface<Fixed> VeneerSeat { a: GuitarNeck.Headstock.Front.Frame; b: GuitarNeck.HeadVeneer.Base.Frame; gap: 0mm; clocking: 0deg; }
+ anchor: GuitarNeck;
+ expose { DatumFrame NutMount = Neck.NutMount.Frame; DatumFrame HeelMount = Neck.HeelMount.Frame; DatumFrame HeadFront = Headstock.Front.Frame; DatumFrame StringPlane = Nut.TopSeat.Frame; DatumFrame StringLowE = Tuners.StringLowE; DatumFrame StringA = Tuners.StringA; DatumFrame StringD = Tuners.StringD; DatumFrame StringG = Tuners.StringG; DatumFrame StringB = Tuners.StringB; DatumFrame StringHighE = Tuners.StringHighE; }
+}

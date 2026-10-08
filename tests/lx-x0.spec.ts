@@ -4,7 +4,7 @@ import { replaceEditorSource } from './editor';
 test('Monaco consumes current Aetheris Helix completion and keeps source editable', async ({ page }) => {
   const runtimeRequests: string[] = [];
   page.on('request', request => { if (request.url().includes('/aetheris-runtime')) runtimeRequests.push(request.url()); });
-  await page.goto('/');
+  await page.goto('/discover');
   await page.getByRole('button', { name: 'My Projects' }).click();
   await page.getByRole('button', { name: 'New to Helios? Create an account' }).click();
   await page.getByLabel('Name').fill('LX browser witness');

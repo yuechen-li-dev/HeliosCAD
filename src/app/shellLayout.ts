@@ -1,42 +1,34 @@
-import { useLayoutEffect, useRef, useState } from 'react';
-import type { CSSProperties } from 'react';
+import { useLayoutEffect, useRef, useState, type CSSProperties } from 'react';
 import { resolveLayoutRows } from 'machinalayout';
 import { M } from 'machinalayout/machina';
 
-// The three visible docks have explicit ownership and stable dimensions.
-// MachinaLayout resolves the split; CSS only paints the resulting rectangles.
-const shellRows = M.rows(M.grid('shell', {
-  frame: { kind: 'root' },
-  columns: [M.trackFill(1), M.trackFixed(310)],
-  rows: [M.trackFill(1), M.trackFixed(220)],
-}, [
-  M.cell('workbench', 0, 0, {
-    arrange: { kind: 'grid', columns: [M.trackFill(1), M.trackFill(1)], rows: [M.trackFill(1)] },
-  }, [M.cell('editor', 0, 0), M.cell('viewport', 1, 0)]),
-  M.cell('utility', 1, 0, { rowSpan: 2 }),
-  M.cell('bottom', 0, 1),
-]));
-
 export function useShellLayout() {
   const ref = useRef<HTMLElement>(null);
-  const [style, setStyle] = useState<CSSProperties>({
-    '--utility-width': '310px', '--bottom-height': '220px', '--editor-width': '50%',
-  } as CSSProperties);
+  const [bounds, setBounds] = useState({ width: 1440, height: 900 });
+  const [editorRatio, setEditorRatio] = useState(.43);
+  const [bottomHeight, setBottomHeight] = useState(148);
+  const [utilityOpen, setUtilityOpen] = useState(true);
+  const [bottomOpen, setBottomOpen] = useState(true);
   useLayoutEffect(() => {
     const element = ref.current;
     if (!element) return;
     const observer = new ResizeObserver(() => {
       const { width, height } = element.getBoundingClientRect();
-      if (width < 310 || height < 220) return;
-      const nodes = resolveLayoutRows(shellRows, { x: 0, y: 0, width, height }).nodes;
-      setStyle({
-        '--utility-width': `${nodes.utility.rect.width}px`,
-        '--bottom-height': `${nodes.bottom.rect.height}px`,
-        '--editor-width': `${nodes.editor.rect.width}px`,
-      } as CSSProperties);
+      setBounds({ width, height });
     });
     observer.observe(element);
     return () => observer.disconnect();
   }, []);
-  return { ref, style };
+  const utilityWidth = utilityOpen ? Math.min(310, Math.max(250, bounds.width * .21)) : 0;
+  const bottom = bottomOpen ? Math.min(bottomHeight, Math.max(96, bounds.height - 260)) : 32;
+  const rows = M.rows(M.grid('shell', { frame: { kind: 'root' },
+    columns: [M.trackFill(1), M.trackFixed(utilityWidth)], rows: [M.trackFill(1), M.trackFixed(bottom)] }, [
+    M.cell('workbench', 0, 0, { arrange: { kind: 'grid', columns: [M.trackFill(editorRatio), M.trackFill(1 - editorRatio)], rows: [M.trackFill(1)] } }, [M.cell('editor', 0, 0), M.cell('viewport', 1, 0)]),
+    M.cell('utility', 1, 0, { rowSpan: 2 }), M.cell('bottom', 0, 1),
+  ]));
+  const nodes = resolveLayoutRows(rows, { x: 0, y: 0, ...bounds }).nodes;
+  const style = { '--utility-width': `${utilityWidth}px`, '--bottom-height': `${bottom}px`, '--editor-width': `${nodes.editor.rect.width}px` } as CSSProperties;
+  const resizeEditor = (delta: number) => setEditorRatio(value => Math.max(.25, Math.min(.65, value + delta / Math.max(1, bounds.width - utilityWidth))));
+  const resizeBottom = (delta: number) => { setBottomOpen(true); setBottomHeight(value => Math.max(96, Math.min(bounds.height - 260, value - delta))); };
+  return { ref, style, editorPercent: Math.round(editorRatio * 100), bottomPixels: Math.round(bottom), utilityOpen, setUtilityOpen, bottomOpen, setBottomOpen, resizeEditor, resizeBottom };
 }

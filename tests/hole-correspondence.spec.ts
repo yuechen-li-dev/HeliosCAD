@@ -3,7 +3,7 @@ import { replaceEditorSource } from './editor';
 
 test('through-hole wall selector copies into a valid PMI use site', async ({ page, context }) => {
   await context.grantPermissions(['clipboard-read', 'clipboard-write']);
-  await page.goto('/');
+  await page.goto('/discover');
   await page.getByRole('button', { name: 'My Projects' }).click();
   await page.getByRole('button', { name: 'New to Helios? Create an account' }).click();
   await page.getByLabel('Name').fill('Hole Witness');
@@ -19,7 +19,7 @@ test('through-hole wall selector copies into a valid PMI use site', async ({ pag
   await page.getByRole('button', { name: '↻ Rebuild' }).click();
   await expect(page.locator('.status-ready')).toContainText('READY', { timeout: 120_000 });
   await expect(page.locator('.statusbar')).toContainText('0 DIAGNOSTICS');
-  await page.getByRole('button', { name: 'ISO', exact: true }).click();
+  await page.getByRole('button', { name: 'Iso', exact: true }).click();
   const canvas = page.locator('.viewport-canvas canvas');
   let wallPicked = false;
   for (const [x, y] of [[382, 132], [380, 135], [385, 134], [382, 138], [377, 133], [389, 133]]) {
@@ -45,7 +45,7 @@ test('through-hole wall selector copies into a valid PMI use site', async ({ pag
   await page.getByRole('button', { name: '↻ Rebuild' }).click();
   await expect(page.locator('.status-ready')).toContainText('READY', { timeout: 120_000 });
   await expect(page.locator('.statusbar')).toContainText('0 DIAGNOSTICS');
-  await page.getByRole('button', { name: 'ISO', exact: true }).click();
+  await page.getByRole('button', { name: 'Iso', exact: true }).click();
   wallPicked = false;
   for (const [x, y] of [[382, 132], [380, 135], [385, 134], [382, 138], [377, 133], [389, 133]]) {
     await canvas.click({ position: { x, y } });

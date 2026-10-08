@@ -134,8 +134,9 @@ export class FirmamentLanguageClient {
     const semantic = monaco.languages.registerDocumentSemanticTokensProvider(languageId, {
       getLegend: () => ({ tokenTypes, tokenModifiers: [] }),
       provideDocumentSemanticTokens: async document => {
+        const version = document.getVersionId();
         const result = await this.analyze(document.getValue());
-        if (!result || document.isDisposed()) return { data: new Uint32Array() };
+        if (!result || document.isDisposed() || document.getVersionId() !== version) return { data: new Uint32Array() };
         const encoded: number[] = [];
         let previousLine = 0, previousColumn = 0;
         for (const token of result.tokens) {

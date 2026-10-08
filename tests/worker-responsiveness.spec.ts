@@ -4,7 +4,7 @@ test('Helix Worker build leaves Monaco, palette, view, save and heartbeat live',
   test.setTimeout(240_000);
   const runtimeRequests: string[] = [];
   page.on('request', request => { if (request.url().includes('/aetheris-runtime')) runtimeRequests.push(request.url()); });
-  await page.goto('/');
+  await page.goto('/discover');
   await page.getByRole('button', { name: 'My Projects' }).click();
   await page.getByRole('button', { name: 'New to Helios? Create an account' }).click();
   await page.getByLabel('Name').fill('Worker Witness');
@@ -40,7 +40,7 @@ test('Helix Worker build leaves Monaco, palette, view, save and heartbeat live',
   await page.keyboard.press('ControlOrMeta+V');
   await expect(page.locator('.view-lines')).toContainText('edited while worker builds');
   const typingMs = Date.now() - typingStart;
-  await page.getByRole('button', { name: 'TOP', exact: true }).click();
+  await page.getByRole('button', { name: 'Top', exact: true }).click();
   await expect(page.locator('.statusbar')).toContainText('ORTHOGRAPHIC');
   await page.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(page.locator('.cloud-save-state')).toContainText('Saved');
