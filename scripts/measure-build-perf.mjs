@@ -113,8 +113,21 @@ try {
       started = performance.now();
       const commented = await model.setSource(edited[root], { sourceName: root, projectDocuments: Object.keys(edited).length > 1 ? edited : undefined, performance: true });
       const rootCommentEdit = { milliseconds: performance.now() - started, bridge: commented.model?.timings?.bridge, timings: { rebuild: commented.model?.timings?.totalBeforeSnapshotMilliseconds }, phases: phases(commented.model?.timings) };
+      // BUILD-PERF-M2: an included document changes (comment only): definitions keyed by source
+      // text rebuild, but unchanged geometry keeps its prepared and delivered meshes.
+      let includeCommentEdit = null;
+      const include = Object.keys(documents).filter(name => name !== root).sort()[0];
+      if (include) {
+        const included = { ...edited, [include]: edited[include] + '\n// build-perf: include comment\n' };
+        started = performance.now();
+        const includeResult = await model.setSource(included[root], { sourceName: root, projectDocuments: included, performance: true });
+        const reuse = includeResult.model?.timings?.reuse?.definitions;
+        includeCommentEdit = { document: include, milliseconds: performance.now() - started, bridge: includeResult.model?.timings?.bridge,
+          timings: { rebuild: includeResult.model?.timings?.totalBeforeSnapshotMilliseconds }, phases: phases(includeResult.model?.timings),
+          reused: reuse ? `${reuse.filter(item => item.reused).length}/${reuse.length}` : null };
+      }
       await model.dispose(); await cad.dispose();
-      return { initMilliseconds, cold, noChange, rootCommentEdit, stepDataSha256, stepText };
+      return { initMilliseconds, cold, noChange, rootCommentEdit, includeCommentEdit, stepDataSha256, stepText };
     }, { variant, root, documents, dumpStep });
     await page.close();
     if (row.stepText) {
@@ -125,7 +138,7 @@ try {
     delete row.stepText;
     const result = { variant, project: name, chrome: browser.version(), ...row };
     rows.push(result);
-    console.log(`${variant.padEnd(4)} ${name.padEnd(8)} init ${Math.round(row.initMilliseconds)} ms · cold ${(row.cold.milliseconds / 1000).toFixed(2)} s · no-change ${(row.noChange.milliseconds / 1000).toFixed(2)} s · root comment ${(row.rootCommentEdit.milliseconds / 1000).toFixed(2)} s · gc ${row.cold.gc.join('/')}`);
+    console.log(`${variant.padEnd(4)} ${name.padEnd(8)} init ${Math.round(row.initMilliseconds)} ms · cold ${(row.cold.milliseconds / 1000).toFixed(2)} s · no-change ${(row.noChange.milliseconds / 1000).toFixed(2)} s · root comment ${(row.rootCommentEdit.milliseconds / 1000).toFixed(2)} s${row.includeCommentEdit ? ` · include comment ${(row.includeCommentEdit.milliseconds / 1000).toFixed(2)} s` : ''} · gc ${row.cold.gc.join('/')}`);
   }
 } finally { await browser.close(); server.close(); }
 const output = join(aetheris, 'artifacts/local/build-perf/browser.jsonl');
