@@ -151,3 +151,6 @@ playwright-report/
 artifacts/local/
 scripts/wireframes/bin/
 scripts/wireframes/obj/
+
+# A symlinked node_modules (shared install) is not matched by a directory-only pattern.
+/node_modules
