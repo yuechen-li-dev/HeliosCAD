@@ -25,7 +25,10 @@ import { useTheme } from '../themes/useTheme';
 import { GraphPanel, type GraphSelection } from '../graph/GraphPanel';
 import { NodeInspector, type GraphEditState } from '../graph/NodeInspector';
 import { outlineNode, spliceField } from '../graph/fieldEdit';
-import { featureTarget, paletteOperation, paletteUnavailable, wireOperation } from '../graph/graphAuthoring';
+import { bodyParent, featureTarget, paletteOperation, paletteUnavailable, wireOperation } from '../graph/graphAuthoring';
+import { editorFor, formatQuantity, parameterSource, vectorText, type Quantity } from '../graph/fieldEdit';
+import { startingValue } from '../graph/NodeInspector';
+import { parameterNodes, ParametersSheet } from '../graph/ParametersSheet';
 import { buildPartGraph, nodeAtSpan, unitAtSpan, type GraphRow, type PartGraph } from '../graph/outlineGraph';
 
 type UtilityTab = { kind: 'files' } | { kind: 'inspector' } | { kind: 'examples' } | { kind: 'llm' };
@@ -335,7 +338,42 @@ export function HeliosApp({ project, initialWorkspace, onShowcase, onSave, onPub
         : { kind: 'moveDeclaration', node: node.id, after: siblings[index + 1].id };
       return structuralEdit([operation], { nodeId: node.id, label: `Moved ${node.name ?? node.kind} ${direction < 0 ? 'up' : 'down'}` });
     },
+    // A dimension becomes a named parameter declared at the top of its part; the field then uses the name.
+    onPromote: async (node: OutlineNode, field: OutlineField, axis: number | null, name: string) => {
+      if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) return `${name || 'That'} is not a name: use letters, digits and _, starting with a letter.`;
+      if (outline?.nodes.some(item => item.name === name)) return `${name} is already used in this file.`;
+      const editor = editorFor(field);
+      const value = axis === null ? field.text : editor.kind === 'vector' && editor.parts[axis]?.kind === 'quantity' ? formatQuantity((editor.parts[axis] as { value: Quantity }).value) : null;
+      const declaration = value ? parameterSource(name, value) : null;
+      if (!value || !declaration) return 'Only a number with a unit can become a parameter.';
+      const next = axis === null || editor.kind !== 'vector' ? name : vectorText(editor.parts.map((part, i) => i === axis ? { kind: 'name' as const, name } : part));
+      const parent = bodyParent(outline, node.id);
+      if (!parent) return 'There is no Model to hold the parameter.';
+      return structuralEdit([{ kind: 'insertDeclaration', parent, first: true, source: declaration }, { kind: 'setField', node: node.id, field: field.name, value: next }],
+        { nodeId: node.id, label: `${node.name ?? node.kind}.${field.name}${axis === null ? '' : ` ${'XYZW'[axis]}`} is now the parameter ${name} = ${value}`, select: node.id });
+    },
+    onExtract: (node: OutlineNode, name: string, parameters: readonly string[]) =>
+      structuralEdit([{ kind: 'extractFeature', node: node.id, name, parameters }], { nodeId: node.id, label: `${node.name ?? node.kind} is now the reusable Feature ${name}` }),
   };
+  const parameterActions = {
+    onAdd: (name: string, value: string) => {
+      if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) return Promise.resolve(`${name} is not a name: use letters, digits and _, starting with a letter.`);
+      if (outline?.nodes.some(item => item.name === name)) return Promise.resolve(`${name} is already used in this file.`);
+      const parent = bodyParent(outline, inspectedId);
+      if (!parent) return Promise.resolve('There is no Model to hold the parameter.');
+      // A plain number with a unit gets its type; an expression (`Thickness * 2`) is declared untyped.
+      const declaration = parameterSource(name, value) ?? `Static ${name} = ${value}`;
+      return structuralEdit([{ kind: 'insertDeclaration', parent, first: true, source: declaration }], { nodeId: parent, label: `Added the parameter ${name} = ${value}`, select: null });
+    },
+  };
+  // The document's own Features, placed like any palette feature with their defaults written out.
+  const documentFeatures = (): PaletteItem[] => (outline?.nodes ?? []).filter(node => node.kind === 'Feature' && node.name && node.parentId === null).map(node => ({
+    id: `feature:${node.id}`, label: node.name!, category: 'Your features', placement: 'feature' as const, nameStem: node.name!,
+    description: (node.signature ?? []).map(p => `${p.name}: ${p.type}${p.default ? ` = ${p.default}` : ''}`).join(', ') || 'No parameters',
+    source: `${node.name}(${(node.signature ?? []).map(p => `${p.name}: ${p.default ?? startingValue(p.type)}`).join(', ')})`,
+  }));
+  const [sideTab, setSideTab] = useState<'selection' | 'parameters'>('selection');
+  useEffect(() => { if (graphSelection) setSideTab('selection'); }, [graphSelection]);
   // Field names the language service knows for the inspected declaration (completion inside its body).
   const [completion, setCompletion] = useState<{ nodeId: string; fields: readonly LanguageField[] } | null>(null);
   const inspectedId = graphSelection ? (graphSelection.rowId && partGraph?.nodes.has(graphSelection.rowId) ? graphSelection.rowId : graphSelection.unitId) : null;
@@ -361,7 +399,7 @@ export function HeliosApp({ project, initialWorkspace, onShowcase, onSave, onPub
     if (busy === 'Worker failed' || !outline) return null;
     const target = featureTarget(outline, inspectedId);
     return {
-      palette,
+      palette: [...documentFeatures(), ...palette],
       featureTarget: 'body' in target ? { body: target.body.name ?? target.body.id } : target,
       unavailable: (item: PaletteItem) => paletteUnavailable(item, outline, inspectedId),
       onInsert: (item: PaletteItem) => {
@@ -573,8 +611,19 @@ export function HeliosApp({ project, initialWorkspace, onShowcase, onSave, onPub
         {editorMode === 'graph' && <GraphPanel outline={outline} error={outlineError} diagnostics={shownDiagnostics} selection={graphSelection} theme={theme}
           onSelect={(unitId, row, graph) => selectFromGraph(unitId, row, graph)} onOpenSource={(unitId, row, graph) => openFromGraph(unitId, row, graph)}
           authoring={graphAuthoring()}
-          inspector={<NodeInspector {...inspectorProps()} {...graphActions} onCommit={commitGraphField} onRevert={revertGraphEdit} onSelectNode={selectGraphNode}
-            onOpenSource={span => { setEditorMode('source'); navigateSource({ source: sourceName, start: span.start, length: span.length, line: 1, column: 1 }); }} />} />}
+          inspector={<div className="graph-side">
+            <div className="graph-side-tabs" role="tablist" aria-label="Side panel">
+              <button role="tab" aria-selected={sideTab === 'selection'} className={sideTab === 'selection' ? 'active' : ''} onClick={() => setSideTab('selection')}>Selection</button>
+              <button role="tab" aria-selected={sideTab === 'parameters'} className={sideTab === 'parameters' ? 'active' : ''} onClick={() => setSideTab('parameters')}>
+                Parameters{parameterNodes(outline).length > 0 && <small>{parameterNodes(outline).length}</small>}</button>
+            </div>
+            {sideTab === 'selection'
+              ? <NodeInspector {...inspectorProps()} {...graphActions} onCommit={commitGraphField} onRevert={revertGraphEdit} onSelectNode={selectGraphNode}
+                  onOpenSource={span => { setEditorMode('source'); navigateSource({ source: sourceName, start: span.start, length: span.length, line: 1, column: 1 }); }} />
+              : <ParametersSheet outline={outline} edit={graphEdit && graphEdit.revision === sourceRevision ? graphEdit : null}
+                  readOnly={inspectorProps().readOnly} onCommit={commitGraphField} onRename={graphActions.onRename} onDelete={graphActions.onDelete}
+                  onAdd={parameterActions.onAdd} onSelect={selectGraphNode} />}
+          </div>} />}
         <div className="source-host" hidden={editorMode !== 'source'}>
         <SourcePanel ref={sourcePanel} disabled={!!busy} fileName={sourceName} dirty={dirtyFiles.has(sourceName)} source={source} diagnostics={shownDiagnostics.filter(item => !item.source || item.source.source === sourceName)} runtime={runtime} model={model} selectedSelector={selectedSelection?.selector} theme={theme} onSourceChange={value => editSource(value)} onCursorChange={onSourceCursor} onRebuild={() => void rebuildSource()} onLiveDiagnostics={setLiveDiagnostics} onLanguageError={error => { setDiagnostics([toDiagnostic(error, 'FIRMAMENT-FORMAT')]); pushOutput(`Format refused · ${error instanceof Error ? error.message : String(error)}`); }} onDiagnosticClick={diagnostic => { if (diagnostic.source) setSelectedEntityId(null); }} />
         </div>

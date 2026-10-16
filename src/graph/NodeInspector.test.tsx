@@ -15,7 +15,7 @@ const plate: OutlineNode = { id: 'Plate', kind: 'Box', variant: null, modifiers:
 const renderInspector = (overrides: Partial<Parameters<typeof NodeInspector>[0]> = {}) => {
   const structural = () => vi.fn(async () => null as string | null);
   const props = { node: plate, nodes: new Map([[plate.id, plate]]), external: null, schema: null, completion: [], focusField: null, edit: null, problems: [], readOnly: null,
-    onCommit: vi.fn(() => null), onAddField: structural(), onRemoveField: structural(), onRename: structural(), onMove: structural(), onDelete: structural(),
+    onCommit: vi.fn(() => null), onAddField: structural(), onRemoveField: structural(), onRename: structural(), onMove: structural(), onDelete: structural(), onPromote: structural(), onExtract: structural(),
     onRevert: vi.fn(), onSelectNode: vi.fn(), onOpenSource: vi.fn(), ...overrides };
   render(<NodeInspector {...props} />);
   return props;
@@ -105,5 +105,35 @@ describe('variant-aware suggestions', () => {
     const schema = { id: 'Hole', name: 'Hole', context: null, entry: null, description: null, compatibilityAlias: null, outputs: [], fields: [diameter, relief] };
     expect(fieldSuggestions(hole, [], schema).map(s => s.name)).toEqual(['Diameter']);
     expect(fieldSuggestions({ ...hole, variant: 'Counterbore' }, [], schema).map(s => s.name)).toEqual(['Diameter', 'CounterboreDepth']);
+  });
+
+  it('promotes one component of a dimension to a named parameter', async () => {
+    const props = renderInspector();
+    fireEvent.click(screen.getByRole('button', { name: 'Make Size a parameter' }));
+    // The last numeric component is offered first: Z, the plate thickness.
+    expect(screen.getByRole('button', { name: 'Z' })).toHaveAttribute('aria-pressed', 'true');
+    const name = screen.getByLabelText('Parameter name');
+    expect(name).toHaveValue('PlateSizeZ');
+    fireEvent.change(name, { target: { value: 'Thickness' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Make parameter' }));
+    await waitFor(() => expect(props.onPromote).toHaveBeenCalledWith(plate, plate.fields[0], 2, 'Thickness'));
+  });
+
+  it('makes a feature in a Modify reusable with the chosen fields as parameters', async () => {
+    const holeSource = 'Hole<Shaft> Mount { Center: Point2(0mm, 0mm) Diameter: 8mm On: +Z }';
+    const at = (text: string) => ({ start: holeSource.indexOf(text), length: text.length });
+    const f = (name: string, text: string, shape: OutlineField['shape']): OutlineField => ({ name, text, shape, span: at(text), valueSpan: at(text) });
+    const modify: OutlineNode = { ...plate, id: 'Modify:Plate', kind: 'Modify', fields: [], children: ['Modify:Plate/Mount'] };
+    const hole: OutlineNode = { ...plate, id: 'Modify:Plate/Mount', kind: 'Hole', variant: 'Shaft', name: 'Mount', parentId: 'Modify:Plate',
+      fields: [f('Center', 'Point2(0mm, 0mm)', 'call'), f('Diameter', '8mm', 'quantity'), f('On', '+Z', 'expression')] };
+    const props = renderInspector({ node: hole, nodes: new Map([[modify.id, modify], [hole.id, hole]]) });
+    fireEvent.click(screen.getByRole('button', { name: 'Make reusable…' }));
+    // Center is chosen to vary by default; +Z cannot be a parameter and is not offered.
+    expect(screen.getByRole('checkbox', { name: 'Center' })).toBeChecked();
+    expect(screen.queryByRole('checkbox', { name: 'On' })).toBeNull();
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Diameter' }));
+    fireEvent.change(screen.getByLabelText('Feature name'), { target: { value: 'MountHole' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Make reusable' }));
+    await waitFor(() => expect(props.onExtract).toHaveBeenCalledWith(hole, 'MountHole', ['Center', 'Diameter']));
   });
 });

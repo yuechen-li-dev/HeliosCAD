@@ -310,6 +310,58 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .graph-rows li.drop-before::before, .graph-rows li.drop-after::after { content: ''; position: absolute; left: 4px; right: 4px; height: 2px; border-radius: 1px; background: var(--gold); }
 .graph-rows li.drop-before::before { top: 0; } .graph-rows li.drop-after::after { bottom: -2px; }
 
+/* G5: the side panel's Selection | Parameters tabs, parameters, promotion and Make reusable. */
+.graph-side { min-height: 0; display: grid; grid-template-rows: auto minmax(0, 1fr); border-left: 1px solid var(--border); background: var(--panel-bg); }
+.graph-body.stacked .graph-side { border-left: 0; border-top: 1px solid var(--border); }
+.graph-side > .node-inspector { border-left: 0; }
+.graph-side-tabs { display: flex; gap: 2px; padding: 6px 8px 0; border-bottom: 1px solid var(--border); background: var(--panel-bg); }
+.graph-side-tabs button { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; border: 0; border-bottom: 2px solid transparent; background: none; color: var(--text-secondary); font-size: 11.5px; cursor: pointer; }
+.graph-side-tabs button:hover { color: var(--text-primary); }
+.graph-side-tabs button.active { border-bottom-color: var(--gold); color: var(--text-primary); font-weight: 600; }
+.graph-side-tabs small { min-width: 16px; padding: 0 5px; border-radius: 8px; background: var(--gold-wash); color: var(--gold-ink); font-size: 9.5px; font-weight: 600; line-height: 15px; text-align: center; }
+.parameters-intro { display: grid; gap: 4px; padding: 12px 12px 2px; }
+.parameters-intro strong { font-size: 13px; }
+.parameters-intro p { margin: 0; color: var(--text-secondary); font-size: 10.5px; line-height: 1.45; }
+.parameter { display: grid; gap: 2px; margin: 0 8px; padding: 8px 4px 8px; border-bottom: 1px solid var(--border); }
+.parameter > header { display: flex; align-items: baseline; gap: 8px; padding: 0 4px; }
+.parameter > header .node-title { font-size: 12.5px; font-weight: 600; }
+.parameter > header small { flex: 1; color: var(--text-secondary); font-size: 10px; }
+.parameter-delete { width: 18px; height: 18px; padding: 0; border: 0; border-radius: 3px; background: none; color: var(--text-secondary); font-size: 14px; line-height: 1; cursor: pointer; opacity: .6; }
+.parameter-delete:hover { opacity: 1; color: var(--error); background: color-mix(in srgb, var(--error) 10%, transparent); }
+.parameter .node-field { padding-left: 4px; }
+.parameter-users { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; padding: 2px 4px 0; color: var(--text-secondary); font-size: 10.5px; }
+.parameter-users button { height: 19px; padding: 0 7px; border: 1px solid var(--border); border-radius: 10px; background: var(--control-bg); color: var(--text-primary); font-size: 10.5px; cursor: pointer; }
+.parameter-users button:hover { border-color: var(--gold); background: var(--gold-wash); }
+.parameter-add { margin: 4px 12px 0; }
+.node-field-promote { flex: none; width: 16px; height: 16px; padding: 0; border: 0; border-radius: 3px; background: none; color: var(--gold-ink); font-size: 12px; line-height: 1; opacity: 0; cursor: pointer; }
+.node-field:hover .node-field-promote, .node-field-promote:focus-visible { opacity: .85; }
+.node-field-promote:hover { opacity: 1; background: var(--gold-wash); }
+.node-parameter-chip { flex: 1 1 0; display: inline-flex; align-items: center; gap: 4px; min-width: 0; height: 24px; padding: 0 6px; border: 1px solid color-mix(in srgb, var(--gold) 55%, transparent); border-radius: 4px; background: var(--gold-wash); color: var(--gold-ink); font: 600 11px/1 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.node-parameter-chip i { color: var(--text-secondary); font-size: 9.5px; font-style: normal; }
+.node-parameter-chip:hover { border-color: var(--gold); }
+.node-promote { grid-column: 2; display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin-top: 5px; }
+.node-promote input { flex: 1 1 110px; min-width: 0; height: 24px; padding: 0 6px; border: 1px solid var(--gold); border-radius: 4px; outline: none; background: var(--control-bg); color: var(--text-primary); font: 11.5px/1 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+.node-promote button { height: 24px; padding: 0 9px; border: 1px solid var(--border); border-radius: 4px; background: var(--control-bg); color: var(--text-primary); font-size: 11px; cursor: pointer; }
+.node-promote button.primary { border-color: var(--accent); background: var(--accent); color: var(--accent-contrast); font-weight: 600; }
+.node-promote-axes { display: flex; gap: 2px; flex-basis: 100%; }
+.node-promote-axes button { height: 20px; min-width: 24px; padding: 0 6px; font-size: 10px; }
+.node-promote-axes button[aria-pressed=true] { border-color: var(--gold); background: var(--gold-wash); color: var(--gold-ink); font-weight: 600; }
+.node-promote .node-error { flex-basis: 100%; margin: 0; }
+.node-reuse { display: grid; gap: 4px; margin: 2px 12px 0; padding: 10px; border: 1px dashed var(--border); border-radius: 5px; }
+.node-reuse > button { justify-self: start; height: 26px; padding: 0 12px; border: 1px solid var(--border-strong); border-radius: 4px; background: var(--control-bg); color: var(--text-primary); font-size: 11.5px; font-weight: 600; cursor: pointer; }
+.node-reuse > button:hover { border-color: var(--gold); background: var(--gold-wash); }
+.node-reuse small { color: var(--text-secondary); font-size: 10.5px; line-height: 1.4; }
+.node-reuse.open { border-style: solid; border-color: var(--gold); background: color-mix(in srgb, var(--gold) 5%, var(--panel-elevated)); }
+.node-reuse label { display: grid; gap: 3px; color: var(--text-secondary); font-size: 10.5px; }
+.node-reuse label input:not([type=checkbox]) { height: 24px; padding: 0 6px; border: 1px solid var(--border); border-radius: 4px; outline: none; background: var(--control-bg); color: var(--text-primary); font: 11.5px/1 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+.node-reuse label input:focus { border-color: var(--gold); }
+.node-reuse > span { margin-top: 4px; color: var(--text-secondary); font-size: 9.5px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; }
+.node-reuse-option { display: flex !important; align-items: center; gap: 6px !important; color: var(--text-primary) !important; font-size: 11.5px !important; }
+.node-reuse-option input { accent-color: var(--gold); }
+.node-reuse > div { display: flex; gap: 4px; margin-top: 4px; }
+.node-reuse > div button { height: 24px; padding: 0 10px; border: 1px solid var(--border); border-radius: 4px; background: var(--control-bg); color: var(--text-primary); font-size: 11px; cursor: pointer; }
+.node-reuse > div button.primary { border-color: var(--accent); background: var(--accent); color: var(--accent-contrast); font-weight: 600; }
+
 /* The last good model under a draft that does not build. */
 .viewport-pane canvas { transition: filter .18s ease; }
 .viewport-pane.ghosted canvas { filter: grayscale(.85) opacity(.5); }

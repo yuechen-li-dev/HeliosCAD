@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { OutlineField } from '@aetheris/cad';
 import { resolveLayoutRows } from 'machinalayout';
 import { graphBodyRows, INSPECTOR_WIDTH } from './graphBodyLayout';
-import { editorFor, formatNumber, nudge, parseQuantity, refuseValue, spliceField, splitSequence, vectorText } from './fieldEdit';
+import { editorFor, formatNumber, parameterSource, parameterizable, nudge, parseQuantity, refuseValue, spliceField, splitSequence, vectorText } from './fieldEdit';
 
 const field = (name: string, text: string, shape: OutlineField['shape'], start = 0): OutlineField =>
   ({ name, text, shape, span: { start, length: text.length }, valueSpan: { start, length: text.length } });
@@ -33,9 +33,14 @@ describe('field edits', () => {
     expect(editorFor(field('Diameter', '22mm', 'quantity')).kind).toBe('quantity');
     const size = editorFor(field('Size', '[50mm, 40mm, 8mm]', 'sequence'));
     expect(size.kind).toBe('vector');
-    if (size.kind === 'vector') expect(vectorText(size.values.map((v, i) => i === 0 ? { ...v, number: 60 } : v))).toBe('[60mm, 40mm, 8mm]');
+    if (size.kind === 'vector') expect(vectorText(size.parts.map((p, i) => i === 0 && p.kind === 'quantity' ? { kind: 'quantity' as const, value: { ...p.value, number: 60 } } : p))).toBe('[60mm, 40mm, 8mm]');
+    // A component taken over by a parameter stays a vector, with the name in its place.
+    const mixed = editorFor(field('Size', '[50mm, 40mm, Thickness]', 'sequence'));
+    expect(mixed.kind === 'vector' && mixed.parts[2]).toEqual({ kind: 'name', name: 'Thickness' });
+    if (mixed.kind === 'vector') expect(vectorText(mixed.parts)).toBe('[50mm, 40mm, Thickness]');
     expect(editorFor(field('Center', 'Point2(0mm, 0mm)', 'call')).kind).toBe('text');
-    expect(editorFor(field('Size', '[Width, 40mm]', 'sequence')).kind).toBe('text');
+    expect(editorFor(field('Size', '[Width * 2, 40mm]', 'sequence')).kind).toBe('text');
+    expect(editorFor(field('Size', '[Width, Depth]', 'sequence')).kind).toBe('text');
   });
 
   it('refuses structural text', () => {
@@ -63,5 +68,21 @@ describe('graph body layout', () => {
     const narrow = resolveLayoutRows(graphBodyRows(500, 800).rows, { x: 0, y: 0, width: 500, height: 800 }).nodes;
     expect(narrow.inspector.rect).toMatchObject({ x: 0, width: 500 });
     expect(narrow.canvas.rect.height + narrow.inspector.rect.height).toBe(800);
+  });
+});
+
+describe('parameters', () => {
+  it('declares a parameter with the type its value implies', () => {
+    expect(parameterSource('Thickness', '8mm')).toBe('Static Thickness: Length = 8mm');
+    expect(parameterSource('Tilt', '15deg')).toBe('Static Tilt: Angle = 15deg');
+    expect(parameterSource('Count', '4')).toBe('Static Count: Int = 4');
+    expect(parameterSource('Ratio', '0.5')).toBe('Static Ratio: Float = 0.5');
+    expect(parameterSource('Face', '+Z')).toBeNull();
+  });
+  it('knows which fields can become Feature parameters', () => {
+    expect(parameterizable(field('Center', 'Point2(0mm, 0mm)', 'call'))).toBe(true);
+    expect(parameterizable(field('Diameter', '8mm', 'quantity'))).toBe(true);
+    expect(parameterizable(field('On', '+Z', 'expression'))).toBe(false);
+    expect(parameterizable(field('End', 'ThroughAll', 'reference'))).toBe(false);
   });
 });

@@ -77,6 +77,8 @@ function opens(node: OutlineNode, nodes: ReadonlyMap<string, OutlineNode>) {
 }
 
 export function categoryOf(node: OutlineNode): UnitCategory {
+  // A placed Feature is a feature step wherever it sits.
+  if (node.call) return 'feature';
   if (isTemplate(node)) return 'feature';
   if (node.modifiers.includes('Concept')) return 'sketch';
   if (node.occurrence) return 'assembly';
@@ -85,6 +87,7 @@ export function categoryOf(node: OutlineNode): UnitCategory {
 }
 
 function kindLabel(node: OutlineNode) {
+  if (node.call) return `${node.kind}(…)`;
   const prefix = node.modifiers.filter(m => m !== 'Template').join(' ');
   const kind = node.variant ? `${node.kind}<${node.variant}>` : node.kind;
   return (isTemplate(node) ? 'Template ' : '') + (prefix ? `${prefix} ${kind}` : kind);

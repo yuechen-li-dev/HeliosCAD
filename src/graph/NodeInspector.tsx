@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
-import type { Diagnostic, LanguageField, OutlineField, OutlineNode, OutlineSpan, SemanticConstructSchema } from '@aetheris/cad';
-import { editorFor, formatQuantity, nudge, parseQuantity, refuseValue, vectorText, type Quantity } from './fieldEdit';
+import type { Diagnostic, LanguageField, OutlineField, OutlineNode, OutlineParameter, OutlineSpan, SemanticConstructSchema } from '@aetheris/cad';
+import { editorFor, formatQuantity, nudge, parameterizable, parseQuantity, refuseValue, vectorText, type Quantity, type VectorPart } from './fieldEdit';
 import { categoryOf } from './outlineGraph';
 
 export interface GraphEditState {
@@ -35,6 +35,10 @@ interface Props {
   onRename(node: OutlineNode, name: string): Structural;
   onMove(node: OutlineNode, direction: -1 | 1): Structural;
   onDelete(node: OutlineNode): Structural;
+  /** Make a dimension a parameter: the whole field, or one component (`axis`) of a list. */
+  onPromote(node: OutlineNode, field: OutlineField, axis: number | null, name: string): Structural;
+  /** Make a feature reusable: a Feature named `name` whose `parameters` fields vary per placement. */
+  onExtract(node: OutlineNode, name: string, parameters: readonly string[]): Structural;
   onRevert(): void;
   onSelectNode(id: string): void;
   onOpenSource(span: OutlineSpan): void;
@@ -46,6 +50,7 @@ const axes = ['X', 'Y', 'Z', 'W'];
 const retargets = (node: OutlineNode) => node.kind === 'Modify' || node.kind === 'modify' || node.kind === 'Recognize' || node.modifiers.includes('Assert');
 
 function kindLine(node: OutlineNode) {
+  if (node.call) return 'Placed Feature';
   const kind = node.variant ? `${node.kind}<${node.variant}>` : node.kind;
   return [...node.modifiers, kind].join(' ');
 }
@@ -55,6 +60,7 @@ export function startingValue(type: string, defaultValue?: string | null, choice
   if (defaultValue) return defaultValue;
   if (choices?.length) return choices[0];
   const t = type.toLowerCase();
+  if (t === 'point2') return 'Point2(0mm, 0mm)';
   if (t.includes('angle')) return '0deg';
   if (t.includes('length') || t.includes('distance') || t.includes('radius') || t.includes('diameter')) return '1mm';
   if (t.includes('bool')) return 'true';
@@ -78,8 +84,22 @@ export function fieldSuggestions(node: OutlineNode, completion: readonly Languag
   return [...out.values()].sort((a, b) => Number(b.hint === 'required') - Number(a.hint === 'required'));
 }
 
+const isModify = (node: OutlineNode | undefined) => node?.kind === 'Modify' || node?.kind === 'modify';
+
+/** The Feature a placed call names, found by name among the document's declarations. */
+function calleeOf(node: OutlineNode, nodes: ReadonlyMap<string, OutlineNode>) {
+  return node.call ? [...nodes.values()].find(n => n.kind === 'Feature' && n.name === node.kind) : undefined;
+}
+
+/** A call's unpassed parameters, with their defaults, as field suggestions. */
+export function argumentSuggestions(node: OutlineNode, signature: readonly OutlineParameter[]): FieldSuggestion[] {
+  const passed = new Set(node.fields.map(f => f.name));
+  return signature.filter(p => !passed.has(p.name)).map(p => ({ name: p.name, hint: p.default ? `default ${p.default}` : `required ${p.type}`,
+    value: p.default ?? startingValue(p.type), description: `${p.name}: ${p.type}` }));
+}
+
 export function NodeInspector(props: Props) {
-  const { node, nodes, external, schema, completion, focusField, edit, problems, readOnly, onCommit, onAddField, onRemoveField, onRevert, onSelectNode, onOpenSource } = props;
+  const { node, nodes, external, schema, completion, focusField, edit, problems, readOnly, onCommit, onAddField, onRemoveField, onRevert, onSelectNode, onOpenSource, onPromote, onExtract } = props;
   if (external) return <aside className="node-inspector" aria-label="Node inspector">
     <header className="node-head category-external"><strong>{external.title}</strong><small>Defined in {external.document}</small></header>
     <p className="node-note">This part comes from another file. Double-click it in the graph to open that file and edit it there.</p>
@@ -92,7 +112,11 @@ export function NodeInspector(props: Props) {
   const parent = node.parentId ? nodes.get(node.parentId) : undefined;
   const mine = edit?.nodeId === node.id ? edit : null;
   const schemaField = (name: string) => schema?.fields.find(field => field.name.toLowerCase() === name.toLowerCase());
-  const suggestions = fieldSuggestions(node, completion, schema);
+  const callee = calleeOf(node, nodes);
+  const suggestions = node.call ? argumentSuggestions(node, callee?.signature ?? []) : fieldSuggestions(node, completion, schema);
+  const parameterId = (name: string) => [...nodes.values()].find(n => n.name === name && n.kind === 'Static')?.id;
+  // A feature written as fields inside a Modify can become a reusable Feature.
+  const reusable = !readOnly && !node.call && isModify(parent) && node.children.length === 0 && node.fields.some(parameterizable);
 
   return <aside className="node-inspector" aria-label="Node inspector">
     <NodeHead {...props} node={node} />
@@ -109,13 +133,24 @@ export function NodeInspector(props: Props) {
     {mine && mine.warnings.length > 0 && <div className="node-warnings" role="status">{mine.warnings.map((w, i) => <p key={i}>{w}</p>)}</div>}
     {mine?.status !== 'failed' && problems.length > 0 && <div className="node-problems">{problems.slice(0, 3).map((item, index) =>
       <p key={index} className={item.severity}>{item.message}</p>)}</div>}
-    {(node.fields.length > 0 || !readOnly) && <div className="node-fields" role="group" aria-label="Values">
+    {node.value && <div className="node-fields" role="group" aria-label="Value">
+      <FieldRow field={node.value} label={node.annotation ? `Value · ${node.annotation}` : 'Value'} description={null} focus={false} disabled={!!readOnly}
+        status={mine?.field === node.value.name ? mine.status : null} onCommit={text => onCommit(node, node.value!, text)} />
+    </div>}
+    {(node.fields.length > 0 || (!readOnly && !node.value)) && <div className="node-fields" role="group" aria-label="Values">
       {node.fields.map(field => <FieldRow key={`${node.id}:${field.name}`} field={field} description={schemaField(field.name)?.description ?? null}
         focus={focusField?.toLowerCase() === field.name.toLowerCase()} disabled={!!readOnly}
         status={mine?.field === field.name ? mine.status : null}
-        onCommit={text => onCommit(node, field, text)} onRemove={() => onRemoveField(node, field)} />)}
+        onCommit={text => onCommit(node, field, text)} onRemove={() => onRemoveField(node, field)}
+        onPromote={(axis, name) => onPromote(node, field, axis, name)} defaultParameter={`${node.name ?? node.kind}${field.name[0].toUpperCase()}${field.name.slice(1)}`}
+        onParameter={name => { const id = parameterId(name); if (id) onSelectNode(id); }} />)}
       {!readOnly && <AddField key={node.id} suggestions={suggestions} onAdd={(name, value) => onAddField(node, name, value)} />}
     </div>}
+    {node.call && callee && <div className="node-children">
+      <span>Placed Feature</span>
+      <button onClick={() => onSelectNode(callee.id)}><b>{callee.name}</b><small>{(callee.signature ?? []).map(p => p.name).join(', ') || 'no parameters'}</small></button>
+    </div>}
+    {reusable && <MakeReusable node={node} onExtract={(name, parameters) => onExtract(node, name, parameters)} />}
     {children.length > 0 && <div className="node-children">
       <span>Contains</span>
       {children.map(child => <button key={child.id} onClick={() => onSelectNode(child.id)}><b>{child.name ?? child.kind}</b><small>{kindLine(child)}</small></button>)}
@@ -142,7 +177,7 @@ function NodeHead({ node, nodes, readOnly, onRename, onMove, onDelete, onOpenSou
       {renaming
         ? <input className="node-rename" aria-label="Name" autoFocus spellCheck={false} value={name} onChange={event => setName(event.target.value)}
             onBlur={() => void rename()} onKeyDown={event => { if (event.key === 'Enter') { event.preventDefault(); void rename(); } if (event.key === 'Escape') { setName(node.name ?? ''); setRenaming(false); } }} />
-        : <strong>{node.name && !readOnly
+        : <strong>{node.call ? node.kind : node.name && !readOnly
             ? <button className="node-title" title={retargets(node) ? 'Change which body this acts on' : 'Rename; every use in this file follows'} onClick={() => setRenaming(true)}>{node.name}</button>
             : node.name ?? node.kind}</strong>}
       <small>{kindLine(node)}</small>
@@ -194,12 +229,16 @@ function AddField({ suggestions, onAdd }: { suggestions: readonly FieldSuggestio
   </div>;
 }
 
-function FieldRow({ field, description, focus, disabled, status, onCommit, onRemove }: {
-  field: OutlineField; description: string | null; focus: boolean; disabled: boolean;
-  status: GraphEditState['status'] | null; onCommit(text: string): string | null; onRemove(): Structural;
+export function FieldRow({ field, label: shown, description, focus, disabled, status, onCommit, onRemove, onPromote, defaultParameter = '', onParameter = () => {} }: {
+  field: OutlineField; label?: string; description: string | null; focus: boolean; disabled: boolean;
+  status: GraphEditState['status'] | null; onCommit(text: string): string | null; onRemove?(): Structural;
+  onPromote?(axis: number | null, name: string): Structural; defaultParameter?: string; onParameter?(name: string): void;
 }) {
   const editor = editorFor(field);
   const [error, setError] = useState<string | null>(null);
+  const [promoting, setPromoting] = useState(false);
+  // Only a literal dimension can become a parameter: a whole quantity, or a numeric component of a list.
+  const promotable = !!onPromote && (editor.kind === 'quantity' || (editor.kind === 'vector' && editor.parts.some(p => p.kind === 'quantity')));
   const first = useRef<HTMLInputElement>(null);
   // Enter commits and the blur that follows must not commit the same text again
   // before the outline catches up with the new source.
@@ -214,10 +253,14 @@ function FieldRow({ field, description, focus, disabled, status, onCommit, onRem
     setError(refused);
   };
   const label = <span className="node-field-label">
-    <label className="node-field-name" title={description ?? undefined} htmlFor={`field-${field.span.start}`}>{field.name}</label>
-    {!disabled && <button className="node-field-remove" aria-label={`Remove ${field.name}`} title={`Remove ${field.name}`}
+    <label className="node-field-name" title={description ?? undefined} htmlFor={`field-${field.span.start}`}>{shown ?? field.name}</label>
+    {!disabled && promotable && <button className="node-field-promote" aria-label={`Make ${field.name} a parameter`} title="Make this a named parameter"
+      onClick={() => setPromoting(value => !value)}>⇡</button>}
+    {!disabled && onRemove && <button className="node-field-remove" aria-label={`Remove ${field.name}`} title={`Remove ${field.name}`}
       onClick={() => void onRemove().then(setError)}>×</button>}
   </span>;
+  const promote = promoting && editor.kind !== 'text' ? <PromoteForm editor={editor} defaultName={defaultParameter}
+    onCancel={() => setPromoting(false)} onPromote={async (axis, name) => { const refused = await onPromote!(axis, name); if (!refused) setPromoting(false); return refused; }} /> : null;
   const state = error ? <small className="node-field-state error" role="alert">{error}</small>
     : status === 'building' ? <small className="node-field-state">Building…</small>
     : status === 'built' ? <small className="node-field-state ok">Built</small>
@@ -225,18 +268,69 @@ function FieldRow({ field, description, focus, disabled, status, onCommit, onRem
   const rowClass = `node-field${status === 'failed' || error ? ' failed' : ''}${status === 'building' ? ' building' : ''}`;
 
   if (editor.kind === 'quantity') return <div className={rowClass}>{label}
-    <QuantityInput id={`field-${field.span.start}`} inputRef={first} value={editor.value} disabled={disabled} onCommit={text => commit(text)} />{state}</div>;
-  if (editor.kind === 'vector') return <div className={rowClass}>{label}
-    <div className="node-vector">{editor.values.map((value, index) => <QuantityInput key={index} id={index === 0 ? `field-${field.span.start}` : undefined}
-      inputRef={index === 0 ? first : undefined} axis={axes[index]} value={value} disabled={disabled} hideUnit={sharedUnit(editor.values) !== null}
-      onCommit={text => { const next = parseQuantity(text); if (!next) { setError(`${axes[index]} is a number with a unit.`); return; }
-        commit(vectorText(editor.values.map((item, i) => i === index ? next : item))); }} />)}
-      {sharedUnit(editor.values) && <span className="node-unit node-vector-unit">{sharedUnit(editor.values)}</span>}</div>{state}</div>;
+    <QuantityInput id={`field-${field.span.start}`} inputRef={first} value={editor.value} disabled={disabled} onCommit={text => commit(text)} />{state}{promote}</div>;
+  if (editor.kind === 'vector') {
+    const unit = sharedUnit(editor.parts);
+    const firstQuantity = editor.parts.findIndex(p => p.kind === 'quantity');
+    return <div className={rowClass}>{label}
+      <div className="node-vector">{editor.parts.map((part, index) => part.kind === 'name'
+        ? <button key={index} className="node-parameter-chip" title={`${axes[index]} comes from the parameter ${part.name}`} onClick={() => onParameter(part.name)}>
+            <i>{axes[index]}</i>{part.name}</button>
+        : <QuantityInput key={index} id={index === firstQuantity ? `field-${field.span.start}` : undefined}
+            inputRef={index === firstQuantity ? first : undefined} axis={axes[index]} value={part.value} disabled={disabled} hideUnit={unit !== null}
+            onCommit={text => { const next = parseQuantity(text); if (!next) { setError(`${axes[index]} is a number with a unit.`); return; }
+              commit(vectorText(editor.parts.map((item, i) => i === index ? { kind: 'quantity', value: next } : item))); }} />)}
+        {unit && <span className="node-unit node-vector-unit">{unit}</span>}</div>{state}{promote}</div>;
+  }
   return <div className={rowClass}>{label}
     <TextInput id={`field-${field.span.start}`} inputRef={first} value={field.text} disabled={disabled} onCommit={commit} />{state}</div>;
 }
 
-const sharedUnit = (values: readonly Quantity[]) => values.every(v => v.unit === values[0].unit) && values[0].unit ? values[0].unit : null;
+const sharedUnit = (parts: readonly VectorPart[]) => {
+  const values = parts.flatMap(p => p.kind === 'quantity' ? [p.value] : []);
+  return values.length && values.every(v => v.unit === values[0].unit) && values[0].unit ? values[0].unit : null;
+};
+
+function PromoteForm({ editor, defaultName, onPromote, onCancel }: {
+  editor: Exclude<ReturnType<typeof editorFor>, { kind: 'text' }>; defaultName: string;
+  onPromote(axis: number | null, name: string): Structural; onCancel(): void;
+}) {
+  const axesOffered = editor.kind === 'vector' ? editor.parts.flatMap((p, i) => p.kind === 'quantity' ? [i] : []) : [];
+  const [axis, setAxis] = useState<number | null>(editor.kind === 'vector' ? axesOffered.at(-1) ?? null : null);
+  const suffix = axis === null ? '' : axes[axis];
+  const [name, setName] = useState(defaultName + suffix);
+  const [error, setError] = useState<string | null>(null);
+  const submit = async () => setError(await onPromote(axis, name.trim()));
+  return <div className="node-promote" role="group" aria-label="Make a parameter">
+    {editor.kind === 'vector' && <div className="node-promote-axes">{axesOffered.map(i => <button key={i} aria-pressed={axis === i}
+      onClick={() => { setAxis(i); setName(n => n.replace(/[XYZW]$/, '') + axes[i]); }}>{axes[i]}</button>)}</div>}
+    <input aria-label="Parameter name" autoFocus spellCheck={false} value={name} onChange={event => setName(event.target.value)}
+      onKeyDown={event => { if (event.key === 'Enter') { event.preventDefault(); void submit(); } if (event.key === 'Escape') onCancel(); }} />
+    <button className="primary" onClick={() => void submit()}>Make parameter</button>
+    {error && <p className="node-error" role="alert">{error}</p>}
+  </div>;
+}
+
+function MakeReusable({ node, onExtract }: { node: OutlineNode; onExtract(name: string, parameters: readonly string[]): Structural }) {
+  const [open, setOpen] = useState(false);
+  const options = node.fields.filter(parameterizable).map(f => f.name);
+  const [name, setName] = useState(node.name ?? node.kind);
+  const [chosen, setChosen] = useState<readonly string[]>(() => options.filter(o => o.toLowerCase() === 'center'));
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => { setOpen(false); setError(null); setName(node.name ?? node.kind); setChosen(options.filter(o => o.toLowerCase() === 'center')); }, [node.id]);
+  if (!open) return <div className="node-reuse"><button onClick={() => setOpen(true)}>Make reusable…</button>
+    <small>Turn this into a Feature you can place again with different values.</small></div>;
+  return <div className="node-reuse open" role="group" aria-label="Make reusable">
+    <label>Feature name<input aria-label="Feature name" spellCheck={false} value={name} onChange={event => setName(event.target.value)} /></label>
+    <span>Varies per placement</span>
+    {options.map(option => <label key={option} className="node-reuse-option"><input type="checkbox" checked={chosen.includes(option)}
+      onChange={event => setChosen(list => event.target.checked ? [...list, option] : list.filter(o => o !== option))} />{option}</label>)}
+    <small>Everything else stays the same in every placement. Values you vary start at today's values, so the model does not change.</small>
+    <div><button className="primary" onClick={() => void onExtract(name.trim(), chosen).then(setError)}>Make reusable</button>
+      <button onClick={() => setOpen(false)}>Cancel</button></div>
+    {error && <p className="node-error" role="alert">{error}</p>}
+  </div>;
+}
 
 function QuantityInput({ id, value, axis, disabled, hideUnit, inputRef, onCommit }: {
   id?: string; value: Quantity; axis?: string; disabled: boolean; hideUnit?: boolean; inputRef?: React.Ref<HTMLInputElement>; onCommit(text: string): void;
