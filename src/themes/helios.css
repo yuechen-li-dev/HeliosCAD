@@ -310,6 +310,45 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .graph-rows li.drop-before::before, .graph-rows li.drop-after::after { content: ''; position: absolute; left: 4px; right: 4px; height: 2px; border-radius: 1px; background: var(--gold); }
 .graph-rows li.drop-before::before { top: 0; } .graph-rows li.drop-after::after { bottom: -2px; }
 
+/* Inspector: collapsible sections; semantic fields as readable rows. */
+.inspector-section { border-bottom: 1px solid var(--border); }
+.inspector-section > summary { display: flex; align-items: center; gap: 8px; padding: 11px 14px 9px; color: var(--text-secondary); font-size: 9.5px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; cursor: pointer; list-style: none; user-select: none; }
+.inspector-section > summary::-webkit-details-marker { display: none; }
+.inspector-section > summary::before { content: ''; flex: none; width: 5px; height: 5px; margin: 0 2px 1px 0; border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor; transform: rotate(-45deg); transition: transform .12s ease; }
+.inspector-section[open] > summary::before { transform: rotate(45deg); margin-bottom: 3px; }
+.inspector-section > summary:hover { color: var(--text-primary); }
+.inspector-section > summary:focus-visible { outline: 2px solid var(--gold); outline-offset: -2px; }
+.section-count { min-width: 16px; padding: 0 5px; border-radius: 8px; background: var(--control-bg); color: var(--text-secondary); font-size: 9px; letter-spacing: 0; line-height: 15px; text-align: center; }
+.inspector-section-body { padding-bottom: 8px; }
+.inspector-section-body > .identity-list { border-bottom: 0; padding-top: 2px; }
+.inspector-section-body > .inspector-actions { padding-top: 0; }
+.identity-list dd.identifier { overflow: visible; white-space: normal; overflow-wrap: anywhere; line-height: 1.4; }
+.section-note { margin: 0; padding: 0 14px 10px; color: var(--text-secondary); font-size: 10.5px; line-height: 1.5; }
+.semantic-fields { display: grid; margin: 0; padding: 0 8px; list-style: none; }
+.semantic-field { display: grid; gap: 3px; padding: 8px 6px; border-top: 1px solid color-mix(in srgb, var(--border) 60%, transparent); }
+.semantic-field:first-child { border-top: 0; }
+.semantic-field-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; min-width: 0; }
+.semantic-field-name { flex: 0 1 auto; min-width: 0; color: var(--text-primary); font-size: 11.5px; font-weight: 500; overflow-wrap: anywhere; }
+.semantic-field-value { flex: 0 1 auto; min-width: 0; color: var(--text-primary); font: 11px/1.35 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; text-align: right; overflow-wrap: anywhere; }
+.semantic-field-value.none { color: var(--text-secondary); }
+.semantic-field-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; color: var(--text-secondary); font-size: 10px; }
+.semantic-field-meta .source-link { margin-left: auto; font-size: 10px; }
+.origin { padding: 0 6px; border: 1px solid var(--border); border-radius: 8px; font-size: 9.5px; line-height: 15px; }
+.origin-authored { border-color: color-mix(in srgb, var(--gold) 55%, transparent); background: var(--gold-wash); color: var(--gold-ink); }
+.origin-defaulted, .origin-derived, .origin-inherited { color: var(--text-primary); }
+.origin-unavailable { opacity: .75; }
+.semantic-field-authored { color: var(--text-secondary); font-size: 10px; }
+.semantic-field-authored code { color: var(--text-primary); font-size: 10px; }
+.semantic-field-note { color: var(--text-secondary); font-size: 10px; line-height: 1.45; opacity: .85; }
+.semantic-field .property-control { margin-top: 2px; }
+.semantic-unset { margin: 4px 8px 0; border-top: 1px dashed var(--border); }
+.semantic-unset > summary { display: flex; align-items: center; gap: 6px; padding: 8px 6px 6px; color: var(--text-secondary); font-size: 10.5px; cursor: pointer; list-style: none; }
+.semantic-unset > summary::-webkit-details-marker { display: none; }
+.semantic-unset > summary::before { content: '+'; width: 10px; font-weight: 600; }
+.semantic-unset[open] > summary::before { content: '−'; }
+.semantic-unset > summary span { min-width: 16px; padding: 0 5px; border-radius: 8px; background: var(--control-bg); font-size: 9px; line-height: 15px; text-align: center; }
+.semantic-unset .semantic-fields { padding: 0; }
+
 /* G5: the side panel's Selection | Parameters tabs, parameters, promotion and Make reusable. */
 .graph-side { min-height: 0; display: grid; grid-template-rows: auto minmax(0, 1fr); border-left: 1px solid var(--border); background: var(--panel-bg); }
 .graph-body.stacked .graph-side { border-left: 0; border-top: 1px solid var(--border); }

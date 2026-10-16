@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
-import type { ConstructProjection, Diagnostic, EditableProperty, FieldProjection, ModelSession, SelectionDescription, SemanticSchema, SourceReference, UnitValue } from '@aetheris/cad';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import type { ConstructProjection, Diagnostic, EditableProperty, FieldProjection, ModelSession, SelectionDescription, SemanticFieldSchema, SemanticSchema, SourceReference, UnitValue } from '@aetheris/cad';
 
 interface Props {
   model: ModelSession | null;
@@ -22,37 +22,92 @@ export function Inspector({ model, schema, projection, projectionCurrent = true,
   const occurrence = model?.mesh.occurrences.find(item => item.semanticEntityId === entityId || item.id === entityId);
   const properties = useMemo(() => model?.properties.filter(property => property.ownerEntityId === entityId) ?? [], [entityId, model]);
   const source = selection?.source ?? entity?.source;
-  const construct = schema?.constructs.find(item => item.name === (entity?.semanticConstruct ?? entity?.kind));
+  const construct = entity ? schema?.constructs.find(item => item.name === (entity.semanticConstruct ?? entity.kind)) : undefined;
+  const fields = construct ? (construct.fields ?? []).map(field => ({ field,
+    projected: projection?.constructId === construct.id ? projection.fields.find(item => item.fieldId === field.id) : undefined })) : [];
+  // Fields with neither a value nor a default say nothing yet; they wait in their own closed group.
+  const shown = fields.filter(({ field, projected }) => projected?.effectiveValue || field.default || projected?.authoredValue);
+  const unset = fields.filter(item => !shown.includes(item));
+  const fieldRow = ({ field, projected }: typeof fields[number]) => <SemanticFieldRow key={field.id} field={field} projected={projected}
+    editable={!!projected?.editable && projectionCurrent && !!onRewriteField} stale={!projectionCurrent} onRewriteField={onRewriteField} onGoToSource={onGoToSource} />;
   return <section className="panel inspector" aria-label="Inspector">
     <div className="panel-heading"><span>INSPECTOR</span><span className="panel-meta">{entity?.kind ?? '—'}</span></div>
     <div className="inspector-scroll">
       {entity ? <>
         <div className="entity-hero"><span className="entity-glyph">{entity.kind === 'Hole' ? '⊙' : '◆'}</span><div><strong>{entity.name}</strong><small>{entity.kind}</small></div></div>
-        <dl className="identity-list"><dt>Semantic ID</dt><dd title={entity.id}>{entity.id}</dd>{faceId && <><dt>{selection?.topologyKind === 'Edge' ? 'Edge ID' : 'Face ID'}</dt><dd title={faceId}>{faceId}</dd></>}{selection && <><dt>Topology</dt><dd>{selection.semanticTopologyId ?? selection.sourceAddressability}</dd><dt>Selector</dt><dd>{selection.selector ?? selection.selectorReason ?? 'No source selector'}</dd></>}{source ? <><dt>Source</dt><dd><button className="source-link" onClick={() => onGoToSource?.(source)}>{source.source}:{source.line}</button></dd></> : <><dt>Source</dt><dd>No Firmament source</dd></>}</dl>
-        <div className="inspector-actions"><button onClick={() => source && onGoToSource?.(source)} disabled={!source}>Go to Source</button>{selection?.selector && <><button onClick={() => void navigator.clipboard?.writeText(selection.selector!)}>Copy Selector</button>{selection.outputRole === 'BoxFace' && <button onClick={onReferenceFace}>Reference Face in Source</button>}{selection.outputRole === 'HoleWallFace' && entity.kind === 'Hole' && entity.holeDiameterMm != null && <button onClick={onReferenceHoleWall}>Reference Hole Wall in Source</button>}</>}<button onClick={() => void navigator.clipboard?.writeText(selection?.semanticTopologyId ?? faceId ?? entity.id)}>Copy Semantic ID</button></div>
-        {occurrence && <><div className="section-label">OCCURRENCE</div><dl className="identity-list"><dt>Occurrence</dt><dd title={occurrence.id}>{occurrence.id}</dd><dt>Definition</dt><dd>{occurrence.definitionId ?? '—'}</dd><dt>Parent</dt><dd>{occurrence.parentId ?? 'Root'}</dd><dt>Translation</dt><dd>{formatTranslation(occurrence.transform)} mm</dd></dl></>}
-        {construct?.outputs.length ? <><div className="section-label">SEMANTIC OUTPUTS</div><dl className="identity-list">{construct.outputs.map(output => <div key={output.id}><dt>{output.name}</dt><dd>{selection?.outputRole === output.sourceRole && selection.selector ? selection.selector : output.kind}</dd></div>)}</dl></> : null}
-        {construct && <><div className="section-label">SEMANTIC FIELDS</div><dl className="identity-list">{construct.fields.map(field => {
-          const projected = projection?.constructId === construct.id ? projection.fields.find(item => item.fieldId === field.id) : undefined;
-          return <div key={field.id}><dt>{field.name}</dt><dd>
-            {projected?.effectiveValue?.text ?? (field.default ? `Default: ${field.default}` : 'Value unavailable')}
-            {' · '}{projected?.origin === 'Defaulted' ? 'Default' : projected?.origin ?? 'Unavailable'}
-            {' · '}{field.kind}{field.unit !== 'None' ? ` (${field.unit})` : ''}
-            {projected?.authoredValue && <small title={projected.authoredValue}> Source: {projected.authoredValue}</small>}
-            {projected?.source && <button className="source-link" onClick={() => onGoToSource?.(projected.source!)}>Go to Source</button>}
-            {projected?.editable && projectionCurrent && onRewriteField ? <FieldEditor field={projected} onApply={onRewriteField} /> :
-              <small title={!projectionCurrent ? 'Stale source revision' : projected?.readOnlyReason ?? 'No current field projection'}> Read-only{!projectionCurrent ? ': Stale source revision' : projected?.readOnlyReason ? `: ${projected.readOnlyReason}` : ''}</small>}
-          </dd></div>;
-        })}</dl></>}
-        <details className="override-details"><summary>SOURCE OVERRIDES · EXPERIMENTAL ({properties.length})</summary>
-          <p>Edits here change the current model only. Edit Firmament source to save changes.</p>
+        <Section id="identity" label="Identity">
+          <dl className="identity-list"><dt>Semantic ID</dt><dd className="identifier">{entity.id}</dd>{faceId && <><dt>{selection?.topologyKind === 'Edge' ? 'Edge ID' : 'Face ID'}</dt><dd className="identifier">{faceId}</dd></>}{selection && <><dt>Topology</dt><dd className="identifier">{selection.semanticTopologyId ?? selection.sourceAddressability}</dd><dt>Selector</dt><dd className="identifier">{selection.selector ?? selection.selectorReason ?? 'No source selector'}</dd></>}{source ? <><dt>Source</dt><dd><button className="source-link" onClick={() => onGoToSource?.(source)}>{source.source}:{source.line}</button></dd></> : <><dt>Source</dt><dd>No Firmament source</dd></>}</dl>
+          <div className="inspector-actions"><button onClick={() => source && onGoToSource?.(source)} disabled={!source}>Go to Source</button>{selection?.selector && <><button onClick={() => void navigator.clipboard?.writeText(selection.selector!)}>Copy Selector</button>{selection.outputRole === 'BoxFace' && <button onClick={onReferenceFace}>Reference Face in Source</button>}{selection.outputRole === 'HoleWallFace' && entity.kind === 'Hole' && entity.holeDiameterMm != null && <button onClick={onReferenceHoleWall}>Reference Hole Wall in Source</button>}</>}<button onClick={() => void navigator.clipboard?.writeText(selection?.semanticTopologyId ?? faceId ?? entity.id)}>Copy Semantic ID</button></div>
+        </Section>
+        {occurrence && <Section id="occurrence" label="Occurrence">
+          <dl className="identity-list"><dt>Occurrence</dt><dd className="identifier">{occurrence.id}</dd><dt>Definition</dt><dd className="identifier">{occurrence.definitionId ?? '—'}</dd><dt>Parent</dt><dd className="identifier">{occurrence.parentId ?? 'Root'}</dd><dt>Translation</dt><dd>{formatTranslation(occurrence.transform)} mm</dd></dl>
+        </Section>}
+        {construct && fields.length > 0 && <Section id="fields" label="Semantic fields" count={shown.length}>
+          {shown.length > 0 ? <ul className="semantic-fields">{shown.map(fieldRow)}</ul> : <div className="empty-state compact">No field has a value yet.</div>}
+          {unset.length > 0 && <details className="semantic-unset"><summary>Not set <span>{unset.length}</span></summary><ul className="semantic-fields">{unset.map(fieldRow)}</ul></details>}
+        </Section>}
+        {construct?.outputs?.length ? <Section id="outputs" label="Semantic outputs" count={construct.outputs.length} defaultOpen={false}>
+          <ul className="semantic-fields">{construct.outputs.map(output => <li key={output.id} className="semantic-field">
+            <div className="semantic-field-head"><span className="semantic-field-name">{output.name}</span>
+              <span className="semantic-field-value">{selection?.outputRole === output.sourceRole && selection.selector ? selection.selector : output.kind}</span></div>
+            {output.sourceRole && <div className="semantic-field-meta"><span>{output.sourceAddressable ? 'Addressable from source' : 'Not addressable from source'}</span></div>}
+          </li>)}</ul>
+        </Section> : null}
+        <Section id="overrides" label="Source overrides · experimental" count={properties.length} defaultOpen={false}>
+          <p className="section-note">Edits here change the current model only. Edit Firmament source to save changes.</p>
           {properties.length ? properties.map(property => <PropertyEditor key={property.id} property={property} onApply={onApply} />) : <div className="empty-state compact">No editable properties on this entity.</div>}
-        </details>
-        <div className="section-label">RELATED DIAGNOSTICS</div>
-        <div className="empty-state compact">{diagnostics.length ? `${diagnostics.length} model diagnostic${diagnostics.length === 1 ? '' : 's'}` : 'No diagnostics'}</div>
+        </Section>
+        <Section id="diagnostics" label="Related diagnostics" count={diagnostics.length}>
+          <div className="empty-state compact">{diagnostics.length ? `${diagnostics.length} model diagnostic${diagnostics.length === 1 ? '' : 's'}` : 'No diagnostics'}</div>
+        </Section>
       </> : <div className="empty-state">Select model geometry or a tree item to inspect its semantic identity.</div>}
     </div>
   </section>;
+}
+
+const sectionKey = (id: string) => `helios-inspector-section:${id}`;
+
+/** A collapsible inspector section; whether it is open is remembered per viewer. */
+function Section({ id, label, count, defaultOpen = true, children }: { id: string; label: string; count?: number; defaultOpen?: boolean; children: ReactNode }) {
+  const [open, setOpen] = useState(() => {
+    try { const stored = localStorage.getItem(sectionKey(id)); return stored === null ? defaultOpen : stored === 'open'; } catch { return defaultOpen; }
+  });
+  return <details className="inspector-section" open={open} onToggle={event => {
+    const next = event.currentTarget.open;
+    setOpen(next);
+    try { localStorage.setItem(sectionKey(id), next ? 'open' : 'closed'); } catch { /* per-viewer convenience only */ }
+  }}>
+    <summary><span>{label}</span>{count !== undefined && count > 0 && <span className="section-count">{count}</span>}</summary>
+    <div className="inspector-section-body">{children}</div>
+  </details>;
+}
+
+/** `8mm` and `8 mm` say the same thing; only a different spelling is worth showing. */
+const compact = (text: string) => text.replace(/\s+/g, '');
+
+const originLabel: Record<string, string> = { Authored: 'Authored', Defaulted: 'Default', Derived: 'Derived', Inherited: 'Inherited', Unavailable: 'Unavailable' };
+
+function SemanticFieldRow({ field, projected, editable, stale, onRewriteField, onGoToSource }: {
+  field: SemanticFieldSchema; projected: FieldProjection | undefined; editable: boolean; stale: boolean;
+  onRewriteField?(field: FieldProjection, value: number): Promise<boolean>; onGoToSource?(source: SourceReference): void;
+}) {
+  const origin = projected?.origin ?? 'Unavailable';
+  const value = projected?.effectiveValue?.text ?? (field.default ? field.default : null);
+  const readOnly = stale ? 'The source changed since this was built.' : projected?.readOnlyReason ?? (projected ? null : 'Not projected for this selection.');
+  return <li className="semantic-field">
+    <div className="semantic-field-head" title={field.description ?? undefined}>
+      <span className="semantic-field-name">{field.name}</span>
+      <span className={`semantic-field-value${value ? '' : ' none'}`}>{value ?? '—'}</span>
+    </div>
+    <div className="semantic-field-meta">
+      <span className={`origin origin-${origin.toLowerCase()}`}>{projected ? originLabel[origin] ?? origin : field.default ? 'Default' : 'Unavailable'}</span>
+      <span>{field.kind}{field.unit !== 'None' && field.unit !== field.kind ? ` · ${field.unit}` : ''}{field.required ? ' · required' : ''}</span>
+      {projected?.source && <button className="source-link" onClick={() => onGoToSource?.(projected.source!)}>Source</button>}
+    </div>
+    {projected?.authoredValue && compact(projected.authoredValue) !== compact(projected.effectiveValue?.text ?? '') && <div className="semantic-field-authored">Written as <code>{projected.authoredValue}</code></div>}
+    {editable && projected ? <FieldEditor field={projected} onApply={onRewriteField!} />
+      : readOnly && <div className="semantic-field-note">Read-only · {readOnly}</div>}
+  </li>;
 }
 
 function FieldEditor({ field, onApply }: { field: FieldProjection; onApply(field: FieldProjection, value: number): Promise<boolean> }) {
