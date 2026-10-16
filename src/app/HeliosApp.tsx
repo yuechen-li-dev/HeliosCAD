@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { ConstructProjection, Diagnostic, EditableProperty, FieldProjection, LanguageOutline, ModelSession, SelectionDescription, SemanticSchema, UnitValue } from '@aetheris/cad';
+import type { ConstructProjection, Diagnostic, EditableProperty, FieldProjection, LanguageOutline, ModelSession, OutlineField, OutlineNode, SelectionDescription, SemanticSchema, UnitValue } from '@aetheris/cad';
 import { WebSdkCadRuntime } from '../sdk/CadRuntime';
 import { AetherisWorkerClient, type BuildResult } from '../sdk/AetherisWorkerClient';
 import { assemblySource, bracketSource, emptyModelSource } from '../sdk/samples';
@@ -23,6 +23,8 @@ import { ResizeHandle } from './ResizeHandle';
 import { WorkspaceStatus } from './WorkspaceStatus';
 import { useTheme } from '../themes/useTheme';
 import { GraphPanel, type GraphSelection } from '../graph/GraphPanel';
+import { NodeInspector, type GraphEditState } from '../graph/NodeInspector';
+import { outlineNode, spliceField } from '../graph/fieldEdit';
 import { buildPartGraph, nodeAtSpan, unitAtSpan, type GraphRow, type PartGraph } from '../graph/outlineGraph';
 
 type UtilityTab = { kind: 'files' } | { kind: 'inspector' } | { kind: 'examples' } | { kind: 'llm' };
@@ -80,10 +82,15 @@ export function HeliosApp({ project, initialWorkspace, onShowcase, onSave, onPub
   const [outline, setOutline] = useState<LanguageOutline | null>(null);
   const [outlineError, setOutlineError] = useState<string | null>(null);
   const [graphSelection, setGraphSelection] = useState<GraphSelection | null>(null);
+  // A graph edit is a transaction: it is committed when its build succeeds, and while it
+  // fails it stays a draft over the last good model that can be reverted in one step.
+  const [graphEdit, setGraphEdit] = useState<(GraphEditState & { revision: number; base: string }) | null>(null);
   const partGraph = useMemo(() => outline ? buildPartGraph(outline) : null, [outline]);
   const capturePreview = useRef<(() => string) | null>(null);
   const shownDiagnostics = [...liveDiagnostics, ...diagnostics.filter(item => !liveDiagnostics.some(live =>
     live.code === item.code && live.source?.start === item.source?.start))];
+  // The displayed model is older than a source that failed to build: show it as a ghost.
+  const ghosted = !!model && displayRevision !== sourceRevision && buildStarted === null && diagnostics.some(item => item.severity === 'error');
   const pushOutput = (message: string) => setOutputEvents(events => [...events.slice(-79), message]);
   const namedView = (view: 'front' | 'top' | 'right' | 'iso') => {
     setViewMode(view === 'iso' ? 'perspective' : 'orthographic');
@@ -227,7 +234,7 @@ export function HeliosApp({ project, initialWorkspace, onShowcase, onSave, onPub
       .sort((a, b) => (a.source?.length ?? Infinity) - (b.source?.length ?? Infinity))[0];
   };
   const selectFromGraph = useCallback((unitId: string, row: GraphRow | null, graph: PartGraph) => {
-    setGraphSelection({ unitId, rowId: row && graph.nodes.has(row.id) ? row.id : null });
+    setGraphSelection({ unitId, rowId: row?.id ?? null });
     const unit = graph.units.find(item => item.id === unitId);
     if (unit?.category === 'external') return;
     const span = row?.span ?? unit?.span;
@@ -242,6 +249,61 @@ export function HeliosApp({ project, initialWorkspace, onShowcase, onSave, onPub
     setEditorMode('source');
     navigateSource({ source: sourceName, start: span.start, length: span.length, line: 1, column: 1 });
   }, [sourceName]);
+  const selectGraphNode = (id: string) => {
+    const unitId = partGraph?.unitOf.get(id);
+    if (!unitId || !partGraph) return;
+    setGraphSelection({ unitId, rowId: id === unitId ? null : id });
+    const node = partGraph.nodes.get(id);
+    const entity = node ? entityForSpan(node.span.start, node.span.length) : undefined;
+    if (entity) select(entity.id);
+  };
+  const commitGraphField = (node: OutlineNode, field: OutlineField, text: string): string | null => {
+    if (busy === 'Exporting' || busy === 'Worker failed') return 'Wait for the current operation to finish.';
+    const splice = spliceField(source, field, text);
+    if ('error' in splice) return splice.error;
+    const chained = graphEdit && graphEdit.status === 'failed' && graphEdit.revision === sourceRevisionRef.current;
+    const base = chained ? graphEdit.base : source;
+    const before = sourceRevisionRef.current;
+    // Monaco keeps the edit in its undo history; a read-only editor (mid-build) takes the source directly.
+    if (!sourcePanel.current?.replace({ source: sourceName, start: splice.start, length: splice.length, line: 1, column: 1 }, splice.before, splice.after)
+        || sourceRevisionRef.current === before) editSource(splice.source);
+    const revision = sourceRevisionRef.current;
+    const label = node.name ? `${node.name}.${field.name}` : field.name;
+    setGraphEdit({ nodeId: node.id, field: field.name, from: splice.before, to: splice.after, status: 'building', revision, base });
+    pushOutput(`Edited ${label} · ${splice.before} → ${splice.after}`);
+    void submitBuild(splice.source, sourceName, revision).then(ok => {
+      if (sourceRevisionRef.current !== revision) return;
+      setGraphEdit(value => value && value.revision === revision ? { ...value, status: ok ? 'built' : 'failed' } : value);
+      pushOutput(ok ? `${label} committed` : `${label} is a draft · the build failed, the last good model stays`);
+    });
+    return null;
+  };
+  const revertGraphEdit = () => {
+    if (!graphEdit) return;
+    const base = graphEdit.base;
+    setGraphEdit(null);
+    editSource(base);
+    pushOutput('Reverted the draft');
+    // Back to exactly what the displayed model was built from: nothing to rebuild.
+    if ((projectRoot.current ?? sourceName) === sourceName && model?.source === base) setDisplayRevision(sourceRevisionRef.current);
+    else void submitBuild(base, sourceName, sourceRevisionRef.current);
+  };
+  const inspectorProps = () => {
+    const unit = graphSelection && partGraph?.units.find(item => item.id === graphSelection.unitId);
+    const rowId = graphSelection?.rowId ?? null;
+    const nodeId = rowId && partGraph?.nodes.has(rowId) ? rowId : graphSelection?.unitId;
+    const node = unit && unit.category !== 'external' ? outlineNode(outline, nodeId) : null;
+    const focusField = rowId && unit && !partGraph?.nodes.has(rowId) && rowId.startsWith(`${unit.id}#`) ? rowId.slice(unit.id.length + 1) : null;
+    const problems = node ? shownDiagnostics.filter(item => item.source?.source === sourceName
+      && item.source.start >= node.span.start && item.source.start <= node.span.start + node.span.length) : [];
+    const edit = graphEdit && graphEdit.revision === sourceRevision ? graphEdit : null;
+    return {
+      node, nodes: partGraph?.nodes ?? new Map<string, OutlineNode>(), focusField, problems, edit,
+      external: unit?.category === 'external' ? { title: unit.title, document: unit.document } : null,
+      schema: semanticSchema?.constructs.find(item => item.id === node?.schemaId) ?? null,
+      readOnly: busy === 'Worker failed' ? 'The build worker stopped. Restart it from the status bar to edit.' : null,
+    };
+  };
   const rebuildSource = async () => {
     if (buildStarted !== null || busy === 'Exporting' || busy === 'Rewriting source') return;
     await submitBuild(source, sourceName);
@@ -402,19 +464,21 @@ export function HeliosApp({ project, initialWorkspace, onShowcase, onSave, onPub
           <button role="tab" aria-selected={editorMode === 'source'} className={editorMode === 'source' ? 'active' : ''} onClick={() => setEditorMode('source')}>Source</button>
         </div>
         {editorMode === 'graph' && <GraphPanel outline={outline} error={outlineError} diagnostics={shownDiagnostics} selection={graphSelection} theme={theme}
-          onSelect={(unitId, row, graph) => selectFromGraph(unitId, row, graph)} onOpenSource={(unitId, row, graph) => openFromGraph(unitId, row, graph)} />}
+          onSelect={(unitId, row, graph) => selectFromGraph(unitId, row, graph)} onOpenSource={(unitId, row, graph) => openFromGraph(unitId, row, graph)}
+          inspector={<NodeInspector {...inspectorProps()} onCommit={commitGraphField} onRevert={revertGraphEdit} onSelectNode={selectGraphNode}
+            onOpenSource={span => { setEditorMode('source'); navigateSource({ source: sourceName, start: span.start, length: span.length, line: 1, column: 1 }); }} />} />}
         <div className="source-host" hidden={editorMode !== 'source'}>
         <SourcePanel ref={sourcePanel} disabled={!!busy} fileName={sourceName} dirty={dirtyFiles.has(sourceName)} source={source} diagnostics={shownDiagnostics.filter(item => !item.source || item.source.source === sourceName)} runtime={runtime} model={model} selectedSelector={selectedSelection?.selector} theme={theme} onSourceChange={value => editSource(value)} onCursorChange={onSourceCursor} onRebuild={() => void rebuildSource()} onLiveDiagnostics={setLiveDiagnostics} onLanguageError={error => { setDiagnostics([toDiagnostic(error, 'FIRMAMENT-FORMAT')]); pushOutput(`Format refused · ${error instanceof Error ? error.message : String(error)}`); }} onDiagnosticClick={diagnostic => { if (diagnostic.source) setSelectedEntityId(null); }} />
         </div>
         </div>
         <ResizeHandle axis="horizontal" label="Resize source and viewport" value={shellLayout.editorPercent} onResize={shellLayout.resizeEditor} />
-        <div className="viewport-pane">
+        <div className={`viewport-pane${ghosted ? ' ghosted' : ''}`}>
         <div className="viewport-toolbar">
           <div><button title="Front view" onClick={() => namedView('front')}>Front</button><button title="Top view" onClick={() => namedView('top')}>Top</button><button title="Right view" onClick={() => namedView('right')}>Right</button><button title="Isometric view" onClick={() => namedView('iso')}>Iso</button><button title="Fit model · F" onClick={() => setViewCommand(`fit-${Date.now()}`)}>Fit</button><button title="Fit selection" disabled={!selectedEntityId} onClick={() => setViewCommand(`fitselection-${Date.now()}`)}>Fit selection</button></div>
           <div><select aria-label="Display mode" value={displayMode} onChange={event => setDisplayMode(event.target.value as DisplayMode)}><option value="shaded">Shaded</option><option value="edges">Shaded with edges</option><option value="wireframe">Wireframe</option></select><button aria-label="Selection mode" title="Switch face or edge selection" onClick={() => { setSelectionMode(value => value === 'face' ? 'edge' : 'face'); setDisplayMode('edges'); }}>{selectionMode === 'face' ? 'Faces' : 'Edges'}</button><button title="Toggle camera projection" onClick={() => setViewMode(value => value === 'perspective' ? 'orthographic' : 'perspective')}>{viewMode === 'perspective' ? 'Perspective' : 'Orthographic'}</button></div>
         </div>
         <Viewport busyMessage={busy === 'Worker failed' ? null : busy} errorMessage={shownDiagnostics.some(item => item.severity === 'error') ? (model ? 'Build failed. The last valid model remains visible; see Problems for details.' : 'Build needs attention. See Problems for the compiler diagnostic.') : null} model={model} selectedEntityId={selectedEntityId} selectedTopologyId={selectedFaceId} theme={theme} displayMode={displayMode} viewMode={viewMode} viewCommand={viewCommand} selectionMode={selectionMode} onSelect={select} captureRef={capturePreview} />
-        <div className="viewport-caption"><span>{model?.name ?? workspaceTitle}</span><span>{displayRevision !== sourceRevision && model ? 'Last valid model · source changed' : model ? 'Compiled geometry' : 'Waiting for geometry'}</span></div>
+        <div className="viewport-caption"><span>{model?.name ?? workspaceTitle}</span><span>{ghosted ? 'Last good model · the current draft does not build' : displayRevision !== sourceRevision && model ? 'Last valid model · source changed' : model ? 'Compiled geometry' : 'Waiting for geometry'}</span></div>
         {welcomeHint && <div className="workflow-hint"><span><b>Source → Build → Geometry</b> Edit on the left. Ctrl+Enter builds. Drag to orbit; scroll to zoom.</span><button aria-label="Dismiss workflow hint" onClick={() => { setWelcomeHint(false); localStorage.setItem('helios-workflow-understood', '1'); }}>×</button></div>}
         </div>
       </div>

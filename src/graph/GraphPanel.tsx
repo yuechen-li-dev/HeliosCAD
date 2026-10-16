@@ -1,7 +1,8 @@
-import { memo, useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Background, BackgroundVariant, Controls, Handle, MarkerType, Position, ReactFlow, useReactFlow, ReactFlowProvider, type Edge, type Node, type NodeProps } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import type { Diagnostic, LanguageOutline } from '@aetheris/cad';
+import { useGraphBodyLayout } from './graphBodyLayout';
 import { buildPartGraph, layoutPartGraph, unitAtSpan, type GraphDirection, type GraphRow, type PartGraph, type PositionedUnit } from './outlineGraph';
 
 export interface GraphSelection { readonly unitId: string; readonly rowId: string | null }
@@ -14,6 +15,7 @@ interface Props {
   theme: 'bronze-age' | 'apollonia';
   onSelect(unitId: string, row: GraphRow | null, graph: PartGraph): void;
   onOpenSource(unitId: string, row: GraphRow | null, graph: PartGraph): void;
+  inspector?: ReactNode;
 }
 
 type UnitData = { unit: PositionedUnit; direction: GraphDirection; problems: number; selectedRow: string | null; onRow(row: GraphRow): void; onOpen(row: GraphRow | null): void };
@@ -93,6 +95,7 @@ function Canvas({ outline, error, diagnostics, selection, theme, onSelect, onOpe
 
 export function GraphPanel(props: Props) {
   const canvas = useRef<HTMLDivElement>(null);
+  const body = useGraphBodyLayout();
   const [direction, setDirection] = useState<GraphDirection>('LR');
   useEffect(() => {
     const element = canvas.current;
@@ -114,8 +117,11 @@ export function GraphPanel(props: Props) {
   return <section className="panel graph-panel" aria-label="Model graph">
     <div className="graph-caption">
       {summary ? <><span>{summary.containers.length ? summary.containers.join(', ') : props.outline?.document}</span>
-        <small>{summary.units} parts, {summary.links} connections. Click to select; double-click to open the source.</small></> : <span>Model graph</span>}
+        <small>{summary.units} parts, {summary.links} connections. Select a part to edit its values; double-click to open its source.</small></> : <span>Model graph</span>}
     </div>
-    <div className="graph-canvas" ref={canvas}><ReactFlowProvider><Canvas {...props} direction={direction} /></ReactFlowProvider></div>
+    <div className={`graph-body${body.stacked ? ' stacked' : ''}`} ref={body.ref}>
+      <div className="graph-canvas" ref={canvas} style={body.canvas}><ReactFlowProvider><Canvas {...props} direction={direction} /></ReactFlowProvider></div>
+      {props.inspector && <div className="graph-inspector-slot" style={body.inspector}>{props.inspector}</div>}
+    </div>
   </section>;
 }

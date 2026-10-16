@@ -159,7 +159,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .graph-caption { display: grid; gap: 2px; padding: 7px 12px 8px; border-bottom: 1px solid var(--border); background: var(--panel-bg); }
 .graph-caption span { font-size: 12px; font-weight: 600; }
 .graph-caption small { color: var(--text-secondary); font-size: 10.5px; }
-.graph-canvas { position: relative; min-height: 0; }
+.graph-canvas { min-height: 0; }
 .graph-empty { display: grid; align-content: center; justify-items: start; gap: 6px; height: 100%; max-width: 46ch; padding: 24px; color: var(--text-secondary); line-height: 1.5; }
 .graph-empty strong { color: var(--text-primary); font-size: 13px; }
 .graph-empty p { margin: 0; }
@@ -186,3 +186,67 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .graph-panel .graph-link.active .react-flow__edge-path { stroke: var(--accent); stroke-width: 1.8; }
 .graph-panel .graph-link.active .react-flow__edge-text { fill: var(--text-primary); }
 @media (prefers-reduced-motion: reduce) { .graph-panel .react-flow__viewport { transition: none; } }
+
+/* Node inspector: the selected declaration as a property sheet beside the canvas. */
+/* Placement comes from MachinaLayout (graphBodyLayout.ts); CSS only paints. */
+.graph-body { position: relative; min-height: 0; overflow: hidden; }
+.graph-inspector-slot { display: grid; min-height: 0; }
+.graph-body.stacked .node-inspector { border-left: 0; border-top: 1px solid var(--border); }
+.node-inspector { min-height: 0; overflow: auto; display: grid; align-content: start; gap: 10px; padding: 0 0 14px; border-left: 1px solid var(--border); background: var(--panel-bg); font-size: 12px; }
+.node-empty { display: grid; gap: 6px; padding: 18px 14px; color: var(--text-secondary); }
+.node-empty strong { color: var(--text-primary); font-size: 12.5px; }
+.node-empty p, .node-note { margin: 0; color: var(--text-secondary); line-height: 1.45; }
+.node-note { padding: 0 14px; }
+.node-head { --cat: var(--cat-other); display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 8px; padding: 11px 12px 10px 11px; border-bottom: 1px solid var(--border); border-left: 3px solid var(--cat); background: var(--panel-elevated); }
+.node-head.category-data { --cat: var(--cat-data); } .node-head.category-sketch { --cat: var(--cat-sketch); } .node-head.category-body { --cat: var(--cat-body); }
+.node-head.category-modify { --cat: var(--cat-modify); } .node-head.category-feature { --cat: var(--cat-feature); } .node-head.category-assembly { --cat: var(--cat-assembly); } .node-head.category-external { --cat: var(--cat-external); }
+.node-head strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13.5px; font-weight: 600; }
+.node-head small { grid-column: 1; color: var(--text-secondary); font-size: 10.5px; }
+.node-source { grid-column: 2; grid-row: 1 / span 2; align-self: center; padding: 3px 8px; border: 1px solid var(--border); border-radius: 4px; background: var(--control-bg); color: var(--text-secondary); font-size: 10.5px; cursor: pointer; }
+.node-source:hover { color: var(--text-primary); border-color: var(--border-strong); }
+.node-parent { justify-self: start; margin: -4px 12px 0; padding: 0; border: 0; background: none; color: var(--text-secondary); font-size: 10.5px; cursor: pointer; }
+.node-parent:hover { color: var(--text-primary); }
+.node-fields { display: grid; gap: 2px; padding: 0 8px; }
+.node-field { display: grid; grid-template-columns: 96px minmax(0, 1fr); align-items: center; column-gap: 8px; padding: 4px 4px; border-radius: 4px; }
+.node-field:focus-within { background: var(--gold-wash); }
+.node-field-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-secondary); font-size: 11px; }
+.node-field:focus-within .node-field-name { color: var(--text-primary); }
+.node-field-state { grid-column: 2; margin-top: 3px; color: var(--text-secondary); font-size: 10px; line-height: 1.35; }
+.node-field-state.ok { color: var(--success); animation: node-fade 2.4s ease-in forwards; }
+.node-field-state.error { color: var(--error); }
+.node-field.failed input { border-color: color-mix(in srgb, var(--error) 70%, transparent); }
+.node-field.building input { border-style: dashed; }
+@keyframes node-fade { 0%, 70% { opacity: 1; } 100% { opacity: 0; } }
+.node-vector { display: flex; align-items: center; gap: 3px; min-width: 0; }
+.node-vector .node-quantity { flex: 1 1 0; }
+.node-vector-unit { padding: 0 0 0 2px; }
+.node-quantity { position: relative; display: flex; align-items: center; min-width: 0; height: 24px; border: 1px solid var(--border); border-radius: 4px; background: var(--control-bg); }
+.node-quantity:focus-within { border-color: var(--gold); box-shadow: 0 0 0 1px var(--gold); }
+.node-quantity i { flex: none; padding-left: 6px; color: var(--text-secondary); font-size: 9.5px; font-style: normal; font-weight: 600; }
+.node-quantity input { flex: 1; min-width: 0; height: 100%; padding: 0 2px 0 6px; border: 0 !important; outline: none !important; box-shadow: none !important; background: transparent; color: var(--text-primary); font: 11.5px/1 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-variant-numeric: tabular-nums; }
+.node-unit { flex: none; padding-right: 6px; color: var(--text-secondary); font-size: 10.5px; }
+.node-text { min-width: 0; height: 24px; padding: 0 6px; border: 1px solid var(--border); border-radius: 4px; outline: none; background: var(--control-bg); color: var(--text-primary); font: 11.5px/1 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+.node-text:focus { border-color: var(--gold); box-shadow: 0 0 0 1px var(--gold); }
+.node-inspector input:disabled { opacity: .55; }
+.node-draft { display: grid; gap: 5px; margin: 0 10px; padding: 9px 10px; border: 1px solid color-mix(in srgb, var(--error) 45%, transparent); border-left: 3px solid var(--error); border-radius: 4px; background: color-mix(in srgb, var(--error) 7%, var(--panel-elevated)); }
+.node-draft strong { color: var(--error); font-size: 11.5px; }
+.node-draft p { margin: 0; color: var(--text-secondary); font-size: 10.5px; line-height: 1.4; }
+.node-draft .node-draft-message { color: var(--text-primary); }
+.node-draft button { justify-self: start; margin-top: 2px; padding: 4px 10px; border: 0; border-radius: 4px; background: var(--accent); color: var(--accent-contrast); font-size: 11px; font-weight: 600; cursor: pointer; }
+.node-draft button:hover { background: var(--accent-hover); }
+.node-problems { display: grid; gap: 3px; margin: 0 12px; }
+.node-problems p { margin: 0; font-size: 10.5px; line-height: 1.4; color: var(--warning); }
+.node-problems p.error { color: var(--error); }
+.node-unset, .node-children { display: grid; gap: 1px; padding: 0 12px; }
+.node-unset > span, .node-children > span { margin: 2px 0 4px; color: var(--text-secondary); font-size: 9.5px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; }
+.node-unset p { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 8px; margin: 0; padding: 3px 0; }
+.node-unset b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-secondary); font-size: 11px; font-weight: 400; }
+.node-unset small { color: var(--text-secondary); opacity: .75; font-size: 10.5px; }
+.node-children button { display: flex; justify-content: space-between; gap: 8px; padding: 5px 6px; border: 0; border-radius: 4px; background: none; color: var(--text-primary); text-align: left; cursor: pointer; }
+.node-children button:hover { background: var(--control-bg); }
+.node-children b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
+.node-children small { flex: none; color: var(--text-secondary); font-size: 10px; }
+
+/* The last good model under a draft that does not build. */
+.viewport-pane canvas { transition: filter .18s ease; }
+.viewport-pane.ghosted canvas { filter: grayscale(.85) opacity(.5); }
