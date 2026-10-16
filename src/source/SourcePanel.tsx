@@ -17,7 +17,7 @@ globalThis.MonacoEnvironment = { getWorker: () => new EditorWorker() };
 loader.config({ monaco });
 monaco.languages.register({ id: 'firmament' });
 monaco.languages.setLanguageConfiguration('firmament', { brackets: [['{', '}'], ['(', ')'], ['[', ']']], autoClosingPairs: [{ open: '{', close: '}' }, { open: '(', close: ')' }, { open: '[', close: ']' }] });
-monaco.editor.defineTheme('helios-mars', {
+monaco.editor.defineTheme('helios-bronze-age', {
   base: 'vs-dark', inherit: true,
   rules: [
     { token: 'keyword', foreground: 'C99A4C', fontStyle: 'bold' },
@@ -42,29 +42,59 @@ monaco.editor.defineTheme('helios-mars', {
     'scrollbarSlider.background': '#48544C80', 'scrollbarSlider.hoverBackground': '#647563BB',
     'editorError.foreground': '#D86850', 'editorWarning.foreground': '#D79245' }
 });
-monaco.editor.defineTheme('helios-sirius', {
+// Apollonia: structure in ink, vocabulary in gold, values in one deep petrol so a
+// number never reads as a name. Brackets stay quiet; colour is for meaning only.
+monaco.editor.defineTheme('helios-apollonia', {
   base: 'vs', inherit: true,
   rules: [
-    { token: 'keyword', foreground: '906017', fontStyle: 'bold' }, { token: 'construct', foreground: '875819', fontStyle: 'bold' },
-    { token: 'field', foreground: '315F44' }, { token: 'number', foreground: '317F56' }, { token: 'unit', foreground: '317F56' },
-    { token: 'value', foreground: '317F56' }, { token: 'string', foreground: '43774D' },
-    { token: 'comment', foreground: '718174', fontStyle: 'italic' }, { token: 'punctuation', foreground: '839087' }
+    { token: '', foreground: '111111' },
+    { token: 'keyword', foreground: '7A5310', fontStyle: 'bold' },
+    { token: 'construct', foreground: '111111', fontStyle: 'bold' },
+    { token: 'type', foreground: '7A5310' },
+    { token: 'identifier', foreground: '111111' },
+    { token: 'field', foreground: '55524B' },
+    { token: 'number', foreground: '0E5A6B' },
+    { token: 'unit', foreground: '0E5A6B' },
+    { token: 'value', foreground: '0E5A6B' },
+    { token: 'selector', foreground: '7A5310', fontStyle: 'italic' },
+    { token: 'string', foreground: '0E5A6B' },
+    { token: 'comment', foreground: '8B877E', fontStyle: 'italic' },
+    { token: 'punctuation', foreground: '9A968D' },
   ],
-  colors: { 'editor.background': '#FFFFFF', 'editor.foreground': '#111111', 'editorCursor.foreground': '#111111',
-    'editor.selectionBackground': '#DADAD4', 'editor.lineHighlightBackground': '#F0F0EA',
-    'editorWidget.background': '#FAFAF7', 'editorWidget.border': '#111111', 'editorError.foreground': '#B83E2D' }
+  colors: {
+    'editor.background': '#FFFFFF', 'editor.foreground': '#111111', 'editorCursor.foreground': '#111111',
+    'editor.selectionBackground': '#F1DFB8', 'editor.inactiveSelectionBackground': '#F6ECD6',
+    'editor.selectionHighlightBackground': '#F6ECD699', 'editor.wordHighlightBackground': '#F6ECD6',
+    'editor.findMatchBackground': '#E9CF95', 'editor.findMatchHighlightBackground': '#F6ECD6',
+    'editor.lineHighlightBackground': '#FAF8F3', 'editor.lineHighlightBorder': '#00000000',
+    'editorLineNumber.foreground': '#B5B1A8', 'editorLineNumber.activeForeground': '#111111',
+    'editorIndentGuide.background1': '#EEEBE4', 'editorIndentGuide.activeBackground1': '#D6D2C8',
+    'editorBracketMatch.background': '#F6ECD6', 'editorBracketMatch.border': '#A8741A',
+    'editorBracketHighlight.foreground1': '#8A867D', 'editorBracketHighlight.foreground2': '#8A867D',
+    'editorBracketHighlight.foreground3': '#8A867D', 'editorBracketHighlight.foreground4': '#8A867D',
+    'editorBracketHighlight.foreground5': '#8A867D', 'editorBracketHighlight.foreground6': '#8A867D',
+    'editorWhitespace.foreground': '#E3E0D8', 'editorRuler.foreground': '#EEEBE4',
+    'editorWidget.background': '#FFFFFF', 'editorWidget.border': '#111111', 'editorWidget.foreground': '#111111',
+    'editorSuggestWidget.background': '#FFFFFF', 'editorSuggestWidget.border': '#111111',
+    'editorSuggestWidget.selectedBackground': '#F6ECD6', 'editorSuggestWidget.highlightForeground': '#7A5310',
+    'editorHoverWidget.background': '#FFFFFF', 'editorHoverWidget.border': '#111111',
+    'editorGutter.background': '#FFFFFF',
+    'scrollbarSlider.background': '#1111111F', 'scrollbarSlider.hoverBackground': '#11111138', 'scrollbarSlider.activeBackground': '#A8741A80',
+    'editorError.foreground': '#B3261E', 'editorWarning.foreground': '#9A5B12', 'editorInfo.foreground': '#0E5A6B',
+    'editorOverviewRuler.border': '#00000000',
+  }
 });
 
 export interface SourcePanelHandle { focusAt(reference?: SourceReference): void; cursor(): number; insert(value: string, offset?: number): void; replace(reference: SourceReference, expected: string, replacement: string): boolean; formatDocument(): Promise<void> }
 interface Props {
   disabled?: boolean; source: string; diagnostics: readonly Diagnostic[]; runtime?: CadRuntime; model?: ModelSession | null;
-  selectedSelector?: string | null; theme?: 'mars' | 'sirius'; onSourceChange(value: string): void; onRebuild(): void;
+  selectedSelector?: string | null; theme?: 'bronze-age' | 'apollonia'; onSourceChange(value: string): void; onRebuild(): void;
   onDiagnosticClick(diagnostic: Diagnostic): void; onCursorChange?(offset: number): void; onInsert?(value: string, offset: number): void;
   onLiveDiagnostics?(diagnostics: readonly Diagnostic[]): void; onLanguageError?(error: unknown): void;
   fileName?: string; dirty?: boolean;
 }
 
-export const SourcePanel = forwardRef<SourcePanelHandle, Props>(function SourcePanel({ source, diagnostics, runtime, model, selectedSelector, theme = 'mars', onSourceChange, onRebuild, onDiagnosticClick, onCursorChange, onInsert, onLiveDiagnostics, onLanguageError, fileName = 'model.firmament', dirty, disabled = false }, ref) {
+export const SourcePanel = forwardRef<SourcePanelHandle, Props>(function SourcePanel({ source, diagnostics, runtime, model, selectedSelector, theme = 'bronze-age', onSourceChange, onRebuild, onDiagnosticClick, onCursorChange, onInsert, onLiveDiagnostics, onLanguageError, fileName = 'model.firmament', dirty, disabled = false }, ref) {
   const [tab, setTab] = useState<'source' | 'diagnostics'>('source');
   const [wordWrap, setWordWrap] = useState(() => localStorage.getItem('helios-word-wrap') === 'on');
   useEffect(() => { localStorage.setItem('helios-word-wrap', wordWrap ? 'on' : 'off'); }, [wordWrap]);
@@ -162,7 +192,7 @@ export const SourcePanel = forwardRef<SourcePanelHandle, Props>(function SourceP
       <button className="rebuild-inline" onClick={onRebuild} disabled={disabled}>↻ Rebuild</button>
     </div>
     <div className="code-editor" style={{ display: tab === 'source' ? undefined : 'none' }} aria-label="Firmament editor">
-      <Editor path={`/document-${documentId.current}/${fileName}`} language="firmament" theme={theme === 'sirius' ? 'helios-sirius' : 'helios-mars'} value={source} onChange={value => { client.current?.update(value ?? '', fileName, model ?? null, selectedSelector ?? null); onSourceChange(value ?? ''); }} onMount={onMount}
+      <Editor path={`/document-${documentId.current}/${fileName}`} language="firmament" theme={theme === 'apollonia' ? 'helios-apollonia' : 'helios-bronze-age'} value={source} onChange={value => { client.current?.update(value ?? '', fileName, model ?? null, selectedSelector ?? null); onSourceChange(value ?? ''); }} onMount={onMount}
         options={{ fontFamily: '"Inter Variable", Inter, sans-serif', fontSize: 14, fontWeight: '400', lineNumbers: 'on', minimap: { enabled: false }, automaticLayout: true, readOnly: false, wordWrap: wordWrap ? 'on' : 'off', wrappingStrategy: 'advanced', scrollbar: { vertical: 'visible', verticalScrollbarSize: 14, horizontalScrollbarSize: 10, useShadows: false }, tabSize: 2, scrollBeyondLastLine: false, quickSuggestions: true, suggestOnTriggerCharacters: true, wordBasedSuggestions: 'off', 'semanticHighlighting.enabled': true }} />
     </div>
     {tab === 'diagnostics' && <div className="diagnostic-list">

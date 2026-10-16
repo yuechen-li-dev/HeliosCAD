@@ -138,7 +138,7 @@ function TelosViewport(props: Props & { onRetry(): void }) {
         selectedIds.has(line.identity.occurrenceId),
       visible: value.displayMode !== "shaded",
       color:
-        value.theme === "mars"
+        value.theme === "bronze-age"
           ? [0.18, 0.22, 0.2, 0.85]
           : [0.3, 0.35, 0.32, 0.85],
     }));
@@ -154,7 +154,7 @@ function TelosViewport(props: Props & { onRetry(): void }) {
     current.grid = true;
     current.gridPlane = "xy";
     current.background = clearColor(
-      value.theme === "mars" ? "#111814" : "#e9ece8",
+      value.theme === "bronze-age" ? "#111814" : "#e9ece8",
     );
     const key = value.model
       ? value.model.id + ":" + value.model.revision
@@ -311,8 +311,8 @@ function TelosViewport(props: Props & { onRetry(): void }) {
     >
       <div className="viewport-canvas" ref={container} data-testid="viewport">
         {inspectionFaces.length > 0 && <details style={{ position: "absolute", bottom: 12, left: 12, zIndex: 3,
-          padding: 8, maxWidth: 390, color: props.theme === "mars" ? "#eef4f1" : "#17221f",
-          background: props.theme === "mars" ? "#17221f" : "#f4f5f2" }}>
+          padding: 8, maxWidth: 390, color: props.theme === "bronze-age" ? "#eef4f1" : "#17221f",
+          background: props.theme === "bronze-age" ? "#17221f" : "#f4f5f2" }}>
           <summary>Surface / trim inspection</summary>
           <label>View <select aria-label="Surface inspection view" value={inspectionMode}
             onChange={event => setInspectionMode(event.target.value as SurfaceInspectionMode)}>

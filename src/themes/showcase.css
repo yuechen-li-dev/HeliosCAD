@@ -1,12 +1,6 @@
-/* Object-first showcase. Mars retains the original green/gold workspace palette. */
+/* Object-first showcase. Bronze Age keeps the green/gold workspace palette; Apollonia is ink, paper and gold. */
 :root { --space-1: 4px; --space-2: 8px; --space-3: 12px; --space-4: 16px; --space-6: 24px; --radius: 0px; --catalog-bg: #0c100e; --catalog-ink: #f0eadb; --catalog-rule: #c99843; }
-:root[data-theme="sirius"] {
-  --catalog-bg: #fafaf7; --catalog-ink: #111111; --catalog-rule: #111111;
-  --app-bg: #fafaf7; --panel-bg: #f5f5f2; --panel-elevated: #ffffff;
-  --control-bg: #ffffff; --topbar: #fafaf7; --viewport-bg: #f5f5f2;
-  --border: #c6c6c0; --border-strong: #111111; --text-primary: #111111; --text-secondary: #595952;
-  --accent: #171717; --accent-hover: #333333; --selection: #9b6b22;
-}
+:root[data-theme="apollonia"] { --catalog-bg: #fafaf7; --catalog-ink: #111111; --catalog-rule: #111111; }
 html, body, #root { min-width: 0; min-height: 0; }
 button, a, select { -webkit-tap-highlight-color: transparent; }
 button { cursor: pointer; } button:disabled { cursor: default; opacity: .5; }
@@ -22,7 +16,7 @@ button, a { transition: background-color 100ms, border-color 100ms, color 100ms;
 .theme-toggle { padding: 8px 0; background: transparent; color: inherit; }
 .primary-button { min-height: 48px; min-width: 180px; padding: 12px 22px; background: var(--catalog-ink); color: var(--catalog-bg); border: 2px solid var(--catalog-rule); font-weight: 650; }
 .primary-button span { margin-left: 24px; }
-:root[data-theme="mars"] .welcome-hero .primary-button { background: var(--accent); color: #0c100e; }
+:root[data-theme="bronze-age"] .welcome-hero .primary-button { background: var(--accent); color: #0c100e; }
 .primary-button:hover { background: var(--accent-hover); color: var(--panel-elevated); }
 .welcome-main { width: 100%; margin: 0 auto; padding: 0 24px 32px; container-type: inline-size; }
 .welcome-hero { padding: 40px 0 40px; text-align: center; }
@@ -38,7 +32,7 @@ button, a { transition: background-color 100ms, border-color 100ms, color 100ms;
 @media (prefers-reduced-motion: reduce) { .hero-statement-track { animation: none; }.hero-statement-control { display: none; } }
 .hero-actions { display: flex; justify-content: center; gap: 16px; flex-wrap: wrap; }
 .hero-actions .primary-button { min-height: 60px; min-width: 210px; border-width: 3px; font-size: 17px; }
-.hero-actions .secondary-button, :root[data-theme="mars"] .welcome-hero .secondary-button { background: transparent; color: var(--catalog-ink); }
+.hero-actions .secondary-button, :root[data-theme="bronze-age"] .welcome-hero .secondary-button { background: transparent; color: var(--catalog-ink); }
 .hero-actions .secondary-button:hover { background: var(--catalog-ink); color: var(--catalog-bg); }
 .gallery-heading { display: flex; align-items: center; justify-content: space-between; gap: 20px; }
 .gallery-heading h2 { font-size: 23px; font-weight: 650; letter-spacing: -.04em; margin: 0; }
@@ -63,7 +57,9 @@ button, a { transition: background-color 100ms, border-color 100ms, color 100ms;
 .app-loading { height: 100%; display: flex; gap: 12px; align-items: center; justify-content: center; color: var(--text-secondary); background: var(--app-bg); }
 .brand { width: auto; min-width: 134px; padding: 0 16px; background: transparent; text-align: left; }.brand:hover { background: var(--panel-elevated); }
 .workspace-identity { min-width: 100px; max-width: 240px; display: flex; flex-direction: column; justify-content: center; padding: 0 18px; gap: 4px; border-right: 1px solid var(--border); }.workspace-identity strong { font-size: 12px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }.workspace-identity small { color: var(--text-secondary); font-size: 10px; }
-.workspace-tabs { align-items: center; gap: 4px; padding: 0 10px; border: 0; }.workspace-tabs button { height: 30px; padding: 0 10px; font-size: 11px; letter-spacing: 0; border-radius: var(--radius); border: 1px solid transparent; }.workspace-tabs .build-action { min-width: 74px; background: var(--accent); color: #171b21; font-weight: 600; }.workspace-tabs .build-action:hover { background: var(--accent-hover); color: #171b21; }
+.workspace-tabs { align-items: center; gap: 4px; padding: 0 10px; border: 0; }.workspace-tabs button { height: 30px; padding: 0 10px; font-size: 11px; letter-spacing: 0; border-radius: var(--radius); border: 1px solid transparent; }.workspace-tabs .build-action { min-width: 74px; background: var(--accent); color: var(--accent-contrast); font-weight: 600; }.workspace-tabs .build-action:hover { background: var(--accent-hover); color: var(--accent-contrast); }
+/* While a build runs the button reports progress; it should read as busy, not as broken. */
+.workspace-tabs .build-action:disabled { opacity: 1; background: var(--gold-wash); color: var(--gold-ink); border-color: color-mix(in srgb, var(--gold) 45%, transparent); }
 .toolbar .palette-trigger { min-width: 150px; }.palette-trigger kbd { display: none; }.top-actions { border: 0; padding: 0 10px; }.top-actions select { padding: 5px; font-size: 11px; border-radius: 3px; }.top-actions button { font-size: 16px; }
 .workbench { position: relative; }.workbench > .resize-horizontal { left: var(--editor-width); top: 0; bottom: 0; }
 .resize-handle { position: absolute; z-index: 8; touch-action: none; background: transparent; }.resize-handle:hover, .resize-handle:focus-visible { background: var(--accent); }.resize-horizontal { width: 5px; transform: translateX(-3px); cursor: col-resize; }.resize-vertical { height: 5px; top: -3px; left: 0; right: 0; cursor: row-resize; }

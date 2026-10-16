@@ -27,7 +27,7 @@ export function CloudApp() {
   const [visibleCount, setVisibleCount] = useState(12);
   const [showSource, setShowSource] = useState(false);
   const [zoom, setZoom] = useState(100);
-  const [theme, setTheme] = useState(() => localStorage.getItem('helios-theme') === 'sirius' ? 'sirius' : 'mars');
+  const [theme, setTheme] = useState(() => ['apollonia', 'sirius'].includes(localStorage.getItem('helios-theme') ?? '') ? 'apollonia' : 'bronze-age');
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
@@ -149,7 +149,7 @@ export function CloudApp() {
   return <div className="discovery-page">
     <header className="discovery-header"><button className="discovery-brand" onClick={() => navigate('/discover')} aria-label="Helios Discover"><strong>H</strong><span>HELIOS<small>by Aetheris</small></span></button>
       <nav aria-label="Main"><button className={page.kind === 'discover' ? 'selected' : ''} onClick={() => navigate('/discover')}>Discover</button><button className={page.kind === 'projects' ? 'selected' : ''} onClick={() => user ? navigate('/projects') : setAuthIntent('projects')}>My Projects</button></nav>
-      <div className="discovery-account"><select aria-label="Theme" value={theme} onChange={event => setTheme(event.target.value)}><option value="mars">Mars</option><option value="sirius">Sirius</option></select>{user ? <><span>{user.displayName}</span><button onClick={() => void logout()}>Sign out</button></> : <button onClick={() => setAuthIntent('projects')}>Sign in</button>}</div>
+      <div className="discovery-account"><select aria-label="Theme" value={theme} onChange={event => setTheme(event.target.value)}><option value="bronze-age">Bronze Age</option><option value="apollonia">Apollonia</option></select>{user ? <><span>{user.displayName}</span><button onClick={() => void logout()}>Sign out</button></> : <button onClick={() => setAuthIntent('projects')}>Sign in</button>}</div>
     </header>
     {error && <p className="discovery-error" role="alert">{error}</p>}
     {page.kind === 'discover' && <main className="discover-main"><div className="discover-intro"><div><span className="cloud-eyebrow">DISCOVER</span><h1>Explore models. Make one yours.</h1></div><p>Open a model, see its Firmament source, and make a copy in Helios.</p></div>

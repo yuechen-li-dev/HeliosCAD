@@ -30,7 +30,7 @@ test('wireframe catalog stays light until opened and carries the chosen theme in
   const runtimeRequests: string[] = [];
   page.on('request', request => { if (/\.wasm|\/_framework\//.test(request.url())) runtimeRequests.push(request.url()); });
   await page.goto('/');
-  await expect(page.locator('html')).toHaveAttribute('data-theme', 'sirius');
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'apollonia');
   await expect(page.getByRole('heading', { name: 'HeliosCAD', exact: true })).toBeVisible();
   await expect.poll(() => page.locator('.showcase-image img').evaluateAll(images => images.length === 5 && images.every(image => (image as HTMLImageElement).complete && (image as HTMLImageElement).naturalWidth > 0))).toBe(true);
   const sources = await page.locator('.showcase-image img').evaluateAll(images => images.map(image => image.getAttribute('src')!));
@@ -55,7 +55,7 @@ test('wireframe catalog stays light until opened and carries the chosen theme in
   await page.screenshot({ path: `${evidence}/mobile.png` });
   await page.setViewportSize({ width: 1920, height: 1080 });
   await page.getByRole('button', { name: 'Use dark theme' }).click();
-  await expect(page.locator('html')).toHaveAttribute('data-theme', 'mars');
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'bronze-age');
   expect(await page.locator('.welcome-shell').evaluate(el => getComputedStyle(el).backgroundColor)).toBe('rgb(12, 16, 14)');
   await page.reload();
   await expect(page.getByRole('button', { name: 'Use light theme' })).toBeVisible();
@@ -67,19 +67,19 @@ test('wireframe catalog stays light until opened and carries the chosen theme in
   await expect(page.locator('.status-ready')).toContainText('READY');
   await expect(page.locator('.workspace-identity')).toContainText('Untitled part');
   await expect(page.locator('.view-lines')).toContainText('Model Untitled');
-  await expect(page.getByLabel('Theme')).toHaveValue('mars');
+  await expect(page.getByLabel('Theme')).toHaveValue('bronze-age');
   await expect(page.locator('[data-display-host="three-telos"] canvas')).toBeVisible();
   expect(await page.locator('.monaco-editor').first().evaluate(el => getComputedStyle(el).backgroundColor)).toBe('rgb(16, 23, 19)');
   await page.screenshot({ path: `${evidence}/studio-dark.png` });
-  await page.getByLabel('Theme').selectOption('sirius');
-  await expect(page.locator('html')).toHaveAttribute('data-theme', 'sirius');
+  await page.getByLabel('Theme').selectOption('apollonia');
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'apollonia');
   await page.screenshot({ path: `${evidence}/studio-light.png` });
-  await page.getByLabel('Theme').selectOption('mars');
+  await page.getByLabel('Theme').selectOption('bronze-age');
   await page.getByRole('button', { name: 'Helios home', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Use light theme' })).toBeVisible();
-  await expect(page.locator('html')).toHaveAttribute('data-theme', 'mars');
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'bronze-age');
   await page.getByRole('button', { name: 'Use light theme' }).click();
-  await expect(page.locator('html')).toHaveAttribute('data-theme', 'sirius');
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'apollonia');
 });
 
 test('New assembly opens an editable starter and rebuilds through the real SDK', async ({ page }) => {

@@ -11,7 +11,7 @@ interface Props {
   error: string | null;
   diagnostics: readonly Diagnostic[];
   selection: GraphSelection | null;
-  theme: 'mars' | 'sirius';
+  theme: 'bronze-age' | 'apollonia';
   onSelect(unitId: string, row: GraphRow | null, graph: PartGraph): void;
   onOpenSource(unitId: string, row: GraphRow | null, graph: PartGraph): void;
 }
@@ -81,7 +81,7 @@ function Canvas({ outline, error, diagnostics, selection, theme, onSelect, onOpe
   if (!outline) return <div className="graph-empty">{error ? <><strong>The graph can't be shown yet.</strong><p>{error}</p></> : <p>Reading the model structure…</p>}</div>;
   if (!laid?.units.length) return <div className="graph-empty"><strong>Nothing to show.</strong><p>This document has no declarations yet. Switch to Source to start writing, or open an example.</p></div>;
 
-  return <ReactFlow nodes={nodes} edges={edges} nodeTypes={nodeTypes} colorMode={theme === 'sirius' ? 'light' : 'dark'}
+  return <ReactFlow nodes={nodes} edges={edges} nodeTypes={nodeTypes} colorMode={theme === 'apollonia' ? 'light' : 'dark'}
     nodesDraggable={false} nodesConnectable={false} elementsSelectable={false} minZoom={0.15} maxZoom={2}
     zoomOnDoubleClick={false}
     onNodeClick={(_, node) => graph && onSelect(node.id, null, graph)}

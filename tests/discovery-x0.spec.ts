@@ -4,7 +4,7 @@ import { createHash } from 'node:crypto';
 
 const password = 'Discovery-Correct-Password-2026!';
 
-test('gallery remains readable on mobile in Mars and Sirius', async ({ page }) => {
+test('gallery remains readable on mobile in Bronze Age and Apollonia', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto('/discover');
   await expect(page.locator('.gallery-card')).toHaveCount(8);
@@ -15,11 +15,11 @@ test('gallery remains readable on mobile in Mars and Sirius', async ({ page }) =
     expect(await card.locator('img').evaluate(image => (image as HTMLImageElement).naturalWidth)).toBeGreaterThan(0);
   }
   await page.evaluate(() => scrollTo(0, 0));
-  await page.screenshot({ path: 'test-results/discovery-mobile-mars.png', fullPage: true });
-  await page.getByRole('combobox', { name: 'Theme' }).selectOption('sirius');
-  await expect(page.locator('html')).toHaveAttribute('data-theme', 'sirius');
+  await page.screenshot({ path: 'test-results/discovery-mobile-bronze-age.png', fullPage: true });
+  await page.getByRole('combobox', { name: 'Theme' }).selectOption('apollonia');
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'apollonia');
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
-  await page.screenshot({ path: 'test-results/discovery-mobile-sirius.png', fullPage: true });
+  await page.screenshot({ path: 'test-results/discovery-mobile-apollonia.png', fullPage: true });
 });
 
 test('Cartesian lamp shows its two authored sources and exact STEP artifact', async ({ page }) => {

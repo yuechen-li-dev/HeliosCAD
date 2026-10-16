@@ -14,7 +14,7 @@ export function WorkspaceStatus({ busy, elapsed, runtimeName, model, sourceRevis
     <span>{model?.mesh.definitions.length ?? 0} DEFS · {model?.mesh.occurrences.length ?? 0} OCC</span>
     <span className={diagnostics.length ? 'has-diagnostics' : ''}>{diagnostics.length ? `⚠ ${diagnostics.length}` : '✓ 0'} DIAGNOSTICS</span>
     {timing && <span className="status-timing">{timing.label} {timing.milliseconds.toFixed(0)}MS</span>}
-    <span className="status-spacer" /><span className="status-revisions" title="Source and displayed geometry have separate revisions">SOURCE REV {sourceRevision} · DISPLAY REV {displayRevision ?? '—'}</span><span>{viewMode.toUpperCase()}</span><span>{theme.toUpperCase()}</span>
+    <span className="status-spacer" /><span className="status-revisions" title="Source and displayed geometry have separate revisions">SOURCE REV {sourceRevision} · DISPLAY REV {displayRevision ?? '—'}</span><span>{viewMode.toUpperCase()}</span><span>{theme === 'bronze-age' ? 'BRONZE AGE' : 'APOLLONIA'}</span>
     {busy === 'Worker failed' && <button onClick={onRestart}>Restart Worker</button>}
   </footer>;
 }

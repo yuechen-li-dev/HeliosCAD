@@ -6,9 +6,9 @@ test("surface inspection preserves source selection through packed face isolatio
   await page.getByText("Surface / trim inspection", { exact: true }).click();
   const canvas = page.getByLabel("Engineering WebGPU viewport");
   const state = () => canvas.evaluate(element => JSON.parse(element.getAttribute("data-surface-inspection") ?? "{}"));
-  for (const theme of ["Sirius", "Mars"]) {
+  for (const [theme, id] of [["Apollonia", "apollonia"], ["Bronze Age", "bronze-age"]]) {
     await page.getByRole("button", {name: theme + " viewport"}).click();
-    await expect.poll(() => canvas.evaluate(element => JSON.parse(element.getAttribute("data-telos-presentation") ?? "{}").id)).toBe(theme.toLowerCase());
+    await expect.poll(() => canvas.evaluate(element => JSON.parse(element.getAttribute("data-telos-presentation") ?? "{}").id)).toBe(id);
   }
   let camera: unknown;
   for (const mode of ["surfaces", "wire", "overlay", "patches"]) {

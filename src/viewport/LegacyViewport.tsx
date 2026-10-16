@@ -212,8 +212,8 @@ function updateMaterials(group: THREE.Group, selectedIds: Set<string>, hovered: 
 }
 
 function applyAppearance(state: ReturnType<typeof createScene>, theme: ThemeName, mode: DisplayMode) {
-  state.scene.background = new THREE.Color(theme === 'mars' ? 0x111814 : 0xe9ece8);
-  (state.grid.material as THREE.Material).opacity = theme === 'mars' ? 0.28 : 0.4;
+  state.scene.background = new THREE.Color(theme === 'bronze-age' ? 0x111814 : 0xe9ece8);
+  (state.grid.material as THREE.Material).opacity = theme === 'bronze-age' ? 0.28 : 0.4;
   (state.grid.material as THREE.Material).transparent = true;
   for (const object of state.group.children) if (object instanceof THREE.Mesh) {
     if ((object.userData as MeshMeta).highlight) continue;
@@ -222,7 +222,7 @@ function applyAppearance(state: ReturnType<typeof createScene>, theme: ThemeName
     mat.flatShading = mode !== 'shaded'; mat.needsUpdate = true;
   } else if (object instanceof THREE.LineSegments) {
     object.visible = mode === 'edges';
-    (object.material as THREE.LineBasicMaterial).color.set(theme === 'mars' ? 0x323a35 : 0x69716d);
+    (object.material as THREE.LineBasicMaterial).color.set(theme === 'bronze-age' ? 0x323a35 : 0x69716d);
   }
   state.invalidate();
 }

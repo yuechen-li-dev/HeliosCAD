@@ -382,7 +382,7 @@ export function HeliosApp({ project, initialWorkspace, onShowcase, onSave, onPub
       <div className="toolbar">
         <button className="palette-trigger" onClick={() => setPaletteOpen(true)}>⌕ <span>Command Palette</span><kbd>Ctrl+Shift+P</kbd></button>
       </div>
-      <div className="top-actions"><button title="Toggle utility dock" aria-label="Toggle utility dock" aria-pressed={shellLayout.utilityOpen} onClick={() => shellLayout.setUtilityOpen(value => !value)}>▥</button><select aria-label="Theme" value={theme} onChange={event => setTheme(event.target.value as ThemeName)}><option value="mars">Mars</option><option value="sirius">Sirius</option></select></div>
+      <div className="top-actions"><button title="Toggle utility dock" aria-label="Toggle utility dock" aria-pressed={shellLayout.utilityOpen} onClick={() => shellLayout.setUtilityOpen(value => !value)}>▥</button><select aria-label="Theme" value={theme} onChange={event => setTheme(event.target.value as ThemeName)}><option value="bronze-age">Bronze Age</option><option value="apollonia">Apollonia</option></select></div>
       <input ref={fileInput} hidden type="file" multiple accept=".firmament,.firmasm,.txt" onChange={async event => {
         const files = Array.from(event.target.files ?? []); if (!files.length) return;
         if (project && files.length > 1) { setDiagnostics([toDiagnostic(new Error('This saved project stores one document. Open multi-file projects from Helios home.'), 'project-single-source')]); event.target.value = ''; return; }
