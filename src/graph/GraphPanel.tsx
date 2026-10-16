@@ -13,6 +13,7 @@ export interface GraphSelection { readonly unitId: string; readonly rowId: strin
 export interface GraphAuthoring {
   palette: readonly PaletteItem[];
   featureTarget: { body: string } | { reason: string };
+  unavailable(item: PaletteItem): string | null;
   onInsert(item: PaletteItem): void;
   /** A wire from `provider` landed on `consumer` and the engineer chose how it connects. */
   onWire(provider: string, consumer: OutlineNode, choice: WireChoice): void;
@@ -188,7 +189,7 @@ function Canvas({ outline, error, diagnostics, selection, theme, onSelect, onOpe
       <Background variant={BackgroundVariant.Dots} gap={18} size={1} />
       <Controls showInteractive={false} position="bottom-right" />
     </ReactFlow> : <div className="graph-empty"><strong>Nothing to show.</strong><p>This document has no declarations yet. {authoring ? 'Add a body to start.' : 'Switch to Source to start writing, or open an example.'}</p></div>}
-    {authoring && paletteAt && <PalettePopover items={authoring.palette} at={paletteAt} featureTarget={authoring.featureTarget}
+    {authoring && paletteAt && <PalettePopover items={authoring.palette} at={paletteAt} featureTarget={authoring.featureTarget} unavailable={authoring.unavailable}
       onClose={() => setPaletteAt(null)} onPick={item => { setPaletteAt(null); authoring.onInsert(item); }} />}
     {authoring && wire && consumerNode && <div className="graph-wire-menu" role="menu" aria-label="Connect" style={{ left: wire.x, top: wire.y }}
       onKeyDown={event => { if (event.key === 'Escape') setWire(null); }}>

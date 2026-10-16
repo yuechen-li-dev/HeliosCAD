@@ -47,6 +47,16 @@ export function bodyParent(outline: LanguageOutline | null, selectedId: string |
   return nodes.find(node => node.parentId === null && (node.kind === 'Model' || node.kind === 'model'))?.id ?? null;
 }
 
+/** A part holds one body: starter bodies only go into a container that has none yet. */
+export function paletteUnavailable(item: PaletteItem, outline: LanguageOutline | null, selectedId: string | null): string | null {
+  if (item.placement === 'feature') { const target = featureTarget(outline, selectedId); return 'reason' in target ? target.reason : null; }
+  if (!item.requiresEmptyModel) return null;
+  const parent = bodyParent(outline, selectedId);
+  const nodes = outline?.nodes ?? [];
+  const occupied = nodes.some(node => node.parentId === parent && categoryOf(node) === 'body' && !containerKinds.has(node.kind));
+  return occupied ? 'This part already has a body. A part builds one body; put another part in an Assembly, or combine them with Compose.' : null;
+}
+
 export function paletteOperation(item: PaletteItem, outline: LanguageOutline | null, selectedId: string | null): LanguageEditOperation | { reason: string } {
   const name = uniqueName(item.nameStem, outline);
   if (item.placement === 'feature') {

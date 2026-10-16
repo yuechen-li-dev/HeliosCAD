@@ -25,7 +25,7 @@ import { useTheme } from '../themes/useTheme';
 import { GraphPanel, type GraphSelection } from '../graph/GraphPanel';
 import { NodeInspector, type GraphEditState } from '../graph/NodeInspector';
 import { outlineNode, spliceField } from '../graph/fieldEdit';
-import { featureTarget, paletteOperation, wireOperation } from '../graph/graphAuthoring';
+import { featureTarget, paletteOperation, paletteUnavailable, wireOperation } from '../graph/graphAuthoring';
 import { buildPartGraph, nodeAtSpan, unitAtSpan, type GraphRow, type PartGraph } from '../graph/outlineGraph';
 
 type UtilityTab = { kind: 'files' } | { kind: 'inspector' } | { kind: 'examples' } | { kind: 'llm' };
@@ -363,6 +363,7 @@ export function HeliosApp({ project, initialWorkspace, onShowcase, onSave, onPub
     return {
       palette,
       featureTarget: 'body' in target ? { body: target.body.name ?? target.body.id } : target,
+      unavailable: (item: PaletteItem) => paletteUnavailable(item, outline, inspectedId),
       onInsert: (item: PaletteItem) => {
         const operation = paletteOperation(item, outline, inspectedId);
         if ('reason' in operation) { pushOutput(operation.reason); return; }

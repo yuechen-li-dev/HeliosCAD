@@ -70,7 +70,9 @@ export function fieldSuggestions(node: OutlineNode, completion: readonly Languag
   for (const field of completion) if (!authored.has(field.name.toLowerCase()) && !out.has(field.name.toLowerCase()))
     out.set(field.name.toLowerCase(), { name: field.name, hint: field.default ? `default ${field.default}` : field.required ? 'required' : field.type,
       value: startingValue(field.type, field.default, field.choices), description: field.meaning || null });
-  for (const field of schema?.fields ?? []) if (!authored.has(field.name.toLowerCase()) && !out.has(field.name.toLowerCase()))
+  // A schema field may apply to some variants only (Counterbore fields on Hole<Counterbore>).
+  const applies = (variants?: readonly string[]) => !variants?.length || (!!node.variant && variants.includes(node.variant));
+  for (const field of schema?.fields ?? []) if (applies(field.variants) && !authored.has(field.name.toLowerCase()) && !out.has(field.name.toLowerCase()))
     out.set(field.name.toLowerCase(), { name: field.name, hint: field.default != null ? `default ${field.default}` : field.required ? 'required' : 'optional',
       value: startingValue(field.unit === 'None' ? field.kind : field.unit, field.default, field.choices), description: field.description });
   return [...out.values()].sort((a, b) => Number(b.hint === 'required') - Number(a.hint === 'required'));

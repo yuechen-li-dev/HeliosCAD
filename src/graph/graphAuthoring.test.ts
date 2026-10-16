@@ -53,3 +53,15 @@ describe('graph authoring', () => {
     expect(reorderOperation(graph, ids[1], 'MotorMount/Stock', 'after')).toBeNull();
   });
 });
+
+describe('palette applicability', () => {
+  it('keeps starter bodies out of a part that already has one', async () => {
+    const { paletteUnavailable } = await import('./graphAuthoring');
+    const starter = { ...box, requiresEmptyModel: true };
+    expect(paletteUnavailable(starter, outline, null)).toMatch(/already has a body/);
+    const empty = { ...outline, nodes: outline.nodes.filter(n => n.id === 'MotorMount') } as LanguageOutline;
+    expect(paletteUnavailable(starter, empty, null)).toBeNull();
+    expect(paletteUnavailable(hole, empty, null)).toBe('Add a body first.');
+    expect(paletteUnavailable(hole, outline, null)).toBeNull();
+  });
+});

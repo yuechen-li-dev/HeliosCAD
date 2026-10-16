@@ -96,3 +96,14 @@ describe('node inspector', () => {
     expect(startingValue('Angle')).toBe('0deg');
   });
 });
+
+describe('variant-aware suggestions', () => {
+  it('offers counterbore fields only on a counterbored hole', () => {
+    const hole = { ...plate, kind: 'Hole', variant: 'Shaft', fields: [] };
+    const relief = { id: 'Hole.CounterboreDepth', name: 'CounterboreDepth', kind: 'Length', unit: 'Length' as const, required: false, default: null, choices: [], variants: ['Counterbore'], description: null, sourceEditable: false };
+    const diameter = { ...relief, id: 'Hole.Diameter', name: 'Diameter', variants: [] };
+    const schema = { id: 'Hole', name: 'Hole', context: null, entry: null, description: null, compatibilityAlias: null, outputs: [], fields: [diameter, relief] };
+    expect(fieldSuggestions(hole, [], schema).map(s => s.name)).toEqual(['Diameter']);
+    expect(fieldSuggestions({ ...hole, variant: 'Counterbore' }, [], schema).map(s => s.name)).toEqual(['Diameter', 'CounterboreDepth']);
+  });
+});

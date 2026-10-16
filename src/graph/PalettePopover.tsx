@@ -7,12 +7,14 @@ interface Props {
   at: { x: number; y: number };
   /** Where features land (a body name), or why they cannot be added now. */
   featureTarget: { body: string } | { reason: string };
+  /** Why an item cannot be added here, or null. */
+  unavailable(item: PaletteItem): string | null;
   onPick(item: PaletteItem): void;
   onClose(): void;
 }
 
 /** Search-first palette: type to filter, arrows to move, Enter to add. */
-export function PalettePopover({ items, at, featureTarget, onPick, onClose }: Props) {
+export function PalettePopover({ items, at, featureTarget, unavailable, onPick, onClose }: Props) {
   const [query, setQuery] = useState('');
   const [active, setActive] = useState(0);
   const root = useRef<HTMLDivElement>(null);
@@ -20,7 +22,7 @@ export function PalettePopover({ items, at, featureTarget, onPick, onClose }: Pr
     const q = query.trim().toLowerCase();
     return items.filter(item => !q || `${item.label} ${item.category} ${item.description}`.toLowerCase().includes(q));
   }, [items, query]);
-  const usable = (item: PaletteItem) => item.placement !== 'feature' || 'body' in featureTarget;
+  const usable = (item: PaletteItem) => unavailable(item) === null;
   useEffect(() => setActive(index => Math.min(index, Math.max(0, shown.length - 1))), [shown.length]);
   useEffect(() => {
     const away = (event: PointerEvent) => { if (root.current && !root.current.contains(event.target as Node)) onClose(); };
@@ -47,7 +49,7 @@ export function PalettePopover({ items, at, featureTarget, onPick, onClose }: Pr
           const position = ++index;
           return <button key={item.id} role="option" aria-selected={position === active} disabled={!usable(item)}
             className={position === active ? 'active' : ''} onMouseEnter={() => setActive(position)} onClick={() => pick(item)}
-            title={usable(item) ? item.description : 'reason' in featureTarget ? featureTarget.reason : undefined}>
+            title={unavailable(item) ?? item.description}>
             <b>{item.label}</b><small>{item.description}</small>
           </button>;
         })}
