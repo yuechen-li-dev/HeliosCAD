@@ -156,7 +156,10 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .editor-mode button:hover { color: var(--text-primary); }
 .editor-mode button.active { color: var(--text-primary); background: var(--panel-elevated); box-shadow: inset 0 0 0 1px var(--border-strong), inset 0 -2px 0 var(--gold); }
 .graph-panel { min-height: 0; display: grid; grid-template-rows: auto minmax(0, 1fr); background: var(--viewport-bg); }
-.graph-caption { display: grid; gap: 2px; padding: 7px 12px 8px; border-bottom: 1px solid var(--border); background: var(--panel-bg); }
+.graph-caption { display: flex; align-items: center; gap: 10px; padding: 7px 10px 8px 12px; border-bottom: 1px solid var(--border); background: var(--panel-bg); }
+.graph-caption > div { display: grid; flex: 1; min-width: 0; gap: 2px; }
+.graph-add { flex: none; height: 26px; padding: 0 12px; border: 0; border-radius: 4px; background: var(--accent); color: var(--accent-contrast); font-size: 11.5px; font-weight: 600; cursor: pointer; }
+.graph-add:hover { background: var(--accent-hover); }
 .graph-caption span { font-size: 12px; font-weight: 600; }
 .graph-caption small { color: var(--text-secondary); font-size: 10.5px; }
 .graph-canvas { min-height: 0; }
@@ -271,6 +274,41 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .node-children button:hover { background: var(--control-bg); }
 .node-children b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
 .node-children small { flex: none; color: var(--text-secondary); font-size: 10px; }
+
+/* G4: palette, wiring and reordering on the canvas. */
+.graph-canvas { position: relative; }
+.graph-palette { position: absolute; z-index: 20; width: 292px; max-height: min(440px, calc(100% - 16px)); display: grid; grid-template-rows: auto auto minmax(0, 1fr);
+  border: 1px solid var(--border-strong); border-radius: 6px; background: var(--panel-bg); box-shadow: 0 14px 40px var(--shadow); overflow: hidden; }
+.graph-palette input { height: 38px; padding: 0 12px; border: 0; border-bottom: 1px solid var(--border); outline: none; background: var(--control-bg); color: var(--text-primary); font-size: 13px; }
+.graph-palette-target { padding: 6px 12px; border-bottom: 1px solid var(--border); color: var(--text-secondary); font-size: 10.5px; }
+.graph-palette-target b { color: var(--gold-ink); font-weight: 600; }
+.graph-palette-list { overflow: auto; padding: 4px; }
+.graph-palette-list [role=group] > span { display: block; padding: 8px 8px 3px; color: var(--text-secondary); font-size: 9.5px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; }
+.graph-palette-list button { display: grid; gap: 2px; width: 100%; padding: 6px 8px; border: 0; border-radius: 4px; background: none; color: var(--text-primary); text-align: left; cursor: pointer; }
+.graph-palette-list button b { font-size: 12px; font-weight: 600; }
+.graph-palette-list button small { color: var(--text-secondary); font-size: 10.5px; line-height: 1.35; }
+.graph-palette-list button.active:not(:disabled) { background: var(--gold-wash); box-shadow: inset 2px 0 0 var(--gold); }
+.graph-palette-list button:disabled { opacity: .45; cursor: not-allowed; }
+.graph-palette-list p { margin: 0; padding: 12px; color: var(--text-secondary); font-size: 11px; }
+.graph-wire-menu { position: absolute; z-index: 20; width: 260px; display: grid; gap: 2px; padding: 6px; border: 1px solid var(--border-strong); border-radius: 6px; background: var(--panel-bg); box-shadow: 0 14px 40px var(--shadow); }
+.graph-wire-menu > p { margin: 2px 4px 6px; color: var(--text-secondary); font-size: 11px; line-height: 1.4; }
+.graph-wire-menu > p b { color: var(--text-primary); }
+.graph-wire-menu button { padding: 6px 8px; border: 0; border-radius: 4px; background: none; color: var(--text-primary); font-size: 12px; text-align: left; cursor: pointer; }
+.graph-wire-menu button small { color: var(--text-secondary); font-size: 10.5px; }
+.graph-wire-menu button:hover, .graph-wire-menu button:focus-visible { outline: none; background: var(--gold-wash); }
+.graph-wire-menu button.cancel { margin-top: 2px; border-top: 1px solid var(--border); border-radius: 0 0 4px 4px; color: var(--text-secondary); }
+.graph-wire-menu .graph-wire-none { color: var(--warning); }
+.graph-unit .react-flow__handle.connectable { width: 10px; height: 10px; border: 2px solid var(--panel-elevated); background: var(--gold); opacity: 0; transition: opacity .12s ease; cursor: crosshair; }
+.graph-unit:hover .react-flow__handle.connectable, .graph-panel .react-flow__handle.connectingfrom, .graph-panel .react-flow__handle.connectingto, .graph-panel .react-flow__handle.valid { opacity: 1; }
+.graph-panel .react-flow__connection-path { stroke: var(--gold); stroke-width: 2; stroke-dasharray: 5 4; }
+.graph-rows button > span { flex: 1; min-width: 0; }
+.graph-rows button.movable { cursor: grab; }
+.graph-rows button.movable:active { cursor: grabbing; }
+.graph-grip { flex: none; margin-left: -2px; color: var(--text-secondary); font-size: 9px; font-style: normal; letter-spacing: -2px; opacity: 0; }
+.graph-rows li:hover .graph-grip { opacity: .7; }
+.graph-rows li { position: relative; }
+.graph-rows li.drop-before::before, .graph-rows li.drop-after::after { content: ''; position: absolute; left: 4px; right: 4px; height: 2px; border-radius: 1px; background: var(--gold); }
+.graph-rows li.drop-before::before { top: 0; } .graph-rows li.drop-after::after { bottom: -2px; }
 
 /* The last good model under a draft that does not build. */
 .viewport-pane canvas { transition: filter .18s ease; }

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { ConstructProjection, Diagnostic, EditableProperty, FieldProjection, LanguageOutline, ModelSession, LanguageEditOperation, LanguageField, OutlineField, OutlineNode, SelectionDescription, SemanticSchema, UnitValue } from '@aetheris/cad';
+import type { ConstructProjection, Diagnostic, EditableProperty, FieldProjection, LanguageOutline, ModelSession, LanguageEditOperation, LanguageField, OutlineField, OutlineNode, PaletteItem, SelectionDescription, SemanticSchema, UnitValue } from '@aetheris/cad';
 import { WebSdkCadRuntime } from '../sdk/CadRuntime';
 import { AetherisWorkerClient, type BuildResult } from '../sdk/AetherisWorkerClient';
 import { assemblySource, bracketSource, emptyModelSource } from '../sdk/samples';
@@ -25,6 +25,7 @@ import { useTheme } from '../themes/useTheme';
 import { GraphPanel, type GraphSelection } from '../graph/GraphPanel';
 import { NodeInspector, type GraphEditState } from '../graph/NodeInspector';
 import { outlineNode, spliceField } from '../graph/fieldEdit';
+import { featureTarget, paletteOperation, wireOperation } from '../graph/graphAuthoring';
 import { buildPartGraph, nodeAtSpan, unitAtSpan, type GraphRow, type PartGraph } from '../graph/outlineGraph';
 
 type UtilityTab = { kind: 'files' } | { kind: 'inspector' } | { kind: 'examples' } | { kind: 'llm' };
@@ -350,6 +351,38 @@ export function HeliosApp({ project, initialWorkspace, onShowcase, onSave, onPub
       .catch(() => { if (current) setCompletion({ nodeId: node.id, fields: [] }); });
     return () => { current = false; };
   }, [inspectedId, outline, editorMode]);
+  // The kernel's catalog of things to add; every item is proven to build.
+  const [palette, setPalette] = useState<readonly PaletteItem[]>([]);
+  useEffect(() => {
+    if (editorMode !== 'graph' || palette.length) return;
+    void runtime.palette().then(result => setPalette(result.items)).catch(() => { /* the canvas works without a palette */ });
+  }, [editorMode]);
+  const graphAuthoring = () => {
+    if (busy === 'Worker failed' || !outline) return null;
+    const target = featureTarget(outline, inspectedId);
+    return {
+      palette,
+      featureTarget: 'body' in target ? { body: target.body.name ?? target.body.id } : target,
+      onInsert: (item: PaletteItem) => {
+        const operation = paletteOperation(item, outline, inspectedId);
+        if ('reason' in operation) { pushOutput(operation.reason); return; }
+        const where = operation.kind === 'insertFeature' && 'body' in target ? ` on ${target.body.name}` : '';
+        void structuralEdit([operation], { nodeId: inspectedId ?? '', label: `Added ${item.label} ${'name' in operation ? operation.name ?? '' : ''}${where}` })
+          .then(refused => { if (refused) pushOutput(`Add refused · ${refused}`); });
+      },
+      onWire: (provider: string, consumer: OutlineNode, choice: import('../graph/graphAuthoring').WireChoice) => {
+        const operation = wireOperation(provider, consumer, choice);
+        if ('reason' in operation) { pushOutput(operation.reason); return; }
+        const label = choice.kind === 'retarget' ? `${consumer.name ?? consumer.kind} now modifies ${provider}` : `${consumer.name ?? consumer.kind}.${choice.field.name}: ${choice.field.text} → ${provider}`;
+        void structuralEdit([operation], { nodeId: consumer.id, label, select: choice.kind === 'retarget' ? undefined : consumer.id })
+          .then(refused => { if (refused) pushOutput(`Connection refused · ${refused}`); });
+      },
+      onReorder: (operation: LanguageEditOperation, label: string) => {
+        void structuralEdit([operation], { nodeId: 'node' in operation ? operation.node : '', label })
+          .then(refused => { if (refused) pushOutput(`Move refused · ${refused}`); });
+      },
+    };
+  };
   const revertGraphEdit = () => {
     if (!graphEdit) return;
     const base = graphEdit.base;
@@ -538,6 +571,7 @@ export function HeliosApp({ project, initialWorkspace, onShowcase, onSave, onPub
         </div>
         {editorMode === 'graph' && <GraphPanel outline={outline} error={outlineError} diagnostics={shownDiagnostics} selection={graphSelection} theme={theme}
           onSelect={(unitId, row, graph) => selectFromGraph(unitId, row, graph)} onOpenSource={(unitId, row, graph) => openFromGraph(unitId, row, graph)}
+          authoring={graphAuthoring()}
           inspector={<NodeInspector {...inspectorProps()} {...graphActions} onCommit={commitGraphField} onRevert={revertGraphEdit} onSelectNode={selectGraphNode}
             onOpenSource={span => { setEditorMode('source'); navigateSource({ source: sourceName, start: span.start, length: span.length, line: 1, column: 1 }); }} />} />}
         <div className="source-host" hidden={editorMode !== 'source'}>
