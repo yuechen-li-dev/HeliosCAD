@@ -82,7 +82,10 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .tree-row { height: 28px; display: flex; align-items: center; gap: 5px; border-left: 2px solid transparent; cursor: default; white-space: nowrap; }.tree-row:hover { background: var(--panel-elevated); }.tree-row.selected { background: color-mix(in srgb, var(--selection) 15%, transparent); border-left-color: var(--selection); }.disclosure { width: 15px; padding: 0; background: transparent; color: var(--text-secondary); }.kind-icon { width: 17px; color: var(--text-secondary); text-align: center; }.kind-hole { color: var(--accent); }.tree-name { overflow: hidden; text-overflow: ellipsis; }.tree-kind { margin-left: auto; color: var(--text-secondary); font-size: 9px; padding-right: 8px; text-transform: uppercase; }
 .empty-state { padding: 24px 16px; color: var(--text-secondary); line-height: 1.6; text-align: center; }.empty-state.compact { padding: 11px 14px; text-align: left; }
 .workbench { min-width: 0; min-height: 0; display: grid; grid-template-columns: var(--editor-width) minmax(0, 1fr); background: var(--viewport-bg); }
-.workbench > .source-panel { border-right: 1px solid var(--border); border-top: 0; }
+.workbench > .editor-pane { min-width: 0; min-height: 0; display: grid; grid-template-rows: 30px minmax(0, 1fr); border-right: 1px solid var(--border); }
+.editor-pane > .source-host { min-height: 0; display: grid; }
+.editor-pane > .source-host[hidden] { display: none; }
+.editor-pane .source-panel { border-top: 0; min-height: 0; }
 .viewport-pane { min-width: 0; min-height: 0; display: grid; grid-template-rows: 34px minmax(0, 1fr); }
 .utility-dock { grid-column: 2; grid-row: 1 / 3; min-width: 0; min-height: 0; display: grid; grid-template-rows: 34px minmax(0, 1fr); border-left: 1px solid var(--border); background: var(--panel-bg); }
 .utility-content { min-height: 0; overflow: hidden; }.utility-content > div:not([hidden]) { height: 100%; }.utility-content .inspector, .utility-content .project-explorer { height: 100%; border-left: 0; }
@@ -133,3 +136,43 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 }
 .viewport-error { border-color: #b56c56; }
 .viewport-status button { display: block; margin-top: 8px; padding: 5px 10px; cursor: pointer; }
+
+/* Graph view: the model as connected parts. One colour per kind of declaration,
+   carried by the card's left edge; everything else stays in the panel palette. */
+:root { --cat-data: #7f97a8; --cat-sketch: #8fae8a; --cat-body: #d6a348; --cat-modify: #c7795a; --cat-feature: #a491b8; --cat-assembly: #6fb2a2; --cat-external: #77807a; --cat-other: #77807a; }
+:root[data-theme="sirius"] { --cat-data: #4f6b80; --cat-sketch: #4f7a4c; --cat-body: #a66e16; --cat-modify: #9b4f30; --cat-feature: #6f5a8a; --cat-assembly: #2f7f6e; --cat-external: #7b837e; --cat-other: #7b837e; }
+.editor-mode { display: flex; align-items: center; gap: 2px; padding: 0 8px; border-bottom: 1px solid var(--border); background: var(--panel-bg); }
+.editor-mode button { padding: 3px 11px; border-radius: 4px; background: transparent; color: var(--text-secondary); font-size: 11px; cursor: pointer; }
+.editor-mode button:hover { color: var(--text-primary); }
+.editor-mode button.active { color: var(--text-primary); background: var(--panel-elevated); box-shadow: inset 0 0 0 1px var(--border-strong); }
+.graph-panel { min-height: 0; display: grid; grid-template-rows: auto minmax(0, 1fr); background: var(--viewport-bg); }
+.graph-caption { display: grid; gap: 2px; padding: 7px 12px 8px; border-bottom: 1px solid var(--border); background: var(--panel-bg); }
+.graph-caption span { font-size: 12px; font-weight: 600; }
+.graph-caption small { color: var(--text-secondary); font-size: 10.5px; }
+.graph-canvas { position: relative; min-height: 0; }
+.graph-empty { display: grid; align-content: center; justify-items: start; gap: 6px; height: 100%; max-width: 46ch; padding: 24px; color: var(--text-secondary); line-height: 1.5; }
+.graph-empty strong { color: var(--text-primary); font-size: 13px; }
+.graph-empty p { margin: 0; }
+.graph-unit { --cat: var(--cat-other); background: var(--panel-elevated); color: var(--text-primary); border: 1px solid var(--border); border-left: 4px solid var(--cat); border-radius: 6px; box-shadow: 0 1px 2px var(--shadow); font-size: 11px; cursor: pointer; }
+.graph-unit.category-data { --cat: var(--cat-data); } .graph-unit.category-sketch { --cat: var(--cat-sketch); } .graph-unit.category-body { --cat: var(--cat-body); }
+.graph-unit.category-modify { --cat: var(--cat-modify); } .graph-unit.category-feature { --cat: var(--cat-feature); } .graph-unit.category-assembly { --cat: var(--cat-assembly); }
+.graph-unit.category-external { --cat: var(--cat-external); background: var(--panel-bg); border-style: dashed; border-left-style: solid; }
+.graph-unit.selected { border-color: var(--selection); border-left-color: var(--cat); box-shadow: 0 0 0 1px var(--selection), 0 2px 8px var(--shadow); }
+.graph-unit header { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; column-gap: 6px; padding: 7px 10px 6px; }
+.graph-unit header strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12.5px; font-weight: 600; }
+.graph-unit header small { grid-column: 1 / -1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-secondary); font-size: 10px; }
+.graph-problems { display: inline-grid; place-items: center; min-width: 17px; height: 16px; padding: 0 4px; border-radius: 8px; color: var(--panel-elevated); background: var(--error); font-size: 10px; font-weight: 600; }
+.graph-rows { margin: 0; padding: 0 4px 6px; list-style: none; border-top: 1px solid var(--border); }
+.graph-rows button { display: flex; justify-content: space-between; gap: 8px; width: 100%; margin-top: 2px; padding: 3px 6px; border-radius: 4px; background: transparent; text-align: left; cursor: pointer; }
+.graph-rows button span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.graph-rows button small { flex: none; max-width: 55%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-secondary); font-size: 10px; }
+.graph-rows button:hover { background: var(--control-bg); }
+.graph-rows button.selected { background: color-mix(in srgb, var(--selection) 22%, transparent); }
+.graph-more { padding: 3px 6px 0; color: var(--text-secondary); font-size: 10px; }
+.graph-unit .react-flow__handle { width: 6px; height: 6px; min-width: 0; min-height: 0; border: 0; background: var(--border-strong); opacity: .8; }
+.graph-panel .react-flow { --xy-background-color: transparent; --xy-background-pattern-color: var(--grid-minor); --xy-edge-stroke: var(--border-strong); --xy-edge-stroke-width: 1.2; --xy-edge-label-background-color: var(--panel-bg); --xy-edge-label-color: var(--text-secondary);
+  --xy-controls-button-background-color: var(--panel-elevated); --xy-controls-button-background-color-hover: var(--control-bg); --xy-controls-button-color: var(--text-primary); --xy-controls-button-border-color: var(--border); --xy-controls-box-shadow: 0 1px 2px var(--shadow); }
+.graph-panel .react-flow__edge-text { font-size: 10px; }
+.graph-panel .graph-link.active .react-flow__edge-path { stroke: var(--accent); stroke-width: 1.8; }
+.graph-panel .graph-link.active .react-flow__edge-text { fill: var(--text-primary); }
+@media (prefers-reduced-motion: reduce) { .graph-panel .react-flow__viewport { transition: none; } }

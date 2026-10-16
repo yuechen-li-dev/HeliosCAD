@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
-import type { ConstructProjection, Diagnostic, EditableProperty, FieldProjection, ModelSession, SelectionDescription, SemanticSchema, UnitValue } from '@aetheris/cad';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { ConstructProjection, Diagnostic, EditableProperty, FieldProjection, LanguageOutline, ModelSession, SelectionDescription, SemanticSchema, UnitValue } from '@aetheris/cad';
 import { WebSdkCadRuntime } from '../sdk/CadRuntime';
 import { AetherisWorkerClient, type BuildResult } from '../sdk/AetherisWorkerClient';
 import { assemblySource, bracketSource, emptyModelSource } from '../sdk/samples';
@@ -22,13 +22,16 @@ import { AuthorPanel } from '../author/AuthorPanel';
 import { ResizeHandle } from './ResizeHandle';
 import { WorkspaceStatus } from './WorkspaceStatus';
 import { useTheme } from '../themes/useTheme';
+import { GraphPanel, type GraphSelection } from '../graph/GraphPanel';
+import { buildPartGraph, nodeAtSpan, unitAtSpan, type GraphRow, type PartGraph } from '../graph/outlineGraph';
 
 type UtilityTab = { kind: 'files' } | { kind: 'inspector' } | { kind: 'examples' } | { kind: 'llm' };
 
 export function HeliosApp({ project, initialWorkspace, onShowcase, onSave, onPublish, onBack, onSignOut }: { project?: Project; initialWorkspace?: WorkspaceProject; onShowcase?: () => void; onSave?: (source: string) => Promise<void>; onPublish?: (payload: { expectedRevisionId: string; title: string; description: string; category: string; tags: string[]; previewPngBase64: string }) => Promise<void>; onBack?: () => void; onSignOut?: () => void } = {}) {
   const [runtime] = useState(() => new WebSdkCadRuntime());
   const [buildClient] = useState(() => new AetherisWorkerClient(runtime));
-  const shellLayout = useShellLayout();
+  const [editorMode, setEditorMode] = useState<'graph' | 'source'>(() => readEditorMode());
+  const shellLayout = useShellLayout(editorMode);
   const [model, setModel] = useState<ModelSession | null>(null);
   const [semanticSchema, setSemanticSchema] = useState<SemanticSchema | null>(null);
   const [fieldProjection, setFieldProjection] = useState<ConstructProjection | null>(null);
@@ -74,6 +77,10 @@ export function HeliosApp({ project, initialWorkspace, onShowcase, onSave, onPub
   const [publishOpen, setPublishOpen] = useState(false);
   const [publishState, setPublishState] = useState('');
   const [utilityTab, setUtilityTab] = useState<UtilityTab>({ kind: 'inspector' });
+  const [outline, setOutline] = useState<LanguageOutline | null>(null);
+  const [outlineError, setOutlineError] = useState<string | null>(null);
+  const [graphSelection, setGraphSelection] = useState<GraphSelection | null>(null);
+  const partGraph = useMemo(() => outline ? buildPartGraph(outline) : null, [outline]);
   const capturePreview = useRef<(() => string) | null>(null);
   const shownDiagnostics = [...liveDiagnostics, ...diagnostics.filter(item => !liveDiagnostics.some(live =>
     live.code === item.code && live.source?.start === item.source?.start))];
@@ -189,6 +196,52 @@ export function HeliosApp({ project, initialWorkspace, onShowcase, onSave, onPub
       .catch(() => { if (current) setFieldProjection(null); });
     return () => { current = false; };
   }, [model, selectedEntityId]);
+  // The graph view reads the compiler's declaration outline of the open document.
+  useEffect(() => {
+    if (editorMode !== 'graph') return;
+    let current = true;
+    const timer = setTimeout(() => {
+      void runtime.outline(source, sourceName, String(sourceRevision))
+        .then(result => { if (current) { setOutline(result); setOutlineError(null); } })
+        .catch(error => { if (current) setOutlineError(error instanceof Error ? error.message : String(error)); });
+    }, 200);
+    return () => { current = false; clearTimeout(timer); };
+  }, [editorMode, source, sourceName, sourceRevision]);
+  useEffect(() => { try { localStorage.setItem('helios-editor-mode', editorMode); } catch { /* per-viewer convenience only */ } }, [editorMode]);
+  // Geometry or tree selection highlights the unit, and row, that declares it.
+  useEffect(() => {
+    const graph = partGraph;
+    const entity = selectedEntityId ? model?.entity(selectedEntityId) : undefined;
+    if (!graph || !entity?.source || entity.source.source !== sourceName) return;
+    const unitId = unitAtSpan(graph, entity.source.start, entity.source.length);
+    if (!unitId) return;
+    const node = nodeAtSpan(graph, entity.source.start, entity.source.length);
+    const rowId = node && node.id !== unitId && node.parentId === unitId ? node.id : null;
+    setGraphSelection(value => value?.unitId === unitId && value.rowId === rowId ? value : { unitId, rowId });
+  }, [selectedEntityId, model, partGraph, sourceName]);
+  const entityForSpan = (start: number, length: number) => {
+    const end = start + length;
+    const inside = (model?.tree.nodes ?? []).filter(node => node.source?.source === sourceName && node.source.start >= start && node.source.start + node.source.length <= end);
+    if (inside.length) return inside.sort((a, b) => (b.source?.length ?? 0) - (a.source?.length ?? 0))[0];
+    return (model?.tree.nodes ?? []).filter(node => node.source?.source === sourceName && node.source.start <= start && end <= node.source.start + node.source.length)
+      .sort((a, b) => (a.source?.length ?? Infinity) - (b.source?.length ?? Infinity))[0];
+  };
+  const selectFromGraph = useCallback((unitId: string, row: GraphRow | null, graph: PartGraph) => {
+    setGraphSelection({ unitId, rowId: row && graph.nodes.has(row.id) ? row.id : null });
+    const unit = graph.units.find(item => item.id === unitId);
+    if (unit?.category === 'external') return;
+    const span = row?.span ?? unit?.span;
+    const entity = span ? entityForSpan(span.start, span.length) : undefined;
+    if (entity) select(entity.id);
+  }, [model, sourceName]);
+  const openFromGraph = useCallback((unitId: string, row: GraphRow | null, graph: PartGraph) => {
+    const unit = graph.units.find(item => item.id === unitId);
+    if (unit?.category === 'external') { if (unit.document in projectDocuments.current) switchFile(unit.document); return; }
+    const span = row?.span ?? unit?.span;
+    if (!span) return;
+    setEditorMode('source');
+    navigateSource({ source: sourceName, start: span.start, length: span.length, line: 1, column: 1 });
+  }, [sourceName]);
   const rebuildSource = async () => {
     if (buildStarted !== null || busy === 'Exporting' || busy === 'Rewriting source') return;
     await submitBuild(source, sourceName);
@@ -343,7 +396,17 @@ export function HeliosApp({ project, initialWorkspace, onShowcase, onSave, onPub
     {project && <div className="cloud-project-bar"><button onClick={() => { if (saveState === 'Saved' || confirm('Leave this project with unsaved source?')) onBack?.(); }}>← Discover</button><strong>{project.name}</strong><span className="cloud-save-state" role="status">{saveState}</span><div className="cloud-editor-actions"><button className="cloud-save" onClick={() => void save()}>Save</button>{onPublish && <button onClick={() => { setPublishState(''); setPublishOpen(true); }}>Publish</button>}<button onClick={() => downloadText(source, sourceName)}>Download source</button><button onClick={() => { if (saveState === 'Saved' || confirm('Sign out with unsaved source?')) onSignOut?.(); }}>Sign out</button></div></div>}
     <main className={`workspace ${shellLayout.utilityOpen ? '' : 'utility-collapsed'} ${shellLayout.bottomOpen ? '' : 'bottom-collapsed'}`} ref={shellLayout.ref} style={shellLayout.style}>
       <div className="workbench">
+        <div className="editor-pane">
+        <div className="editor-mode" role="tablist" aria-label="Editing view">
+          <button role="tab" aria-selected={editorMode === 'graph'} className={editorMode === 'graph' ? 'active' : ''} onClick={() => setEditorMode('graph')}>Graph</button>
+          <button role="tab" aria-selected={editorMode === 'source'} className={editorMode === 'source' ? 'active' : ''} onClick={() => setEditorMode('source')}>Source</button>
+        </div>
+        {editorMode === 'graph' && <GraphPanel outline={outline} error={outlineError} diagnostics={shownDiagnostics} selection={graphSelection} theme={theme}
+          onSelect={(unitId, row, graph) => selectFromGraph(unitId, row, graph)} onOpenSource={(unitId, row, graph) => openFromGraph(unitId, row, graph)} />}
+        <div className="source-host" hidden={editorMode !== 'source'}>
         <SourcePanel ref={sourcePanel} disabled={!!busy} fileName={sourceName} dirty={dirtyFiles.has(sourceName)} source={source} diagnostics={shownDiagnostics.filter(item => !item.source || item.source.source === sourceName)} runtime={runtime} model={model} selectedSelector={selectedSelection?.selector} theme={theme} onSourceChange={value => editSource(value)} onCursorChange={onSourceCursor} onRebuild={() => void rebuildSource()} onLiveDiagnostics={setLiveDiagnostics} onLanguageError={error => { setDiagnostics([toDiagnostic(error, 'FIRMAMENT-FORMAT')]); pushOutput(`Format refused · ${error instanceof Error ? error.message : String(error)}`); }} onDiagnosticClick={diagnostic => { if (diagnostic.source) setSelectedEntityId(null); }} />
+        </div>
+        </div>
         <ResizeHandle axis="horizontal" label="Resize source and viewport" value={shellLayout.editorPercent} onResize={shellLayout.resizeEditor} />
         <div className="viewport-pane">
         <div className="viewport-toolbar">
@@ -375,6 +438,9 @@ export function HeliosApp({ project, initialWorkspace, onShowcase, onSave, onPub
   </div>;
 }
 
+function readEditorMode(): 'graph' | 'source' {
+  try { return localStorage.getItem('helios-editor-mode') === 'graph' ? 'graph' : 'source'; } catch { return 'source'; }
+}
 function stripExtension(name: string) { return name.replace(/\.[^.]+$/, ''); }
 function snapshotSession(session: ModelSession | null) { return session ? Object.assign(Object.create(Object.getPrototypeOf(session)), session) as ModelSession : null; }
 function isTyping(target: EventTarget | null) { return target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement || target instanceof Node && !!(target as Element).parentElement?.closest('.monaco-editor'); }

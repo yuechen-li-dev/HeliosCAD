@@ -1,4 +1,4 @@
-import { Aetheris, type ConstructProjection, type Diagnostic, type LanguageAnalysis, type LanguageCompletion, type LanguageFormat, type LanguageHover, type ModelSession, type ProjectedValue, type RuntimeInfo, type SemanticSchema, type SourceReference, type UnitValue } from '@aetheris/cad';
+import { Aetheris, type LanguageOutline, type ConstructProjection, type Diagnostic, type LanguageAnalysis, type LanguageCompletion, type LanguageFormat, type LanguageHover, type ModelSession, type ProjectedValue, type RuntimeInfo, type SemanticSchema, type SourceReference, type UnitValue } from '@aetheris/cad';
 
 export interface OpenResult { model: ModelSession | null; diagnostics: readonly Diagnostic[] }
 
@@ -16,6 +16,7 @@ export interface CadRuntime {
   session(): ModelSession | null;
   complete(source: string, offset: number, sourceName: string, revision: string): Promise<LanguageCompletion>;
   analyze(source: string, sourceName: string, revision: string): Promise<LanguageAnalysis>;
+  outline(source: string, sourceName: string, revision: string): Promise<LanguageOutline>;
   hover(source: string, offset: number, sourceName: string, revision: string): Promise<LanguageHover | null>;
   definition(source: string, offset: number, sourceName: string, revision: string): Promise<SourceReference | null>;
   format(source: string, sourceName: string, revision: string): Promise<LanguageFormat>;
@@ -70,6 +71,11 @@ export class WebSdkCadRuntime implements CadRuntime {
   async analyze(source: string, sourceName: string, revision: string) {
     const cad = await this.initializeLanguage();
     return cad.language.analyze(source, { sourceName, sourceRevision: revision, projectRoot: this.projectRoot, projectDocuments: this.projectDocuments });
+  }
+
+  async outline(source: string, sourceName: string, revision: string) {
+    const cad = await this.initializeLanguage();
+    return cad.language.outline(source, { sourceName, sourceRevision: revision, projectRoot: this.projectRoot, projectDocuments: this.projectDocuments });
   }
 
   async hover(source: string, offset: number, sourceName: string, revision: string) {
