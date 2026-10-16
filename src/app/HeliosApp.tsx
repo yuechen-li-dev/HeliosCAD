@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { ConstructProjection, Diagnostic, EditableProperty, FieldProjection, LanguageOutline, ModelSession, OutlineField, OutlineNode, SelectionDescription, SemanticSchema, UnitValue } from '@aetheris/cad';
+import type { ConstructProjection, Diagnostic, EditableProperty, FieldProjection, LanguageOutline, ModelSession, LanguageEditOperation, LanguageField, OutlineField, OutlineNode, SelectionDescription, SemanticSchema, UnitValue } from '@aetheris/cad';
 import { WebSdkCadRuntime } from '../sdk/CadRuntime';
 import { AetherisWorkerClient, type BuildResult } from '../sdk/AetherisWorkerClient';
 import { assemblySource, bracketSource, emptyModelSource } from '../sdk/samples';
@@ -215,8 +215,12 @@ export function HeliosApp({ project, initialWorkspace, onShowcase, onSave, onPub
     return () => { current = false; clearTimeout(timer); };
   }, [editorMode, source, sourceName, sourceRevision]);
   useEffect(() => { try { localStorage.setItem('helios-editor-mode', editorMode); } catch { /* per-viewer convenience only */ } }, [editorMode]);
-  // Geometry or tree selection highlights the unit, and row, that declares it.
+  // Geometry or tree selection highlights the unit, and row, that declares it. A selection the
+  // graph itself made is not echoed back: the entity found for a container is often a child.
+  const graphPickedEntity = useRef<string | null>(null);
   useEffect(() => {
+    if (selectedEntityId && graphPickedEntity.current === selectedEntityId) return;
+    graphPickedEntity.current = null;
     const graph = partGraph;
     const entity = selectedEntityId ? model?.entity(selectedEntityId) : undefined;
     if (!graph || !entity?.source || entity.source.source !== sourceName) return;
@@ -239,6 +243,7 @@ export function HeliosApp({ project, initialWorkspace, onShowcase, onSave, onPub
     if (unit?.category === 'external') return;
     const span = row?.span ?? unit?.span;
     const entity = span ? entityForSpan(span.start, span.length) : undefined;
+    graphPickedEntity.current = entity?.id ?? null;
     if (entity) select(entity.id);
   }, [model, sourceName]);
   const openFromGraph = useCallback((unitId: string, row: GraphRow | null, graph: PartGraph) => {
@@ -255,29 +260,96 @@ export function HeliosApp({ project, initialWorkspace, onShowcase, onSave, onPub
     setGraphSelection({ unitId, rowId: id === unitId ? null : id });
     const node = partGraph.nodes.get(id);
     const entity = node ? entityForSpan(node.span.start, node.span.length) : undefined;
+    graphPickedEntity.current = entity?.id ?? null;
     if (entity) select(entity.id);
+  };
+  // Every graph edit, value or structural, is one transaction: apply the replacement (Monaco keeps
+  // it in undo history), build at once, commit when it builds, otherwise keep a revertible draft.
+  const applyGraphChange = (change: { start: number; length: number; before: string; replacement: string; next: string },
+    meta: { nodeId: string; field: string | null; label: string; warnings?: readonly string[] }) => {
+    const chained = graphEdit && graphEdit.status === 'failed' && graphEdit.revision === sourceRevisionRef.current;
+    const base = chained ? graphEdit.base : source;
+    const before = sourceRevisionRef.current;
+    // A read-only editor (mid-build) refuses the replacement; then the source is set directly.
+    if (!sourcePanel.current?.replace({ source: sourceName, start: change.start, length: change.length, line: 1, column: 1 }, change.before, change.replacement)
+        || sourceRevisionRef.current === before) editSource(change.next);
+    const revision = sourceRevisionRef.current;
+    setGraphEdit({ ...meta, warnings: meta.warnings ?? [], status: 'building', revision, base });
+    pushOutput(meta.label);
+    for (const warning of meta.warnings ?? []) pushOutput(`Warning · ${warning}`);
+    void submitBuild(change.next, sourceName, revision).then(ok => {
+      if (sourceRevisionRef.current !== revision) return;
+      setGraphEdit(value => value && value.revision === revision ? { ...value, status: ok ? 'built' : 'failed' } : value);
+      pushOutput(ok ? 'Committed · the model is updated' : 'Draft · the build failed, the last good model stays');
+    });
   };
   const commitGraphField = (node: OutlineNode, field: OutlineField, text: string): string | null => {
     if (busy === 'Exporting' || busy === 'Worker failed') return 'Wait for the current operation to finish.';
     const splice = spliceField(source, field, text);
     if ('error' in splice) return splice.error;
-    const chained = graphEdit && graphEdit.status === 'failed' && graphEdit.revision === sourceRevisionRef.current;
-    const base = chained ? graphEdit.base : source;
-    const before = sourceRevisionRef.current;
-    // Monaco keeps the edit in its undo history; a read-only editor (mid-build) takes the source directly.
-    if (!sourcePanel.current?.replace({ source: sourceName, start: splice.start, length: splice.length, line: 1, column: 1 }, splice.before, splice.after)
-        || sourceRevisionRef.current === before) editSource(splice.source);
-    const revision = sourceRevisionRef.current;
-    const label = node.name ? `${node.name}.${field.name}` : field.name;
-    setGraphEdit({ nodeId: node.id, field: field.name, from: splice.before, to: splice.after, status: 'building', revision, base });
-    pushOutput(`Edited ${label} · ${splice.before} → ${splice.after}`);
-    void submitBuild(splice.source, sourceName, revision).then(ok => {
-      if (sourceRevisionRef.current !== revision) return;
-      setGraphEdit(value => value && value.revision === revision ? { ...value, status: ok ? 'built' : 'failed' } : value);
-      pushOutput(ok ? `${label} committed` : `${label} is a draft · the build failed, the last good model stays`);
-    });
+    applyGraphChange({ start: splice.start, length: splice.length, before: splice.before, replacement: splice.after, next: splice.source },
+      { nodeId: node.id, field: field.name, label: `${node.name ? `${node.name}.` : ''}${field.name}: ${splice.before} → ${splice.after}` });
     return null;
   };
+  // Selection that waits for the outline of the edited source (a renamed or new declaration).
+  const pendingGraphSelection = useRef<string | null>(null);
+  useEffect(() => {
+    const id = pendingGraphSelection.current;
+    if (!id || !partGraph) return;
+    const unitId = partGraph.unitOf.get(id);
+    if (!unitId) return;
+    pendingGraphSelection.current = null;
+    setGraphSelection({ unitId, rowId: id === unitId ? null : id });
+  }, [partGraph]);
+  const structuralEdit = async (operations: readonly LanguageEditOperation[], meta: { nodeId: string; label: string; select?: string | null }): Promise<string | null> => {
+    if (busy === 'Exporting' || busy === 'Worker failed') return 'Wait for the current operation to finish.';
+    const original = source, revision = sourceRevisionRef.current;
+    let result;
+    try { result = await runtime.edit(original, operations, sourceName, String(revision)); }
+    catch (error) { return error instanceof Error ? error.message : String(error); }
+    if (sourceRevisionRef.current !== revision) return 'The source changed while the edit was prepared. Try again.';
+    if (!result.changed) return null;
+    const { start, length, replacement } = result.edit;
+    const target = meta.select === undefined ? result.nodes.at(-1) ?? meta.nodeId : meta.select;
+    if (target) pendingGraphSelection.current = target;
+    applyGraphChange({ start, length, before: original.slice(start, start + length), replacement, next: result.text },
+      { nodeId: result.nodes.at(-1) ?? meta.nodeId, field: null, label: meta.label, warnings: result.warnings });
+    return null;
+  };
+  const siblingsOf = (node: OutlineNode) => (outline?.nodes ?? []).filter(item => item.parentId === node.parentId).sort((a, b) => a.order - b.order);
+  const graphActions = {
+    onAddField: (node: OutlineNode, field: string, value: string) =>
+      structuralEdit([{ kind: 'setField', node: node.id, field, value }], { nodeId: node.id, label: `Added ${field}: ${value} to ${node.name ?? node.kind}` }),
+    onRemoveField: (node: OutlineNode, field: OutlineField) =>
+      structuralEdit([{ kind: 'removeField', node: node.id, field: field.name }], { nodeId: node.id, label: `Removed ${field.name} from ${node.name ?? node.kind}` }),
+    onRename: (node: OutlineNode, name: string) =>
+      structuralEdit([{ kind: 'renameDeclaration', node: node.id, name }], { nodeId: node.id, label: `Renamed ${node.name} to ${name}` }),
+    onDelete: (node: OutlineNode) =>
+      structuralEdit([{ kind: 'removeDeclaration', node: node.id }], { nodeId: node.parentId ?? node.id, label: `Deleted ${node.name ?? node.kind}`, select: node.parentId }),
+    onMove: (node: OutlineNode, direction: -1 | 1) => {
+      const siblings = siblingsOf(node);
+      const index = siblings.findIndex(item => item.id === node.id);
+      const operation: LanguageEditOperation = direction < 0
+        ? (index <= 1 ? { kind: 'moveDeclaration', node: node.id, first: true } : { kind: 'moveDeclaration', node: node.id, after: siblings[index - 2].id })
+        : { kind: 'moveDeclaration', node: node.id, after: siblings[index + 1].id };
+      return structuralEdit([operation], { nodeId: node.id, label: `Moved ${node.name ?? node.kind} ${direction < 0 ? 'up' : 'down'}` });
+    },
+  };
+  // Field names the language service knows for the inspected declaration (completion inside its body).
+  const [completion, setCompletion] = useState<{ nodeId: string; fields: readonly LanguageField[] } | null>(null);
+  const inspectedId = graphSelection ? (graphSelection.rowId && partGraph?.nodes.has(graphSelection.rowId) ? graphSelection.rowId : graphSelection.unitId) : null;
+  useEffect(() => {
+    const node = outlineNode(outline, inspectedId);
+    if (!node || editorMode !== 'graph') return;
+    const from = node.nameSpan ? node.nameSpan.start + node.nameSpan.length : node.span.start;
+    const open = source.indexOf('{', from);
+    if (open < 0 || open >= node.span.start + node.span.length) { setCompletion({ nodeId: node.id, fields: [] }); return; }
+    let current = true;
+    void runtime.complete(source, open + 1, sourceName, String(sourceRevision))
+      .then(result => { if (current) setCompletion({ nodeId: node.id, fields: result.fields }); })
+      .catch(() => { if (current) setCompletion({ nodeId: node.id, fields: [] }); });
+    return () => { current = false; };
+  }, [inspectedId, outline, editorMode]);
   const revertGraphEdit = () => {
     if (!graphEdit) return;
     const base = graphEdit.base;
@@ -299,6 +371,7 @@ export function HeliosApp({ project, initialWorkspace, onShowcase, onSave, onPub
     const edit = graphEdit && graphEdit.revision === sourceRevision ? graphEdit : null;
     return {
       node, nodes: partGraph?.nodes ?? new Map<string, OutlineNode>(), focusField, problems, edit,
+      completion: completion && node && completion.nodeId === node.id ? completion.fields : [],
       external: unit?.category === 'external' ? { title: unit.title, document: unit.document } : null,
       schema: semanticSchema?.constructs.find(item => item.id === node?.schemaId) ?? null,
       readOnly: busy === 'Worker failed' ? 'The build worker stopped. Restart it from the status bar to edit.' : null,
@@ -465,7 +538,7 @@ export function HeliosApp({ project, initialWorkspace, onShowcase, onSave, onPub
         </div>
         {editorMode === 'graph' && <GraphPanel outline={outline} error={outlineError} diagnostics={shownDiagnostics} selection={graphSelection} theme={theme}
           onSelect={(unitId, row, graph) => selectFromGraph(unitId, row, graph)} onOpenSource={(unitId, row, graph) => openFromGraph(unitId, row, graph)}
-          inspector={<NodeInspector {...inspectorProps()} onCommit={commitGraphField} onRevert={revertGraphEdit} onSelectNode={selectGraphNode}
+          inspector={<NodeInspector {...inspectorProps()} {...graphActions} onCommit={commitGraphField} onRevert={revertGraphEdit} onSelectNode={selectGraphNode}
             onOpenSource={span => { setEditorMode('source'); navigateSource({ source: sourceName, start: span.start, length: span.length, line: 1, column: 1 }); }} />} />}
         <div className="source-host" hidden={editorMode !== 'source'}>
         <SourcePanel ref={sourcePanel} disabled={!!busy} fileName={sourceName} dirty={dirtyFiles.has(sourceName)} source={source} diagnostics={shownDiagnostics.filter(item => !item.source || item.source.source === sourceName)} runtime={runtime} model={model} selectedSelector={selectedSelection?.selector} theme={theme} onSourceChange={value => editSource(value)} onCursorChange={onSourceCursor} onRebuild={() => void rebuildSource()} onLiveDiagnostics={setLiveDiagnostics} onLanguageError={error => { setDiagnostics([toDiagnostic(error, 'FIRMAMENT-FORMAT')]); pushOutput(`Format refused · ${error instanceof Error ? error.message : String(error)}`); }} onDiagnosticClick={diagnostic => { if (diagnostic.source) setSelectedEntityId(null); }} />

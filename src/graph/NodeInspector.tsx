@@ -1,26 +1,40 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
-import type { Diagnostic, OutlineField, OutlineNode, OutlineSpan, SemanticConstructSchema } from '@aetheris/cad';
+import type { Diagnostic, LanguageField, OutlineField, OutlineNode, OutlineSpan, SemanticConstructSchema } from '@aetheris/cad';
 import { editorFor, formatQuantity, nudge, parseQuantity, refuseValue, vectorText, type Quantity } from './fieldEdit';
 import { categoryOf } from './outlineGraph';
 
 export interface GraphEditState {
   readonly nodeId: string;
-  readonly field: string;
-  readonly from: string;
-  readonly to: string;
+  /** The field a value edit changed; null for structural edits. */
+  readonly field: string | null;
+  /** What changed, in words: `Size: [50mm, 40mm, 8mm] → [60mm, 40mm, 8mm]`, `Renamed Plate to Base`. */
+  readonly label: string;
+  readonly warnings: readonly string[];
   readonly status: 'building' | 'built' | 'failed';
 }
+
+/** A field a declaration could take that it does not write yet. */
+export interface FieldSuggestion { readonly name: string; readonly hint: string; readonly value: string; readonly description: string | null }
+
+/** Structural actions resolve to an error message, or null when the edit was applied. */
+type Structural = Promise<string | null>;
 
 interface Props {
   node: OutlineNode | null;
   nodes: ReadonlyMap<string, OutlineNode>;
   external: { title: string; document: string } | null;
   schema: SemanticConstructSchema | null;
+  completion: readonly LanguageField[];
   focusField: string | null;
   edit: GraphEditState | null;
   problems: readonly Diagnostic[];
   readOnly: string | null;
   onCommit(node: OutlineNode, field: OutlineField, text: string): string | null;
+  onAddField(node: OutlineNode, name: string, value: string): Structural;
+  onRemoveField(node: OutlineNode, field: OutlineField): Structural;
+  onRename(node: OutlineNode, name: string): Structural;
+  onMove(node: OutlineNode, direction: -1 | 1): Structural;
+  onDelete(node: OutlineNode): Structural;
   onRevert(): void;
   onSelectNode(id: string): void;
   onOpenSource(span: OutlineSpan): void;
@@ -28,12 +42,42 @@ interface Props {
 
 const axes = ['X', 'Y', 'Z', 'W'];
 
+/** `Modify X`, `Recognize X` and `Assert ... X` name what they act on: changing the name retargets them. */
+const retargets = (node: OutlineNode) => node.kind === 'Modify' || node.kind === 'modify' || node.kind === 'Recognize' || node.modifiers.includes('Assert');
+
 function kindLine(node: OutlineNode) {
   const kind = node.variant ? `${node.kind}<${node.variant}>` : node.kind;
   return [...node.modifiers, kind].join(' ');
 }
 
-export function NodeInspector({ node, nodes, external, schema, focusField, edit, problems, readOnly, onCommit, onRevert, onSelectNode, onOpenSource }: Props) {
+/** A starting value for a field the engineer adds: its default, its first choice, or a typed placeholder. */
+export function startingValue(type: string, defaultValue?: string | null, choices?: readonly string[] | null) {
+  if (defaultValue) return defaultValue;
+  if (choices?.length) return choices[0];
+  const t = type.toLowerCase();
+  if (t.includes('angle')) return '0deg';
+  if (t.includes('length') || t.includes('distance') || t.includes('radius') || t.includes('diameter')) return '1mm';
+  if (t.includes('bool')) return 'true';
+  if (t.includes('count') || t.includes('int') || t.includes('scalar') || t.includes('number')) return '1';
+  if (t.includes('string') || t.includes('text')) return '""';
+  return '';
+}
+
+/** Completion and schema both know fields; one list, completion first, without the authored ones. */
+export function fieldSuggestions(node: OutlineNode, completion: readonly LanguageField[], schema: SemanticConstructSchema | null): FieldSuggestion[] {
+  const authored = new Set(node.fields.map(field => field.name.toLowerCase()));
+  const out = new Map<string, FieldSuggestion>();
+  for (const field of completion) if (!authored.has(field.name.toLowerCase()) && !out.has(field.name.toLowerCase()))
+    out.set(field.name.toLowerCase(), { name: field.name, hint: field.default ? `default ${field.default}` : field.required ? 'required' : field.type,
+      value: startingValue(field.type, field.default, field.choices), description: field.meaning || null });
+  for (const field of schema?.fields ?? []) if (!authored.has(field.name.toLowerCase()) && !out.has(field.name.toLowerCase()))
+    out.set(field.name.toLowerCase(), { name: field.name, hint: field.default != null ? `default ${field.default}` : field.required ? 'required' : 'optional',
+      value: startingValue(field.unit === 'None' ? field.kind : field.unit, field.default, field.choices), description: field.description });
+  return [...out.values()].sort((a, b) => Number(b.hint === 'required') - Number(a.hint === 'required'));
+}
+
+export function NodeInspector(props: Props) {
+  const { node, nodes, external, schema, completion, focusField, edit, problems, readOnly, onCommit, onAddField, onRemoveField, onRevert, onSelectNode, onOpenSource } = props;
   if (external) return <aside className="node-inspector" aria-label="Node inspector">
     <header className="node-head category-external"><strong>{external.title}</strong><small>Defined in {external.document}</small></header>
     <p className="node-note">This part comes from another file. Double-click it in the graph to open that file and edit it there.</p>
@@ -42,52 +86,115 @@ export function NodeInspector({ node, nodes, external, schema, focusField, edit,
     <div className="node-empty"><strong>Nothing selected</strong><p>Select a part in the graph to see and change its values. Changes build right away; the model only updates when the build succeeds.</p></div>
   </aside>;
 
-  const authored = new Set(node.fields.map(field => field.name.toLowerCase()));
-  const unset = schema?.fields.filter(field => !authored.has(field.name.toLowerCase())) ?? [];
   const children = node.children.map(id => nodes.get(id)).filter((child): child is OutlineNode => !!child);
   const parent = node.parentId ? nodes.get(node.parentId) : undefined;
-  const failed = edit?.nodeId === node.id && edit.status === 'failed' ? edit : null;
+  const mine = edit?.nodeId === node.id ? edit : null;
   const schemaField = (name: string) => schema?.fields.find(field => field.name.toLowerCase() === name.toLowerCase());
+  const suggestions = fieldSuggestions(node, completion, schema);
 
   return <aside className="node-inspector" aria-label="Node inspector">
-    <header className={`node-head category-${categoryOf(node)}`}>
-      <strong>{node.name ?? node.kind}</strong>
-      <small>{kindLine(node)}</small>
-      <button className="node-source" title="Open this declaration in Source" onClick={() => onOpenSource(node.span)}>Source</button>
-    </header>
+    <NodeHead {...props} node={node} />
     {parent && parent.kind !== 'Model' && parent.kind !== 'model' && <button className="node-parent" onClick={() => onSelectNode(parent.id)}>↑ {parent.name ?? parent.kind}</button>}
     {readOnly && <p className="node-note">{readOnly}</p>}
-    {failed && <div className="node-draft" role="alert">
+    {mine?.status === 'failed' && <div className="node-draft" role="alert">
       <strong>Draft doesn't build</strong>
-      <p>{failed.field}: {failed.from} → {failed.to}. The viewport still shows the last good model.</p>
+      <p>{mine.label}. The viewport still shows the last good model.</p>
       {problems.some(item => item.severity === 'error')
         ? problems.filter(item => item.severity === 'error').slice(0, 2).map((item, index) => <p key={index} className="node-draft-message">{item.message}</p>)
         : <p>The compiler's diagnostic is in Problems.</p>}
       <button onClick={onRevert}>Revert to last good</button>
     </div>}
-    {!failed && problems.length > 0 && <div className="node-problems">{problems.slice(0, 3).map((item, index) =>
+    {mine && mine.warnings.length > 0 && <div className="node-warnings" role="status">{mine.warnings.map((w, i) => <p key={i}>{w}</p>)}</div>}
+    {mine?.status !== 'failed' && problems.length > 0 && <div className="node-problems">{problems.slice(0, 3).map((item, index) =>
       <p key={index} className={item.severity}>{item.message}</p>)}</div>}
-    {node.fields.length > 0 && <div className="node-fields" role="group" aria-label="Values">
+    {(node.fields.length > 0 || !readOnly) && <div className="node-fields" role="group" aria-label="Values">
       {node.fields.map(field => <FieldRow key={`${node.id}:${field.name}`} field={field} description={schemaField(field.name)?.description ?? null}
         focus={focusField?.toLowerCase() === field.name.toLowerCase()} disabled={!!readOnly}
-        status={edit?.nodeId === node.id && edit.field === field.name ? edit.status : null}
-        onCommit={text => onCommit(node, field, text)} />)}
-    </div>}
-    {unset.length > 0 && <div className="node-unset">
-      <span>Not set here</span>
-      {unset.map(field => <p key={field.id} title={field.description ?? undefined}><b>{field.name}</b><small>{field.default != null ? `default ${field.default}` : field.required ? 'required' : 'optional'}</small></p>)}
+        status={mine?.field === field.name ? mine.status : null}
+        onCommit={text => onCommit(node, field, text)} onRemove={() => onRemoveField(node, field)} />)}
+      {!readOnly && <AddField key={node.id} suggestions={suggestions} onAdd={(name, value) => onAddField(node, name, value)} />}
     </div>}
     {children.length > 0 && <div className="node-children">
       <span>Contains</span>
       {children.map(child => <button key={child.id} onClick={() => onSelectNode(child.id)}><b>{child.name ?? child.kind}</b><small>{kindLine(child)}</small></button>)}
     </div>}
-    {node.fields.length === 0 && children.length === 0 && unset.length === 0 && <p className="node-note">This declaration has no values to edit here.</p>}
   </aside>;
 }
 
-function FieldRow({ field, description, focus, disabled, status, onCommit }: {
+function NodeHead({ node, nodes, readOnly, onRename, onMove, onDelete, onOpenSource }: Props & { node: OutlineNode }) {
+  const [renaming, setRenaming] = useState(false);
+  const [confirming, setConfirming] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [name, setName] = useState(node.name ?? '');
+  useEffect(() => { setRenaming(false); setConfirming(false); setError(null); setName(node.name ?? ''); }, [node.id, node.name]);
+  const siblings = [...nodes.values()].filter(n => n.parentId === node.parentId).sort((a, b) => a.order - b.order);
+  const index = siblings.findIndex(n => n.id === node.id);
+  const run = async (action: Structural) => { const refused = await action; setError(refused); return refused; };
+  const rename = async () => {
+    const next = name.trim();
+    if (!next || next === node.name) { setRenaming(false); setName(node.name ?? ''); return; }
+    if (!await run(onRename(node, next))) setRenaming(false);
+  };
+  return <>
+    <header className={`node-head category-${categoryOf(node)}`}>
+      {renaming
+        ? <input className="node-rename" aria-label="Name" autoFocus spellCheck={false} value={name} onChange={event => setName(event.target.value)}
+            onBlur={() => void rename()} onKeyDown={event => { if (event.key === 'Enter') { event.preventDefault(); void rename(); } if (event.key === 'Escape') { setName(node.name ?? ''); setRenaming(false); } }} />
+        : <strong>{node.name && !readOnly
+            ? <button className="node-title" title={retargets(node) ? 'Change which body this acts on' : 'Rename; every use in this file follows'} onClick={() => setRenaming(true)}>{node.name}</button>
+            : node.name ?? node.kind}</strong>}
+      <small>{kindLine(node)}</small>
+      <div className="node-actions">
+        {!readOnly && siblings.length > 1 && <>
+          <button aria-label="Move up" title="Move up among its siblings" disabled={index <= 0} onClick={() => void run(onMove(node, -1))}>↑</button>
+          <button aria-label="Move down" title="Move down among its siblings" disabled={index >= siblings.length - 1} onClick={() => void run(onMove(node, 1))}>↓</button>
+        </>}
+        <button title="Open this declaration in Source" onClick={() => onOpenSource(node.span)}>Source</button>
+        {!readOnly && <button aria-label="Delete" title="Delete this declaration" className="node-delete" onClick={() => setConfirming(true)}>Delete</button>}
+      </div>
+    </header>
+    {confirming && <div className="node-confirm" role="alertdialog" aria-label="Delete declaration">
+      <p>Delete {node.name ?? node.kind}{node.children.length === 1 ? ' and the declaration inside it' : node.children.length ? ` and the ${node.children.length} declarations inside it` : ''}?</p>
+      <button className="danger" onClick={() => { setConfirming(false); void run(onDelete(node)); }}>Delete</button>
+      <button onClick={() => setConfirming(false)}>Cancel</button>
+    </div>}
+    {error && <p className="node-error" role="alert">{error}</p>}
+  </>;
+}
+
+function AddField({ suggestions, onAdd }: { suggestions: readonly FieldSuggestion[]; onAdd(name: string, value: string): Structural }) {
+  const [open, setOpen] = useState(false);
+  const [name, setName] = useState('');
+  const [value, setValue] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const valueInput = useRef<HTMLInputElement>(null);
+  const pick = (suggestion: FieldSuggestion) => { setOpen(true); setName(suggestion.name); setValue(suggestion.value); setError(null); requestAnimationFrame(() => valueInput.current?.select()); };
+  const add = async () => {
+    if (!name.trim() || !value.trim()) { setError('A field needs a name and a value.'); return; }
+    const refused = await onAdd(name.trim(), value.trim());
+    setError(refused);
+    if (!refused) { setOpen(false); setName(''); setValue(''); }
+  };
+  const listId = useRef(`field-names-${Math.random().toString(36).slice(2)}`).current;
+  if (!open) return <div className="node-add">
+    {suggestions.slice(0, 6).map(s => <button key={s.name} className="node-suggestion" title={s.description ?? s.hint} onClick={() => pick(s)}>
+      + {s.name}<small>{s.hint}</small></button>)}
+    <button className="node-suggestion other" onClick={() => { setOpen(true); setError(null); }}>+ Field…</button>
+  </div>;
+  return <div className="node-add-form">
+    <input aria-label="New field name" placeholder="Name" list={listId} spellCheck={false} value={name} autoFocus={!name}
+      onChange={event => { setName(event.target.value); const s = suggestions.find(x => x.name === event.target.value); if (s && !value) setValue(s.value); }} />
+    <datalist id={listId}>{suggestions.map(s => <option key={s.name} value={s.name}>{s.hint}</option>)}</datalist>
+    <input ref={valueInput} aria-label="New field value" placeholder="Value" spellCheck={false} value={value} onChange={event => setValue(event.target.value)}
+      onKeyDown={event => { if (event.key === 'Enter') { event.preventDefault(); void add(); } if (event.key === 'Escape') setOpen(false); }} />
+    <div><button className="primary" onClick={() => void add()}>Add</button><button onClick={() => { setOpen(false); setError(null); }}>Cancel</button></div>
+    {error && <p className="node-error" role="alert">{error}</p>}
+  </div>;
+}
+
+function FieldRow({ field, description, focus, disabled, status, onCommit, onRemove }: {
   field: OutlineField; description: string | null; focus: boolean; disabled: boolean;
-  status: GraphEditState['status'] | null; onCommit(text: string): string | null;
+  status: GraphEditState['status'] | null; onCommit(text: string): string | null; onRemove(): Structural;
 }) {
   const editor = editorFor(field);
   const [error, setError] = useState<string | null>(null);
@@ -104,7 +211,11 @@ function FieldRow({ field, description, focus, disabled, status, onCommit }: {
     if (refused) pending.current = null;
     setError(refused);
   };
-  const label = <label className="node-field-name" title={description ?? undefined} htmlFor={`field-${field.span.start}`}>{field.name}</label>;
+  const label = <span className="node-field-label">
+    <label className="node-field-name" title={description ?? undefined} htmlFor={`field-${field.span.start}`}>{field.name}</label>
+    {!disabled && <button className="node-field-remove" aria-label={`Remove ${field.name}`} title={`Remove ${field.name}`}
+      onClick={() => void onRemove().then(setError)}>×</button>}
+  </span>;
   const state = error ? <small className="node-field-state error" role="alert">{error}</small>
     : status === 'building' ? <small className="node-field-state">Building…</small>
     : status === 'built' ? <small className="node-field-state ok">Built</small>
