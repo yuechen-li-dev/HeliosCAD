@@ -5,6 +5,8 @@ import type { Diagnostic, LanguageEditOperation, LanguageOutline, OutlineNode, P
 import { useGraphBodyLayout } from './graphBodyLayout';
 import { reorderOperation, wireChoices, type WireChoice } from './graphAuthoring';
 import { PalettePopover } from './PalettePopover';
+import { AssemblyCanvas, type AssemblyAuthoring } from './AssemblyCanvas';
+import type { AssemblyGraph } from './assemblyGraph';
 import { buildPartGraph, layoutPartGraph, unitAtSpan, type GraphDirection, type GraphRow, type PartGraph, type PositionedUnit } from './outlineGraph';
 
 export interface GraphSelection { readonly unitId: string; readonly rowId: string | null }
@@ -30,6 +32,19 @@ interface Props {
   onOpenSource(unitId: string, row: GraphRow | null, graph: PartGraph): void;
   inspector?: ReactNode;
   authoring?: GraphAuthoring | null;
+  /** Present when the document declares an assembly: the canvas can show it as parts and joints. */
+  assembly?: AssemblyView | null;
+}
+
+export interface AssemblyView {
+  readonly assemblies: readonly OutlineNode[];
+  readonly graph: AssemblyGraph | null;
+  readonly selectedAssembly: string | null;
+  readonly selectedId: string | null;
+  readonly authoring: AssemblyAuthoring | null;
+  onPickAssembly(id: string): void;
+  onSelect(id: string): void;
+  onOpenSource(id: string): void;
 }
 
 const ROW_MIME = 'application/x-helios-row';
@@ -208,6 +223,10 @@ export function GraphPanel(props: Props) {
   const body = useGraphBodyLayout();
   const [direction, setDirection] = useState<GraphDirection>('LR');
   const [paletteAt, setPaletteAt] = useState<{ x: number; y: number } | null>(null);
+  // An assembly document opens on its Assembly view; a part model has only Parts.
+  const [view, setView] = useState<'parts' | 'assembly'>(() => { try { return localStorage.getItem('helios-graph-view') === 'parts' ? 'parts' : 'assembly'; } catch { return 'assembly'; } });
+  const showAssembly = view === 'assembly' && !!props.assembly?.graph;
+  const chooseView = (next: 'parts' | 'assembly') => { setView(next); try { localStorage.setItem('helios-graph-view', next); } catch { /* per-viewer convenience */ } };
   useEffect(() => {
     const element = canvas.current;
     if (!element) return;
@@ -225,18 +244,33 @@ export function GraphPanel(props: Props) {
     const containers = [...new Set(graph.units.map(u => u.container?.split(' / ')[0]).filter((c): c is string => !!c))];
     return { units: graph.units.length, links: graph.links.length, containers };
   }, [props.outline]);
+  const asm = props.assembly;
   return <section className="panel graph-panel" aria-label="Model graph">
     <div className="graph-caption">
-      <div>
+      {asm?.graph && <div className="graph-view-switch" role="tablist" aria-label="Graph view">
+        <button role="tab" aria-selected={showAssembly} className={showAssembly ? 'active' : ''} onClick={() => chooseView('assembly')}>Assembly</button>
+        <button role="tab" aria-selected={!showAssembly} className={!showAssembly ? 'active' : ''} onClick={() => chooseView('parts')}>Parts</button>
+      </div>}
+      {showAssembly && asm?.graph ? <div>
+        <span>{asm.assemblies.length > 1
+          ? <select aria-label="Assembly" value={asm.graph.assembly.id} onChange={event => asm.onPickAssembly(event.target.value)}>
+              {asm.assemblies.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}</select>
+          : asm.graph.assembly.name}</span>
+        <small>{asm.graph.parts.filter(p => p.kind !== 'ground').length} parts, {asm.graph.joints.length} joints. {asm.authoring
+          ? 'Drag from one frame to another to join them; click a joint to edit it.' : 'Click a part or a joint to see it.'}</small>
+      </div> : <div>
         {summary ? <><span>{summary.containers.length ? summary.containers.join(', ') : props.outline?.document}</span>
           <small>{summary.units} parts, {summary.links} connections. {props.authoring
             ? 'Double-click the canvas to add; drag from a card’s right edge to connect.' : 'Select a part to see its values; double-click to open its source.'}</small></> : <span>Model graph</span>}
-      </div>
-      {props.authoring && <button className="graph-add" aria-label="Add a body or feature" onClick={() => setPaletteAt(at => at ? null : { x: 12, y: 8 })}>+ Add</button>}
+      </div>}
+      {props.authoring && !showAssembly && <button className="graph-add" aria-label="Add a body or feature" onClick={() => setPaletteAt(at => at ? null : { x: 12, y: 8 })}>+ Add</button>}
     </div>
     <div className={`graph-body${body.stacked ? ' stacked' : ''}`} ref={body.ref}>
       <div className="graph-canvas" ref={canvas} style={body.canvas}>
-        <ReactFlowProvider><Canvas {...props} direction={direction} paletteAt={paletteAt} setPaletteAt={setPaletteAt} host={canvas} /></ReactFlowProvider>
+        <ReactFlowProvider>{showAssembly && asm?.graph && props.outline
+          ? <AssemblyCanvas key={asm.graph.assembly.id} outline={props.outline} graph={asm.graph} theme={props.theme} selectedId={asm.selectedId}
+              onSelect={asm.onSelect} onOpenSource={asm.onOpenSource} authoring={asm.authoring} host={canvas} direction={direction} />
+          : <Canvas {...props} direction={direction} paletteAt={paletteAt} setPaletteAt={setPaletteAt} host={canvas} />}</ReactFlowProvider>
       </div>
       {props.inspector && <div className="graph-inspector-slot" style={body.inspector}>{props.inspector}</div>}
     </div>

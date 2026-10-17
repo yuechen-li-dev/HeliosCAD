@@ -19,6 +19,7 @@ export interface CadRuntime {
   outline(source: string, sourceName: string, revision: string): Promise<LanguageOutline>;
   edit(source: string, operations: readonly LanguageEditOperation[], sourceName: string, revision: string): Promise<LanguageEdit>;
   palette(): Promise<LanguagePalette>;
+  sampleMotion(motion: string, timeSeconds: number): ReturnType<ModelSession['sampleMotion']>;
   hover(source: string, offset: number, sourceName: string, revision: string): Promise<LanguageHover | null>;
   definition(source: string, offset: number, sourceName: string, revision: string): Promise<SourceReference | null>;
   format(source: string, sourceName: string, revision: string): Promise<LanguageFormat>;
@@ -79,6 +80,8 @@ export class WebSdkCadRuntime implements CadRuntime {
     const cad = await this.initializeLanguage();
     return cad.language.outline(source, { sourceName, sourceRevision: revision, projectRoot: this.projectRoot, projectDocuments: this.projectDocuments });
   }
+  /** Samples on the live session: its revision is the one a pose must match. */
+  sampleMotion(motion: string, timeSeconds: number) { return this.requireModel().sampleMotion(motion, timeSeconds); }
   async palette() {
     const cad = await this.initializeLanguage();
     return cad.language.palette();

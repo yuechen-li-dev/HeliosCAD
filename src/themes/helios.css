@@ -401,6 +401,57 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .node-reuse > div button { height: 24px; padding: 0 10px; border: 1px solid var(--border); border-radius: 4px; background: var(--control-bg); color: var(--text-primary); font-size: 11px; cursor: pointer; }
 .node-reuse > div button.primary { border-color: var(--accent); background: var(--accent); color: var(--accent-contrast); font-weight: 600; }
 
+/* G6: Assembly canvas. Parts are cards, their named frames are ports, joints are wires. */
+.graph-caption > .graph-view-switch, .graph-view-switch { flex: none; display: flex; align-self: center; padding: 2px; border: 1px solid var(--border); border-radius: 5px; background: var(--control-bg); }
+.graph-view-switch button { height: 22px; padding: 0 10px; border: 0; border-radius: 3px; background: none; color: var(--text-secondary); font-size: 11px; cursor: pointer; }
+.graph-view-switch button.active { background: var(--panel-elevated); color: var(--text-primary); font-weight: 600; box-shadow: 0 1px 2px var(--shadow), inset 0 -2px 0 var(--gold); }
+.graph-caption select { max-width: 100%; height: 22px; padding: 0 6px; border: 1px solid var(--border); border-radius: 4px; background: var(--control-bg); color: var(--text-primary); font-size: 12px; font-weight: 600; }
+.assembly-part { --cat: var(--cat-assembly); background: var(--panel-elevated); color: var(--text-primary); border: 1px solid var(--border); border-top: 3px solid var(--cat); border-radius: 6px; box-shadow: 0 1px 2px var(--shadow); font-size: 11px; cursor: pointer; }
+.assembly-part.kind-subassembly { --cat: var(--cat-feature); }
+.assembly-part.kind-ground { --cat: var(--text-secondary); background: var(--panel-bg); border-style: dashed; border-top-style: solid; }
+.assembly-part.selected { border-color: var(--selection); border-top-color: var(--cat); box-shadow: 0 0 0 1px var(--selection), 0 2px 8px var(--shadow); }
+.assembly-part header { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; column-gap: 6px; padding: 7px 10px 6px; }
+.assembly-part header i { color: var(--cat); font-size: 12px; font-style: normal; }
+.assembly-part header strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12.5px; font-weight: 600; }
+.assembly-part header small { grid-column: 2 / -1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-secondary); font-size: 10px; }
+.assembly-anchor { padding: 0 6px; border-radius: 8px; background: var(--gold-wash); color: var(--gold-ink); font-size: 9px; font-weight: 600; letter-spacing: .04em; line-height: 15px; text-transform: uppercase; }
+.assembly-ports { margin: 0; padding: 2px 0 6px; list-style: none; border-top: 1px solid var(--border); }
+.assembly-port { position: relative; display: flex; align-items: center; gap: 6px; height: 22px; padding: 0 14px; font: 10.5px/1 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+.assembly-port span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.assembly-port small { flex: none; min-width: 14px; padding: 0 4px; border-radius: 7px; background: var(--control-bg); color: var(--text-secondary); font-size: 9px; line-height: 13px; text-align: center; }
+.assembly-port.empty { color: var(--text-secondary); font-family: inherit; font-style: italic; }
+.assembly-port.active { background: var(--gold-wash); color: var(--gold-ink); }
+.assembly-port .react-flow__handle { width: 9px; height: 9px; min-width: 0; min-height: 0; border: 2px solid var(--panel-elevated); background: var(--border-strong); opacity: .55; }
+.assembly-port .react-flow__handle.connectable { cursor: crosshair; }
+.assembly-part:hover .assembly-port .react-flow__handle, .assembly-port.active .react-flow__handle, .graph-panel .assembly-port .react-flow__handle.connectingfrom, .graph-panel .assembly-port .react-flow__handle.valid { opacity: 1; background: var(--gold); }
+.graph-panel .assembly-joint .react-flow__edge-path { stroke: var(--border-strong); stroke-width: 1.6; }
+.graph-panel .assembly-joint.joint-fixed .react-flow__edge-path { stroke-width: 2.4; }
+.graph-panel .assembly-joint.joint-prismatic .react-flow__edge-path, .graph-panel .assembly-joint.joint-cylindrical .react-flow__edge-path { stroke-dasharray: 6 3; }
+.graph-panel .assembly-joint.joint-axial .react-flow__edge-path { stroke-dasharray: 2 3; }
+.graph-panel .assembly-joint.selected .react-flow__edge-path { stroke: var(--gold); stroke-width: 2.6; }
+.graph-panel .assembly-joint .react-flow__edge-text { font-size: 10px; }
+.graph-panel .assembly-joint.selected .react-flow__edge-text { font-weight: 600; }
+.assembly-join select { margin: 0 2px; height: 20px; border: 1px solid var(--border); border-radius: 3px; background: var(--control-bg); color: var(--text-primary); font: 11px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+
+/* G6: motion playback along the bottom of the viewport. */
+.viewport-pane { position: relative; }
+.motion-strip { position: absolute; left: 12px; right: 12px; bottom: 34px; z-index: 6; display: grid; gap: 6px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 6px;
+  background: color-mix(in srgb, var(--panel-bg) 92%, transparent); box-shadow: 0 6px 20px var(--shadow); backdrop-filter: blur(6px); }
+.motion-controls { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.motion-play { flex: none; width: 30px; height: 30px; border: 0; border-radius: 50%; background: var(--accent); color: var(--accent-contrast); font-size: 11px; cursor: pointer; }
+.motion-play:hover { background: var(--accent-hover); }
+.motion-controls strong { flex: none; font-size: 12px; }
+.motion-controls select { flex: none; height: 24px; border: 1px solid var(--border); border-radius: 4px; background: var(--control-bg); color: var(--text-primary); font-size: 12px; }
+.motion-controls input[type=range] { flex: 1; min-width: 80px; accent-color: var(--gold); }
+.motion-time { flex: none; color: var(--text-secondary); font: 11px/1 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-variant-numeric: tabular-nums; }
+.motion-reset { flex: none; height: 24px; padding: 0 9px; border: 1px solid var(--border); border-radius: 4px; background: var(--control-bg); color: var(--text-secondary); font-size: 11px; cursor: pointer; }
+.motion-joints { display: flex; flex-wrap: wrap; gap: 4px 14px; padding-left: 40px; color: var(--text-secondary); font: 10.5px/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-variant-numeric: tabular-nums; }
+.motion-joints span { opacity: .6; }
+.motion-joints span.driven { opacity: 1; }
+.motion-joints span.driven b { color: var(--gold-ink); }
+.motion-joints b { color: var(--text-primary); font-weight: 600; }
+.motion-error { margin: 0; padding-left: 40px; color: var(--error); font-size: 11px; }
+
 /* The last good model under a draft that does not build. */
 .viewport-pane canvas { transition: filter .18s ease; }
 .viewport-pane.ghosted canvas { filter: grayscale(.85) opacity(.5); }

@@ -1,4 +1,5 @@
 import { useEffect, useRef, type MutableRefObject } from 'react';
+import type { MotionPose } from '@aetheris/cad';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import type { DisplayEdgePolyline, ModelSession, SelectionDescription } from '@aetheris/cad';
@@ -15,6 +16,7 @@ interface Props {
   selectionMode: 'face' | 'edge';
   onSelect(entityId: string | null, faceId: string | null, selection?: SelectionDescription | null): void;
   captureRef?: MutableRefObject<(() => string) | null>;
+  pose?: MotionPose | null;
 }
 
 type MeshMeta = { definitionId: string; occurrenceId: string; edgeId?: string; highlight?: boolean };
@@ -36,6 +38,8 @@ export function LegacyViewport(props: Props) {
   useEffect(() => { if (state.current) applyAppearance(state.current, props.theme, props.displayMode); }, [props.theme, props.displayMode]);
   useEffect(() => { if (state.current) applyViewCommand(state.current, props.viewMode, props.viewCommand); }, [props.viewMode, props.viewCommand]);
   useEffect(() => { if (state.current) state.current.selectionMode = props.selectionMode; }, [props.selectionMode]);
+  // A motion pose moves occurrences in place: the built geometry stays loaded.
+  useEffect(() => { if (state.current && props.model) applyPose(state.current.group, props.model, props.pose ?? null); }, [props.model, props.model?.revision, props.pose]);
 
   return <section className="viewport-shell" aria-label="3D viewport">
     <div className="viewport-canvas" ref={host} data-testid="viewport" />
@@ -264,3 +268,13 @@ function fitSelection(state: ReturnType<typeof createScene>) {
 
 function material(selected: boolean, wireframe: boolean) { return new THREE.MeshStandardMaterial({ color: selected ? 0xe7ad45 : 0xb8beb3, metalness: 0.15, roughness: 0.62, side: THREE.DoubleSide, wireframe }); }
 function disposeObject(object: THREE.Object3D) { if (object instanceof THREE.Mesh || object instanceof THREE.LineSegments) { object.geometry.dispose(); (object.material as THREE.Material).dispose(); } }
+
+function applyPose(group: THREE.Group, model: ModelSession, pose: MotionPose | null) {
+  const built = new Map(model.mesh.occurrences.map(occurrence => [occurrence.id, occurrence.transform]));
+  const moved = new Map((pose?.transforms ?? []).map(t => [t.id, Array.from(t.matrix)]));
+  for (const object of group.children) {
+    const id = (object.userData as MeshMeta).occurrenceId;
+    const transform = moved.get(id) ?? built.get(id);
+    if (transform) { object.matrix.fromArray(transform); object.matrixWorldNeedsUpdate = true; }
+  }
+}

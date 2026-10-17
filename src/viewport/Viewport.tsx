@@ -18,7 +18,8 @@ import {
   type TelosScene,
   type TelosMesh,
 } from "@aetheris/three-telos";
-import type { ModelSession, SelectionDescription } from "@aetheris/cad";
+import type { ModelSession, MotionPose, SelectionDescription } from "@aetheris/cad";
+import { posedMesh } from "./pose";
 import type { DisplayMode, ThemeName, ViewMode } from "../app/types";
 import { HELIOS_PRESENTATIONS } from "./presentation";
 const LegacyViewport = lazy(() =>
@@ -33,6 +34,8 @@ interface Props {
   aaMode?: import("@aetheris/three-telos").TelosAAMode;
   aaDebug?: import("@aetheris/three-telos").TelosAADebug;
   model: ModelSession | null;
+  /** A sampled motion pose; the viewport shows the built model moved to it. */
+  pose?: MotionPose | null;
   selectedEntityId: string | null;
   selectedTopologyId: string | null;
   theme: ThemeName;
@@ -96,7 +99,7 @@ function TelosViewport(props: Props & { onRetry(): void }) {
     current.setAA(value.aaMode ?? "SpatialOnly", value.aaDebug ?? "color");
     current.setPresentation(HELIOS_PRESENTATIONS[value.theme]);
     const scene: TelosScene = value.model
-      ? fromDisplayMesh(value.model.mesh)
+      ? fromDisplayMesh(posedMesh(value.model.mesh, value.pose))
       : { meshes: [], lines: [], fields: [] };
     const selected =
       value.model && value.selectedEntityId
@@ -298,7 +301,7 @@ function TelosViewport(props: Props & { onRetry(): void }) {
   }, []);
   useEffect(() => {
     apply();
-  }, [props.model, props.model?.revision, props.selectedEntityId, props.selectedTopologyId,
+  }, [props.model, props.model?.revision, props.pose, props.selectedEntityId, props.selectedTopologyId,
     props.theme, props.displayMode, props.viewMode, props.viewCommand, props.aaMode, props.aaDebug,
     inspectionMode, isolatedFaceKey]);
   useEffect(() => { setIsolatedFaceKey(""); }, [props.model?.id, props.model?.revision]);

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { ConstructProjection, Diagnostic, EditableProperty, FieldProjection, LanguageOutline, ModelSession, LanguageEditOperation, LanguageField, OutlineField, OutlineNode, PaletteItem, SelectionDescription, SemanticSchema, UnitValue } from '@aetheris/cad';
+import type { ConstructProjection, Diagnostic, EditableProperty, FieldProjection, LanguageOutline, ModelSession, LanguageEditOperation, LanguageField, MotionPose, OutlineField, OutlineNode, PaletteItem, SelectionDescription, SemanticSchema, UnitValue } from '@aetheris/cad';
 import { WebSdkCadRuntime } from '../sdk/CadRuntime';
 import { AetherisWorkerClient, type BuildResult } from '../sdk/AetherisWorkerClient';
 import { assemblySource, bracketSource, emptyModelSource } from '../sdk/samples';
@@ -30,6 +30,10 @@ import { editorFor, formatQuantity, parameterSource, vectorText, type Quantity }
 import { startingValue } from '../graph/NodeInspector';
 import { parameterNodes, ParametersSheet } from '../graph/ParametersSheet';
 import { buildPartGraph, nodeAtSpan, unitAtSpan, type GraphRow, type PartGraph } from '../graph/outlineGraph';
+import { assembliesOf, buildAssemblyGraph, jointOperation, type AssemblyEnd } from '../graph/assemblyGraph';
+import type { AssemblyView } from '../graph/GraphPanel';
+import { MotionStrip } from '../viewport/MotionStrip';
+import { poseCoverage } from '../viewport/pose';
 
 type UtilityTab = { kind: 'files' } | { kind: 'inspector' } | { kind: 'examples' } | { kind: 'llm' };
 
@@ -395,6 +399,34 @@ export function HeliosApp({ project, initialWorkspace, onShowcase, onSave, onPub
     if (editorMode !== 'graph' || palette.length) return;
     void runtime.palette().then(result => setPalette(result.items)).catch(() => { /* the canvas works without a palette */ });
   }, [editorMode]);
+  // The Assembly view of the canvas: the chosen assembly's parts and joints.
+  const [pickedAssembly, setPickedAssembly] = useState<string | null>(null);
+  // A sampled Motion pose shown in the viewport; null shows the model as built.
+  const [pose, setPose] = useState<MotionPose | null>(null);
+  const assemblies = useMemo(() => assembliesOf(outline), [outline]);
+  const assemblyGraph = useMemo(() => outline && assemblies.length ? buildAssemblyGraph(outline, pickedAssembly) : null, [outline, assemblies, pickedAssembly]);
+  const jointKinds = useMemo(() => {
+    // Mechanical joints only: the schema's Interface kinds whose context is an Assembly (Stitch belongs to Garments).
+    const kinds = (semanticSchema?.constructs ?? []).filter(c => c.context?.includes('Assembly')).map(c => /^Interface<(\w+)>$/.exec(c.name)?.[1]).filter((k): k is string => !!k);
+    return kinds.length ? [...new Set(kinds)] : ['Fixed', 'Revolute', 'Prismatic'];
+  }, [semanticSchema]);
+  const assemblyView = (): AssemblyView | null => !assemblyGraph ? null : {
+    assemblies, graph: assemblyGraph, selectedAssembly: assemblyGraph.assembly.id, selectedId: inspectedId,
+    authoring: busy === 'Worker failed' ? null : {
+      kinds: jointKinds,
+      onJoin: (kind: string, a: AssemblyEnd, b: AssemblyEnd) => {
+        if (!outline) return;
+        const operation = jointOperation(assemblyGraph, kind, a, b, outline);
+        if ('reason' in operation) { pushOutput(operation.reason); return; }
+        const name = (id: string) => assemblyGraph.parts.find(p => p.id === id)?.name ?? id;
+        void structuralEdit([operation], { nodeId: assemblyGraph.assembly.id, label: `Joined ${name(a.part)}.${a.port} to ${name(b.part)}.${b.port} (${kind})` })
+          .then(refused => { if (refused) pushOutput(`Joint refused · ${refused}`); });
+      },
+    },
+    onPickAssembly: setPickedAssembly,
+    onSelect: id => selectGraphNode(id),
+    onOpenSource: id => { const node = outline?.nodes.find(n => n.id === id); if (node) { setEditorMode('source'); navigateSource({ source: sourceName, start: node.span.start, length: node.span.length, line: 1, column: 1 }); } },
+  };
   const graphAuthoring = () => {
     if (busy === 'Worker failed' || !outline) return null;
     const target = featureTarget(outline, inspectedId);
@@ -610,7 +642,7 @@ export function HeliosApp({ project, initialWorkspace, onShowcase, onSave, onPub
         </div>
         {editorMode === 'graph' && <GraphPanel outline={outline} error={outlineError} diagnostics={shownDiagnostics} selection={graphSelection} theme={theme}
           onSelect={(unitId, row, graph) => selectFromGraph(unitId, row, graph)} onOpenSource={(unitId, row, graph) => openFromGraph(unitId, row, graph)}
-          authoring={graphAuthoring()}
+          authoring={graphAuthoring()} assembly={assemblyView()}
           inspector={<div className="graph-side">
             <div className="graph-side-tabs" role="tablist" aria-label="Side panel">
               <button role="tab" aria-selected={sideTab === 'selection'} className={sideTab === 'selection' ? 'active' : ''} onClick={() => setSideTab('selection')}>Selection</button>
@@ -634,7 +666,9 @@ export function HeliosApp({ project, initialWorkspace, onShowcase, onSave, onPub
           <div><button title="Front view" onClick={() => namedView('front')}>Front</button><button title="Top view" onClick={() => namedView('top')}>Top</button><button title="Right view" onClick={() => namedView('right')}>Right</button><button title="Isometric view" onClick={() => namedView('iso')}>Iso</button><button title="Fit model · F" onClick={() => setViewCommand(`fit-${Date.now()}`)}>Fit</button><button title="Fit selection" disabled={!selectedEntityId} onClick={() => setViewCommand(`fitselection-${Date.now()}`)}>Fit selection</button></div>
           <div><select aria-label="Display mode" value={displayMode} onChange={event => setDisplayMode(event.target.value as DisplayMode)}><option value="shaded">Shaded</option><option value="edges">Shaded with edges</option><option value="wireframe">Wireframe</option></select><button aria-label="Selection mode" title="Switch face or edge selection" onClick={() => { setSelectionMode(value => value === 'face' ? 'edge' : 'face'); setDisplayMode('edges'); }}>{selectionMode === 'face' ? 'Faces' : 'Edges'}</button><button title="Toggle camera projection" onClick={() => setViewMode(value => value === 'perspective' ? 'orthographic' : 'perspective')}>{viewMode === 'perspective' ? 'Perspective' : 'Orthographic'}</button></div>
         </div>
-        <Viewport busyMessage={busy === 'Worker failed' ? null : busy} errorMessage={shownDiagnostics.some(item => item.severity === 'error') ? (model ? 'Build failed. The last valid model remains visible; see Problems for details.' : 'Build needs attention. See Problems for the compiler diagnostic.') : null} model={model} selectedEntityId={selectedEntityId} selectedTopologyId={selectedFaceId} theme={theme} displayMode={displayMode} viewMode={viewMode} viewCommand={viewCommand} selectionMode={selectionMode} onSelect={select} captureRef={capturePreview} />
+        <Viewport pose={pose} busyMessage={busy === 'Worker failed' ? null : busy} errorMessage={shownDiagnostics.some(item => item.severity === 'error') ? (model ? 'Build failed. The last valid model remains visible; see Problems for details.' : 'Build needs attention. See Problems for the compiler diagnostic.') : null} model={model} selectedEntityId={selectedEntityId} selectedTopologyId={selectedFaceId} theme={theme} displayMode={displayMode} viewMode={viewMode} viewCommand={viewCommand} selectionMode={selectionMode} onSelect={select} captureRef={capturePreview} />
+        {model?.motions?.length ? <MotionStrip clips={model.motions} revision={model.revision} onPose={setPose}
+          sample={(motion, t) => runtime.sampleMotion(motion, t)} coverage={next => poseCoverage(model.mesh, next)} /> : null}
         <div className="viewport-caption"><span>{model?.name ?? workspaceTitle}</span><span>{ghosted ? 'Last good model · the current draft does not build' : displayRevision !== sourceRevision && model ? 'Last valid model · source changed' : model ? 'Compiled geometry' : 'Waiting for geometry'}</span></div>
         {welcomeHint && <div className="workflow-hint"><span><b>Source → Build → Geometry</b> Edit on the left. Ctrl+Enter builds. Drag to orbit; scroll to zoom.</span><button aria-label="Dismiss workflow hint" onClick={() => { setWelcomeHint(false); localStorage.setItem('helios-workflow-understood', '1'); }}>×</button></div>}
         </div>
