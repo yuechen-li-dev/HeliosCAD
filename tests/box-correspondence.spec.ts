@@ -15,11 +15,11 @@ test('Box top face keeps its source selector through browser picking', async ({ 
   await page.getByRole('button', { name: 'Create project' }).click();
   const editor = page.locator('.monaco-editor');
   await expect(editor).toBeVisible();
-  await expect(page.locator('.status-ready')).toContainText('READY', { timeout: 120_000 });
+  await expect(page.locator('.status-ready')).toContainText('Ready', { timeout: 120_000 });
   await replaceEditorSource(page, 'Model BoxWitness {\n    Units: mm\n    Box Body { Size: [40mm, 30mm, 8mm] }\n}\n');
   await page.getByRole('button', { name: '↻ Rebuild' }).click();
-  await expect(page.locator('.status-ready')).toContainText('READY', { timeout: 120_000 });
-  await expect(page.locator('.statusbar')).toContainText('0 DIAGNOSTICS');
+  await expect(page.locator('.status-ready')).toContainText('Ready', { timeout: 120_000 });
+  await expect(page.locator('.statusbar')).toContainText('No problems');
   await page.getByRole('button', { name: 'Top', exact: true }).click();
   await expect(page.locator('.statusbar')).toContainText('ORTHOGRAPHIC');
   const canvas = page.locator('.viewport-canvas canvas');
@@ -58,7 +58,7 @@ test('Box top face keeps its source selector through browser picking', async ({ 
 
   await replaceEditorSource(page, 'Model BoxWitness {\n    Units: mm\n    Box Body { Size: [45mm, 30mm, 8mm] }\n}\n');
   await page.getByRole('button', { name: '↻ Rebuild' }).click();
-  await expect(page.locator('.status-ready')).toContainText('READY', { timeout: 120_000 });
+  await expect(page.locator('.status-ready')).toContainText('Ready', { timeout: 120_000 });
   await page.getByRole('button', { name: 'Top', exact: true }).click();
   await canvas.click({ position: { x: bounds!.width / 2, y: bounds!.height / 2 } });
   await expect(page.locator('.inspector')).toContainText('Body.face(+Z)');
@@ -66,6 +66,6 @@ test('Box top face keeps its source selector through browser picking', async ({ 
   await page.getByRole('button', { name: 'Reference Face in Source' }).click();
   await expect(page.locator('.view-lines')).toContainText('Pmi { Datum SelectedFace1 { Target: face(+Z) } }');
   await page.getByRole('button', { name: '↻ Rebuild' }).click();
-  await expect(page.locator('.status-ready')).toContainText('READY', { timeout: 120_000 });
-  await expect(page.locator('.statusbar')).toContainText('0 DIAGNOSTICS');
+  await expect(page.locator('.status-ready')).toContainText('Ready', { timeout: 120_000 });
+  await expect(page.locator('.statusbar')).toContainText('No problems');
 });

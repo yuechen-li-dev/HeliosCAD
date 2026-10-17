@@ -12,7 +12,7 @@ test('first sixty seconds, real build, selection, resize, diagnostics, recovery 
   await expect.poll(() => page.locator('.showcase-image img').evaluateAll(images => images.length === 5 && images.every(image => (image as HTMLImageElement).complete && (image as HTMLImageElement).naturalWidth > 0))).toBe(true);
   await page.screenshot({ path: `${evidence}/first-launch.png` });
   await page.getByRole('button', { name: 'Open Mounting plate' }).click();
-  await expect(page.locator('.status-ready')).toContainText('READY');
+  await expect(page.locator('.status-ready')).toContainText('Ready');
   await expect(page.locator('[data-display-host="three-telos"] canvas')).toBeVisible();
   await page.getByRole('button', { name: 'Dismiss workflow hint' }).click();
   await page.getByRole('button', { name: 'Examples', exact: true }).click();
@@ -20,8 +20,8 @@ test('first sixty seconds, real build, selection, resize, diagnostics, recovery 
   await page.screenshot({ path: `${evidence}/gallery.png` });
   await page.getByRole('button', { name: 'Close examples', exact: true }).click();
   await page.getByRole('button', { name: 'Build', exact: true }).click();
-  await expect(page.locator('.status-ready')).toContainText('READY');
-  await expect(page.locator('.statusbar')).toContainText('0 DIAGNOSTICS');
+  await expect(page.locator('.status-ready')).toContainText('Ready');
+  await expect(page.locator('.statusbar')).toContainText('No problems');
   const displayState = () => page.getByLabel('Engineering WebGPU viewport').evaluate(element => JSON.parse(element.getAttribute('data-telos-display') ?? '{}'));
   await expect.poll(async () => (await displayState()).meshSurfaces).toBeGreaterThan(0);
   const meshFallback = await displayState();
@@ -47,15 +47,15 @@ test('first sixty seconds, real build, selection, resize, diagnostics, recovery 
   await page.setViewportSize({ width: 1920, height: 1080 });
   await replaceEditorSource(page, 'Model Broken { Box Body { Size: [20mm, 20mm, 8mm] }');
   await page.getByRole('button', { name: 'Build', exact: true }).click();
-  await expect(page.locator('.statusbar')).toContainText('MODEL OUT OF DATE');
+  await expect(page.locator('.statusbar')).toContainText('Out of date');
   await expect(page.locator('.dock-errors button').first()).toBeVisible();
-  await expect(page.locator('.statusbar')).toContainText('1 DEFS');
+  await expect(page.locator('.statusbar')).toContainText('1 definition ');
   await page.screenshot({ path: `${evidence}/diagnostics.png` });
   const corrected = 'Model Plate { Units: mm Box Body { Size: [50mm, 40mm, 8mm] } }';
   await replaceEditorSource(page, corrected);
   await page.getByRole('textbox', { name: 'Editor content', exact: true }).press('ControlOrMeta+Enter');
-  await expect(page.locator('.status-ready')).toContainText('READY');
-  await expect(page.locator('.statusbar')).not.toContainText('MODEL OUT OF DATE');
+  await expect(page.locator('.status-ready')).toContainText('Ready');
+  await expect(page.locator('.statusbar')).not.toContainText('Out of date');
   await expect.poll(async () => (await displayState()).fields).toBeGreaterThan(0);
   const qualifiedCir = await displayState();
   expect(qualifiedCir.meshSurfaces).toBe(0);
@@ -90,8 +90,8 @@ for (const [title, file, capture] of [['Industrial ATLAS', 'atlas-industrial.fir
       await page.screenshot({ path: `${evidence}/${capture}-completion.png` });
       await writeFile(`${evidence}/${capture}-completion.json`, JSON.stringify({ milliseconds: Date.now() - started, status: await page.locator('.statusbar').innerText(), problems: (await page.locator('.dock-errors').allTextContents()).join('\n'), errors }, null, 2));
     }
-    await expect(page.locator('.status-ready')).toContainText('READY');
-    await expect(page.locator('.statusbar')).toContainText('0 DIAGNOSTICS');
+    await expect(page.locator('.status-ready')).toContainText('Ready');
+    await expect(page.locator('.statusbar')).toContainText('No problems');
     await expect(page.locator('[data-display-host="three-telos"] canvas')).toBeVisible();
     await expect(page.locator('.source-panel .bottom-tabs')).toContainText(file);
     const dismiss = page.getByRole('button', { name: 'Dismiss workflow hint' }); if (await dismiss.isVisible()) await dismiss.click();

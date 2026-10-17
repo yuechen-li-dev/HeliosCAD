@@ -187,13 +187,13 @@ export const SourcePanel = forwardRef<SourcePanelHandle, Props>(function SourceP
   return <section className="panel source-panel" aria-label="Firmament source and diagnostics">
     <div className="bottom-tabs">
       <button className={tab === 'source' ? 'active' : ''} onClick={() => setTab('source')}>{fileName} {dirty ? '●' : ''}</button>
-      <button className={tab === 'diagnostics' ? 'active' : ''} onClick={() => setTab('diagnostics')}>PROBLEMS <span className={diagnostics.some(item => item.severity === 'error') ? 'badge error' : 'badge'}>{diagnostics.length}</span></button>
+      <button className={tab === 'diagnostics' ? 'active' : ''} onClick={() => setTab('diagnostics')}>Problems <span className={diagnostics.some(item => item.severity === 'error') ? 'badge error' : 'badge'}>{diagnostics.length}</span></button>
       <button className="word-wrap-toggle" aria-label="Toggle word wrap" aria-pressed={wordWrap} title="Word wrap · Alt+Z" onClick={() => { setTab('source'); setWordWrap(value => !value); }}>{wordWrap ? 'Wrap on' : 'Wrap'}</button>
       <button className="rebuild-inline" onClick={onRebuild} disabled={disabled}>↻ Rebuild</button>
     </div>
     <div className="code-editor" style={{ display: tab === 'source' ? undefined : 'none' }} aria-label="Firmament editor">
       <Editor path={`/document-${documentId.current}/${fileName}`} language="firmament" theme={theme === 'apollonia' ? 'helios-apollonia' : 'helios-bronze-age'} value={source} onChange={value => { client.current?.update(value ?? '', fileName, model ?? null, selectedSelector ?? null); onSourceChange(value ?? ''); }} onMount={onMount}
-        options={{ fontFamily: '"Inter Variable", Inter, sans-serif', fontSize: 14, fontWeight: '400', lineNumbers: 'on', minimap: { enabled: false }, automaticLayout: true, readOnly: false, wordWrap: wordWrap ? 'on' : 'off', wrappingStrategy: 'advanced', scrollbar: { vertical: 'visible', verticalScrollbarSize: 14, horizontalScrollbarSize: 10, useShadows: false }, tabSize: 2, scrollBeyondLastLine: false, quickSuggestions: true, suggestOnTriggerCharacters: true, wordBasedSuggestions: 'off', 'semanticHighlighting.enabled': true }} />
+        options={{ fontFamily: '"Inter Variable", Inter, sans-serif', fontSize: 14, fontWeight: '400', fontLigatures: '"cv05", "cv08"', lineNumbers: 'on', minimap: { enabled: false }, automaticLayout: true, readOnly: false, wordWrap: wordWrap ? 'on' : 'off', wrappingStrategy: 'advanced', scrollbar: { vertical: 'visible', verticalScrollbarSize: 14, horizontalScrollbarSize: 10, useShadows: false }, tabSize: 2, scrollBeyondLastLine: false, quickSuggestions: true, suggestOnTriggerCharacters: true, wordBasedSuggestions: 'off', 'semanticHighlighting.enabled': true }} />
     </div>
     {tab === 'diagnostics' && <div className="diagnostic-list">
       {diagnostics.length ? diagnostics.map((diagnostic, index) => <button key={`${diagnostic.code}-${index}`} className={`diagnostic ${diagnostic.severity}`} onClick={() => jumpToDiagnostic(diagnostic)}>

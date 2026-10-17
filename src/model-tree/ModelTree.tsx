@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { displayKind } from '../inspector/displayKind';
 import type { ModelTree as SdkModelTree, ModelTreeNode } from '@aetheris/cad';
 
 interface Props {
@@ -31,7 +32,7 @@ export function ModelTree({ tree, selectedId, onSelect }: Props) {
   }, [nodes, query, selectedKind, tree]);
 
   return <section className="panel model-browser" aria-label="Model browser">
-    <div className="panel-heading"><span>MODEL</span><span className="panel-meta">{tree?.nodes.length ?? 0}</span></div>
+    <div className="panel-heading"><span>Model</span><span className="panel-meta">{tree?.nodes.length ?? 0}</span></div>
     <div className="tree-filters">
       <div className="tree-search"><span>⌕</span><input aria-label="Filter model" value={query} onChange={event => setQuery(event.target.value)} placeholder="Filter model" /></div>
       <select aria-label="Filter model by kind" value={selectedKind} onChange={event => setKind(event.target.value)}>
@@ -56,7 +57,7 @@ function TreeNode({ node, nodes, selectedId, visible, onSelect, depth }: { node:
       <button className="disclosure" aria-label={`${open ? 'Collapse' : 'Expand'} ${node.name}`} onClick={event => { event.stopPropagation(); setOpen(value => !value); }}>{children.length ? (open ? '⌄' : '›') : '·'}</button>
       <span className={`kind-icon kind-${node.kind.toLowerCase()}`}>{kindGlyph(node.kind)}</span>
       <span className="tree-name">{node.name}</span>
-      <span className="tree-kind" title={node.kind}>{node.kind.endsWith('Materializer') ? 'Solid' : node.kind}</span>
+      <span className="tree-kind" title={node.kind}>{displayKind(node.kind)}</span>
     </div>
     {open && children.map(child => <TreeNode key={child.id} node={child} nodes={nodes} selectedId={selectedId} visible={visible} onSelect={onSelect} depth={depth + 1} />)}
   </div>;

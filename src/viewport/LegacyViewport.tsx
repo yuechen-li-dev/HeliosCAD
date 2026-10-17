@@ -10,6 +10,8 @@ import { HELIOS_PRESENTATIONS } from './presentation';
 import { referenceGrid } from './referenceGrid';
 
 interface Props {
+  busyMessage?: string | null;
+  errorMessage?: string | null;
   model: ModelSession | null;
   selectedEntityId: string | null;
   selectedTopologyId: string | null;
@@ -48,7 +50,14 @@ export function LegacyViewport(props: Props) {
   return <section className="viewport-shell" aria-label="3D viewport">
     <div className="viewport-canvas" ref={host} data-testid="viewport" />
     <div className="axis-labels" aria-hidden="true"><span className="axis-x">X</span><span className="axis-y">Y</span><span className="axis-z">Z</span></div>
-    {!props.model && <div className="viewport-empty">Firmament geometry will appear here.</div>}
+    {/* The same empty, busy and error states as the WebGPU viewport. */}
+    {!props.model && !props.busyMessage && <div className="viewport-empty">
+      <strong>Build your first model</strong>
+      <span>Open a Firmament file, edit its source, then Build.</span>
+      <small>Drag to orbit · Shift-drag to pan · Scroll to zoom</small>
+    </div>}
+    {props.busyMessage && <div className="viewport-status" role="status">{props.busyMessage}</div>}
+    {props.errorMessage && <div className="viewport-status viewport-error" role="alert">{props.errorMessage}</div>}
   </section>;
 }
 

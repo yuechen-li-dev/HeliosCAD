@@ -36,9 +36,9 @@ describe('semantic inspector', () => {
     const reference = vi.fn();
     render(<Inspector model={fakeModel({ entity: id => id === hole.id ? { ...hole, holeDiameterMm: 6 } : undefined })}
       entityId="hole:center" selection={selection} diagnostics={[]} onApply={async () => true} onReferenceHoleWall={reference} />);
-    expect(screen.getByRole('button', { name: 'Copy Selector' })).toBeVisible();
-    expect(screen.queryByRole('button', { name: 'Reference Face in Source' })).toBeNull();
-    fireEvent.click(screen.getByRole('button', { name: 'Reference Hole Wall in Source' }));
+    expect(screen.getByRole('button', { name: 'Copy selector' })).toBeVisible();
+    expect(screen.queryByRole('button', { name: 'Reference face in source' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Reference hole wall in source' }));
     expect(reference).toHaveBeenCalledOnce();
   });
   it('lays out projected fields as rows with value, origin and the read-only reason, and remembers collapsed sections', async () => {

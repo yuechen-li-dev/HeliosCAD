@@ -14,11 +14,11 @@ test('through-hole wall selector copies into a valid PMI use site', async ({ pag
   await page.getByRole('button', { name: 'Create project' }).click();
   const editor = page.locator('.monaco-editor');
   await expect(editor).toBeVisible();
-  await expect(page.locator('.status-ready')).toContainText('READY', { timeout: 120_000 });
+  await expect(page.locator('.status-ready')).toContainText('Ready', { timeout: 120_000 });
   await replaceEditorSource(page, 'Model HoleWitness {\n Units: mm\n Box Body { Size: [40mm, 30mm, 8mm] }\n Modify Body { Hole<Shaft> H { On: +Z Center: Point2(0mm, 0mm) Diameter: 8mm End: ThroughAll } }\n}\n');
   await page.getByRole('button', { name: '↻ Rebuild' }).click();
-  await expect(page.locator('.status-ready')).toContainText('READY', { timeout: 120_000 });
-  await expect(page.locator('.statusbar')).toContainText('0 DIAGNOSTICS');
+  await expect(page.locator('.status-ready')).toContainText('Ready', { timeout: 120_000 });
+  await expect(page.locator('.statusbar')).toContainText('No problems');
   await page.getByRole('button', { name: 'Iso', exact: true }).click();
   const canvas = page.locator('.viewport-canvas canvas');
   let wallPicked = false;
@@ -43,8 +43,8 @@ test('through-hole wall selector copies into a valid PMI use site', async ({ pag
   await expect(page.locator('.status-selection')).toHaveText('H');
   await replaceEditorSource(page, 'Model HoleWitness {\n Units: mm\n Box Body { Size: [40mm, 30mm, 8mm] }\n Modify Body { Hole<Shaft> H { On: +Z Center: Point2(0mm, 0mm) Diameter: 10mm End: ThroughAll } }\n}\n');
   await page.getByRole('button', { name: '↻ Rebuild' }).click();
-  await expect(page.locator('.status-ready')).toContainText('READY', { timeout: 120_000 });
-  await expect(page.locator('.statusbar')).toContainText('0 DIAGNOSTICS');
+  await expect(page.locator('.status-ready')).toContainText('Ready', { timeout: 120_000 });
+  await expect(page.locator('.statusbar')).toContainText('No problems');
   await page.getByRole('button', { name: 'Iso', exact: true }).click();
   wallPicked = false;
   for (const [x, y] of [[382, 132], [380, 135], [385, 134], [382, 138], [377, 133], [389, 133]]) {
@@ -59,6 +59,6 @@ test('through-hole wall selector copies into a valid PMI use site', async ({ pag
   await expect(page.getByRole('textbox', { name: 'Editor content' })).toBeFocused();
   await page.keyboard.press('ControlOrMeta+V');
   await page.getByRole('button', { name: '↻ Rebuild' }).click();
-  await expect(page.locator('.status-ready')).toContainText('READY', { timeout: 120_000 });
-  await expect(page.locator('.statusbar')).toContainText('0 DIAGNOSTICS');
+  await expect(page.locator('.status-ready')).toContainText('Ready', { timeout: 120_000 });
+  await expect(page.locator('.statusbar')).toContainText('No problems');
 });

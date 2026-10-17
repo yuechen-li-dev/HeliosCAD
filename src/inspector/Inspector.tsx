@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { Fragment, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { displayKind } from './displayKind';
 import type { ConstructProjection, Diagnostic, EditableProperty, FieldProjection, ModelSession, SelectionDescription, SemanticFieldSchema, SemanticSchema, SourceReference, UnitValue } from '@aetheris/cad';
 
 interface Props {
@@ -31,16 +32,16 @@ export function Inspector({ model, schema, projection, projectionCurrent = true,
   const fieldRow = ({ field, projected }: typeof fields[number]) => <SemanticFieldRow key={field.id} field={field} projected={projected}
     editable={!!projected?.editable && projectionCurrent && !!onRewriteField} stale={!projectionCurrent} onRewriteField={onRewriteField} onGoToSource={onGoToSource} />;
   return <section className="panel inspector" aria-label="Inspector">
-    <div className="panel-heading"><span>INSPECTOR</span><span className="panel-meta">{entity?.kind ?? '—'}</span></div>
+    <div className="panel-heading"><span>Selection</span></div>
     <div className="inspector-scroll">
       {entity ? <>
-        <div className="entity-hero"><span className="entity-glyph">{entity.kind === 'Hole' ? '⊙' : '◆'}</span><div><strong>{entity.name}</strong><small>{entity.kind}</small></div></div>
+        <div className="entity-hero"><span className="entity-glyph">{entity.kind === 'Hole' ? '⊙' : '◆'}</span><div><strong>{entity.name}</strong><small>{displayKind(entity.kind)}</small></div></div>
         <Section id="identity" label="Identity">
-          <dl className="identity-list"><dt>Semantic ID</dt><dd className="identifier">{entity.id}</dd>{faceId && <><dt>{selection?.topologyKind === 'Edge' ? 'Edge ID' : 'Face ID'}</dt><dd className="identifier">{faceId}</dd></>}{selection && <><dt>Topology</dt><dd className="identifier">{selection.semanticTopologyId ?? selection.sourceAddressability}</dd><dt>Selector</dt><dd className="identifier">{selection.selector ?? selection.selectorReason ?? 'No source selector'}</dd></>}{source ? <><dt>Source</dt><dd><button className="source-link" onClick={() => onGoToSource?.(source)}>{source.source}:{source.line}</button></dd></> : <><dt>Source</dt><dd>No Firmament source</dd></>}</dl>
-          <div className="inspector-actions"><button onClick={() => source && onGoToSource?.(source)} disabled={!source}>Go to Source</button>{selection?.selector && <><button onClick={() => void navigator.clipboard?.writeText(selection.selector!)}>Copy Selector</button>{selection.outputRole === 'BoxFace' && <button onClick={onReferenceFace}>Reference Face in Source</button>}{selection.outputRole === 'HoleWallFace' && entity.kind === 'Hole' && entity.holeDiameterMm != null && <button onClick={onReferenceHoleWall}>Reference Hole Wall in Source</button>}</>}<button onClick={() => void navigator.clipboard?.writeText(selection?.semanticTopologyId ?? faceId ?? entity.id)}>Copy Semantic ID</button></div>
+          <dl className="identity-list"><dt>Semantic ID</dt><dd className="identifier"><Identifier value={entity.id} /></dd>{faceId && <><dt>{selection?.topologyKind === 'Edge' ? 'Edge ID' : 'Face ID'}</dt><dd className="identifier"><Identifier value={faceId} /></dd></>}{selection && <><dt>Topology</dt><dd className="identifier"><Identifier value={selection.semanticTopologyId ?? selection.sourceAddressability} /></dd><dt>Selector</dt><dd className={selection.selector ? 'identifier' : 'note'}>{selection.selector ? <Identifier value={selection.selector} /> : selection.selectorReason ?? 'No source selector'}</dd></>}{source ? <><dt>Source</dt><dd><button className="source-link" onClick={() => onGoToSource?.(source)}>{source.source}:{source.line}</button></dd></> : <><dt>Source</dt><dd>No Firmament source</dd></>}</dl>
+          <div className="inspector-actions"><button onClick={() => source && onGoToSource?.(source)} disabled={!source}>Go to source</button>{selection?.selector && <><button onClick={() => void navigator.clipboard?.writeText(selection.selector!)}>Copy selector</button>{selection.outputRole === 'BoxFace' && <button onClick={onReferenceFace}>Reference face in source</button>}{selection.outputRole === 'HoleWallFace' && entity.kind === 'Hole' && entity.holeDiameterMm != null && <button onClick={onReferenceHoleWall}>Reference hole wall in source</button>}</>}<button onClick={() => void navigator.clipboard?.writeText(selection?.semanticTopologyId ?? faceId ?? entity.id)}>Copy semantic ID</button></div>
         </Section>
         {occurrence && <Section id="occurrence" label="Occurrence">
-          <dl className="identity-list"><dt>Occurrence</dt><dd className="identifier">{occurrence.id}</dd><dt>Definition</dt><dd className="identifier">{occurrence.definitionId ?? '—'}</dd><dt>Parent</dt><dd className="identifier">{occurrence.parentId ?? 'Root'}</dd><dt>Translation</dt><dd>{formatTranslation(occurrence.transform)} mm</dd></dl>
+          <dl className="identity-list"><dt>Occurrence</dt><dd className="identifier"><Identifier value={occurrence.id} /></dd><dt>Definition</dt><dd className="identifier"><Identifier value={occurrence.definitionId ?? '—'} /></dd><dt>Parent</dt><dd className="identifier"><Identifier value={occurrence.parentId ?? 'Root'} /></dd><dt>Translation</dt><dd>{formatTranslation(occurrence.transform)} mm</dd></dl>
         </Section>}
         {construct && fields.length > 0 && <Section id="fields" label="Semantic fields" count={shown.length}>
           {shown.length > 0 ? <ul className="semantic-fields">{shown.map(fieldRow)}</ul> : <div className="empty-state compact">No field has a value yet.</div>}
@@ -60,7 +61,7 @@ export function Inspector({ model, schema, projection, projectionCurrent = true,
         <Section id="diagnostics" label="Related diagnostics" count={diagnostics.length}>
           <div className="empty-state compact">{diagnostics.length ? `${diagnostics.length} model diagnostic${diagnostics.length === 1 ? '' : 's'}` : 'No diagnostics'}</div>
         </Section>
-      </> : <div className="empty-state">Select model geometry or a tree item to inspect its semantic identity.</div>}
+      </> : <div className="empty-state">Select a face in the viewport or an item in the model tree to see what it is and where it is written.</div>}
     </div>
   </section>;
 }
@@ -150,4 +151,9 @@ function PropertyEditor({ property, onApply }: { property: EditableProperty; onA
     </div>
     <small>{invalid ? 'Invalid value retained. Last valid geometry remains.' : `Source value at line ${property.source.line}; edits are effective overrides.`}</small>
   </div>;
+}
+
+/** An id that wraps after its own separators (`definition:` · `Plate.` · `CenterMount`) before it breaks a name. */
+function Identifier({ value }: { value: string }) {
+  return <>{value.split(/(?<=[.:])/).map((part, index) => <Fragment key={index}>{part}<wbr /></Fragment>)}</>;
 }

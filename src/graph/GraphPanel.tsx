@@ -247,7 +247,7 @@ export function GraphPanel(props: Props) {
   const asm = props.assembly;
   return <section className="panel graph-panel" aria-label="Model graph">
     <div className="graph-caption">
-      {asm?.graph && <div className="graph-view-switch" role="tablist" aria-label="Graph view">
+      {asm?.graph && <div className="segmented graph-view-switch" role="tablist" aria-label="Graph view">
         <button role="tab" aria-selected={showAssembly} className={showAssembly ? 'active' : ''} onClick={() => chooseView('assembly')}>Assembly</button>
         <button role="tab" aria-selected={!showAssembly} className={!showAssembly ? 'active' : ''} onClick={() => chooseView('parts')}>Parts</button>
       </div>}
@@ -256,11 +256,11 @@ export function GraphPanel(props: Props) {
           ? <select aria-label="Assembly" value={asm.graph.assembly.id} onChange={event => asm.onPickAssembly(event.target.value)}>
               {asm.assemblies.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}</select>
           : asm.graph.assembly.name}</span>
-        <small>{asm.graph.parts.filter(p => p.kind !== 'ground').length} parts, {asm.graph.joints.length} joints. {asm.authoring
+        <small>{count(asm.graph.parts.filter(p => p.kind !== 'ground').length, 'part')}, {count(asm.graph.joints.length, 'joint')}. {asm.authoring
           ? 'Drag from one frame to another to join them; click a joint to edit it.' : 'Click a part or a joint to see it.'}</small>
       </div> : <div>
         {summary ? <><span>{summary.containers.length ? summary.containers.join(', ') : props.outline?.document}</span>
-          <small>{summary.units} parts, {summary.links} connections. {props.authoring
+          <small>{count(summary.units, 'part')}, {count(summary.links, 'connection')}. {props.authoring
             ? 'Double-click the canvas to add; drag from a card’s right edge to connect.' : 'Select a part to see its values; double-click to open its source.'}</small></> : <span>Model graph</span>}
       </div>}
       {props.authoring && !showAssembly && <button className="graph-add" aria-label="Add a body or feature" onClick={() => setPaletteAt(at => at ? null : { x: 12, y: 8 })}>+ Add</button>}
@@ -276,3 +276,5 @@ export function GraphPanel(props: Props) {
     </div>
   </section>;
 }
+
+const count = (n: number, noun: string) => `${n} ${noun}${n === 1 ? '' : 's'}`;

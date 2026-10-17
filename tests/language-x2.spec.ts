@@ -4,7 +4,7 @@ import { replaceEditorSource } from './editor';
 test('Aetheris language intelligence drives Monaco at 1440p', async ({ page }) => {
   await page.setViewportSize({ width: 2560, height: 1440 });
   await page.goto('/local');
-  await expect(page.locator('.status-ready')).toContainText('READY', { timeout: 120_000 });
+  await expect(page.locator('.status-ready')).toContainText('Ready', { timeout: 120_000 });
   await expect(page.locator('.monaco-editor')).toHaveAttribute('data-uri', /\.firmament$/);
   await replaceEditorSource(page, 'Model M {\n Units: mm\n Thr');
   await page.keyboard.press('ControlOrMeta+Space');
@@ -24,8 +24,8 @@ test('Aetheris language intelligence drives Monaco at 1440p', async ({ page }) =
 
   const ugly = 'Model M {\n Units: mm\n // keep this comment\n Box Body { Size: [10mm, 8mm, 4mm] }\n}\n';
   await replaceEditorSource(page, ugly);
-  await expect(page.locator('.dock-errors')).toContainText('No language or build diagnostics.');
-  const format = async () => { await page.getByRole('button', { name: /Command Palette/ }).click(); await page.getByRole('dialog', { name: 'Command palette' }).getByRole('button', { name: /Format Document/ }).click(); };
+  await expect(page.locator('.dock-errors')).toContainText('No problems.');
+  const format = async () => { await page.getByRole('button', { name: /Command palette/ }).click(); await page.getByRole('dialog', { name: 'Command palette' }).getByRole('button', { name: /Format document/ }).click(); };
   await format();
   await expect(page.locator('.view-lines')).toContainText('keep this comment');
   const once = await page.locator('.view-lines').innerText();
@@ -43,8 +43,8 @@ test('Aetheris language intelligence drives Monaco at 1440p', async ({ page }) =
       [name, performance.getEntriesByName(name).map(entry => Math.round(entry.duration))])));
   console.log('Language latency (ms):', JSON.stringify(measures));
   await page.getByRole('button', { name: 'Build', exact: true }).click();
-  await expect(page.locator('.status-ready')).toContainText('READY', { timeout: 120_000 });
-  await expect(page.locator('.statusbar')).toContainText('1 DEFS');
+  await expect(page.locator('.status-ready')).toContainText('Ready', { timeout: 120_000 });
+  await expect(page.locator('.statusbar')).toContainText('1 definition ');
   await page.getByRole('tab', { name: 'Terminal · local' }).click();
   await page.screenshot({ path: 'artifacts/local/p4-03/HELIOS-LANGUAGE-X2-2560x1440.png', fullPage: true });
 });

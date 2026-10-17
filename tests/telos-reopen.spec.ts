@@ -23,16 +23,16 @@ test('register, model, save, return in a fresh browser context, rebuild, and exp
   await page.getByRole('button', { name: 'Create project' }).click();
   await expect(page.locator('.monaco-editor')).toBeVisible();
   milliseconds.createAndInitialBuild = Math.round(performance.now() - started);
-  await page.getByRole('button', { name: /Command Palette/ }).click();
+  await page.getByRole('button', { name: /Command palette/ }).click();
   await page.getByLabel('Search commands').fill('insert box');
   await page.getByRole('button', { name: /Insert Box/ }).click();
   await expect(page.locator('.view-lines')).toContainText('Box HeliosBox1');
   await page.locator('.rebuild-inline').click();
-  await expect(page.locator('.status-ready')).toContainText('READY');
-  await expect(page.locator('.statusbar')).toContainText('0 DIAGNOSTICS');
+  await expect(page.locator('.status-ready')).toContainText('Ready');
+  await expect(page.locator('.statusbar')).toContainText('No problems');
   await replaceEditorSource(page, source);
   await page.locator('.rebuild-inline').click();
-  await expect(page.locator('.status-ready')).toContainText('READY');
+  await expect(page.locator('.status-ready')).toContainText('Ready');
   started = performance.now();
   await page.locator('.cloud-editor-actions .cloud-save').click();
   await expect(page.locator('.cloud-save-state')).toHaveText('Saved');
@@ -52,7 +52,7 @@ test('register, model, save, return in a fresh browser context, rebuild, and exp
   started = performance.now();
   await returnPage.getByRole('button', { name: /Telos block/ }).first().click();
   await expect(returnPage.locator('.view-lines')).toContainText('Box Body');
-  await expect(returnPage.locator('.status-ready')).toContainText('READY');
+  await expect(returnPage.locator('.status-ready')).toContainText('Ready');
   milliseconds.openAndBuild = Math.round(performance.now() - started);
   await returnPage.locator('.viewport-canvas canvas').click({ position: { x: 400, y: 130 } });
   await expect(returnPage.locator('.inspector .identity-list').first()).toContainText('Face ID');
@@ -60,7 +60,7 @@ test('register, model, save, return in a fresh browser context, rebuild, and exp
   await expect(returnPage.getByRole('textbox', { name: 'Editor content' })).toBeFocused();
   await returnPage.screenshot({ path: 'test-results/telos-editor.png', fullPage: true });
   const downloadPromise = returnPage.waitForEvent('download');
-  await returnPage.getByRole('button', { name: /Command Palette/ }).click();
+  await returnPage.getByRole('button', { name: /Command palette/ }).click();
   await returnPage.getByRole('dialog', { name: 'Command palette' }).getByRole('button', { name: 'Export STEP' }).click();
   const download = await downloadPromise;
   expect(download.suggestedFilename()).toBe('Telos block.step');

@@ -4,7 +4,7 @@ import { replaceEditorSource } from './editor';
 test('1440p local IDE shell keeps edit, build, last valid model, terminal, and STEP export working', async ({ page }) => {
   await page.setViewportSize({ width: 2560, height: 1440 });
   await page.goto('/local');
-  await expect(page.locator('.status-ready')).toContainText('READY', { timeout: 120_000 });
+  await expect(page.locator('.status-ready')).toContainText('Ready', { timeout: 120_000 });
   await expect(page.locator('.monaco-editor')).toBeVisible();
   await expect(page.locator('.viewport-canvas canvas')).toBeVisible();
   await expect(page.getByRole('tab', { name: 'Inspector' })).toBeVisible();
@@ -29,18 +29,18 @@ test('1440p local IDE shell keeps edit, build, last valid model, terminal, and S
 
   await replaceEditorSource(page, 'Model ShellWitness { Units: mm Box Body { Size: [24mm, 18mm, 8mm] } }');
   await page.getByRole('button', { name: 'Build', exact: true }).click();
-  await expect(page.locator('.status-ready')).toContainText('READY', { timeout: 120_000 });
-  await expect(page.locator('.statusbar')).toContainText('1 DEFS');
+  await expect(page.locator('.status-ready')).toContainText('Ready', { timeout: 120_000 });
+  await expect(page.locator('.statusbar')).toContainText('1 definition ');
   const downloadPromise = page.waitForEvent('download');
   await page.getByRole('button', { name: 'Export STEP', exact: true }).click();
   const download = await downloadPromise;
   expect(download.suggestedFilename()).toBe('editable-bracket.step');
-  await expect(page.locator('.statusbar')).toContainText('STEP DOWNLOAD STARTED');
+  await expect(page.locator('.statusbar')).toContainText('STEP prepared in');
 
   await replaceEditorSource(page, 'Model Broken { Box Body { Size: [24mm, 18mm, 8mm] }');
   await page.getByRole('button', { name: 'Build', exact: true }).click();
-  await expect(page.locator('.statusbar')).toContainText('MODEL OUT OF DATE', { timeout: 120_000 });
-  await expect(page.locator('.statusbar')).toContainText('1 DEFS');
+  await expect(page.locator('.statusbar')).toContainText('Out of date', { timeout: 120_000 });
+  await expect(page.locator('.statusbar')).toContainText('1 definition ');
   await page.getByRole('tab', { name: /Problems/ }).click();
   await expect(page.locator('.dock-errors button').first()).toBeVisible();
 });

@@ -14,7 +14,7 @@ test('Helix Worker build leaves Monaco, palette, view, save and heartbeat live',
   await expect(page.getByRole('heading', { name: 'Your projects' })).toBeVisible();
   await page.getByLabel('Project name').fill('Worker witness');
   await page.getByRole('button', { name: 'Create project' }).click();
-  await expect(page.locator('.status-ready')).toContainText('READY', { timeout: 120_000 });
+  await expect(page.locator('.status-ready')).toContainText('Ready', { timeout: 120_000 });
   await expect(page.locator('.statusbar')).toContainText('WASM Worker');
   await page.evaluate(() => {
     const samples: number[] = [];
@@ -22,13 +22,13 @@ test('Helix Worker build leaves Monaco, palette, view, save and heartbeat live',
     const timer = setInterval(() => { const now = performance.now(); samples.push(now - previous); previous = now; }, 50);
     Object.assign(window, { workerHeartbeat: { samples, timer } });
   });
-  await page.getByRole('button', { name: /Command Palette/ }).click();
+  await page.getByRole('button', { name: /Command palette/ }).click();
   await page.getByLabel('Search commands').fill('Helix');
-  await page.getByRole('button', { name: /New Helix Model/ }).click();
+  await page.getByRole('button', { name: /New Helix model/ }).click();
   const staleBuildStarted = Date.now();
   await expect(page.locator('.status-ready')).toContainText('Building', { timeout: 10_000 });
   const paletteStart = Date.now();
-  await page.getByRole('button', { name: /Command Palette/ }).click();
+  await page.getByRole('button', { name: /Command palette/ }).click();
   await expect(page.getByRole('dialog', { name: 'Command palette' })).toBeVisible();
   const paletteMs = Date.now() - paletteStart;
   await page.keyboard.press('Escape');
@@ -44,9 +44,9 @@ test('Helix Worker build leaves Monaco, palette, view, save and heartbeat live',
   await expect(page.locator('.statusbar')).toContainText('ORTHOGRAPHIC');
   await page.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(page.locator('.cloud-save-state')).toContainText('Saved');
-  await expect(page.locator('.status-ready')).toContainText('READY', { timeout: 120_000 });
+  await expect(page.locator('.status-ready')).toContainText('Ready', { timeout: 120_000 });
   const staleBuildMs = Date.now() - staleBuildStarted;
-  await expect(page.locator('.statusbar')).toContainText('MODEL OUT OF DATE');
+  await expect(page.locator('.statusbar')).toContainText('Out of date');
   const heartbeat = await page.evaluate(() => {
     const value = (window as unknown as { workerHeartbeat: { samples: number[]; timer: number } }).workerHeartbeat;
     clearInterval(value.timer);
@@ -58,10 +58,10 @@ test('Helix Worker build leaves Monaco, palette, view, save and heartbeat live',
   expect(typingMs).toBeLessThan(2000);
   const currentBuildStarted = Date.now();
   await page.getByRole('button', { name: '↻ Rebuild' }).click();
-  await expect(page.locator('.status-ready')).toContainText('READY', { timeout: 120_000 });
+  await expect(page.locator('.status-ready')).toContainText('Ready', { timeout: 120_000 });
   const currentBuildMs = Date.now() - currentBuildStarted;
-  await expect(page.locator('.statusbar')).not.toContainText('MODEL OUT OF DATE');
-  await expect(page.locator('.statusbar')).toContainText('1 DEFS');
+  await expect(page.locator('.statusbar')).not.toContainText('Out of date');
+  await expect(page.locator('.statusbar')).toContainText('1 definition ');
   const downloadPromise = page.waitForEvent('download');
   await page.getByRole('button', { name: 'Export STEP', exact: true }).click();
   const download = await downloadPromise;

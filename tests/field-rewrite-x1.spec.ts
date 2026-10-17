@@ -12,7 +12,7 @@ test('Hole Diameter Inspector edit rewrites Monaco source and rebuilds the wall'
   await expect(page.getByRole('heading', { name: 'Your projects' })).toBeVisible();
   await page.getByLabel('Project name').fill('Field rewrite');
   await page.getByRole('button', { name: 'Create project' }).click();
-  await expect(page.locator('.status-ready')).toContainText('READY', { timeout: 120_000 });
+  await expect(page.locator('.status-ready')).toContainText('Ready', { timeout: 120_000 });
   await replaceEditorSource(page, `Model Witness {
   Units: mm
   Box Body { Size: [30mm, 20mm, 10mm] }
@@ -20,18 +20,18 @@ test('Hole Diameter Inspector edit rewrites Monaco source and rebuilds the wall'
 }
 `);
   await page.getByRole('button', { name: '↻ Rebuild' }).click();
-  await expect(page.locator('.status-ready')).toContainText('READY', { timeout: 120_000 });
-  await expect(page.locator('.statusbar')).toContainText('0 DIAGNOSTICS');
+  await expect(page.locator('.status-ready')).toContainText('Ready', { timeout: 120_000 });
+  await expect(page.locator('.statusbar')).toContainText('No problems');
   await page.locator('.view-line').filter({ hasText: 'Hole<Shaft> H' }).click();
   await expect(page.locator('.inspector')).toContainText('Diameter');
   await expect(page.locator('.inspector')).toContainText('10 mm');
   await expect(page.locator('.inspector')).toContainText('Authored');
   await page.getByRole('textbox', { name: 'Edit Diameter' }).fill('12');
   await page.locator('.inspector').getByRole('button', { name: 'Apply' }).first().click();
-  await expect(page.locator('.status-ready')).toContainText('READY', { timeout: 120_000 });
+  await expect(page.locator('.status-ready')).toContainText('Ready', { timeout: 120_000 });
   await expect(page.locator('.view-lines')).toContainText('Diameter: 12mm /* keep */');
   await expect(page.locator('.inspector')).toContainText('12 mm');
-  await expect(page.locator('.statusbar')).toContainText('0 DIAGNOSTICS');
+  await expect(page.locator('.statusbar')).toContainText('No problems');
   await expect(page.locator('.cloud-save-state')).toContainText('Unsaved');
   await page.locator('.monaco-editor .view-lines').click();
   await page.keyboard.press('ControlOrMeta+Z');
@@ -45,7 +45,7 @@ test('Hole Diameter Inspector edit rewrites Monaco source and rebuilds the wall'
   await expect(page.getByRole('heading', { name: 'Your projects' })).toBeVisible();
   await page.getByRole('button', { name: /Field rewrite/ }).first().click();
   await expect(page.locator('.view-lines')).toContainText('Diameter: 12mm /* keep */');
-  await expect(page.locator('.status-ready')).toContainText('READY', { timeout: 120_000 });
+  await expect(page.locator('.status-ready')).toContainText('Ready', { timeout: 120_000 });
   await page.getByRole('button', { name: 'Iso', exact: true }).click();
   const canvas = page.locator('.viewport-canvas canvas');
   let wallPicked = false;

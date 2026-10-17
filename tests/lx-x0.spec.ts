@@ -17,7 +17,7 @@ test('Monaco consumes current Aetheris Helix completion and keeps source editabl
   await page.getByRole('button', { name: 'Create project' }).click();
   await expect(page.locator('.monaco-editor')).toBeVisible();
   const editorVisibleMs = performance.now() - editorStart;
-  await expect(page.locator('.status-ready')).toContainText('READY', { timeout: 120_000 });
+  await expect(page.locator('.status-ready')).toContainText('Ready', { timeout: 120_000 });
   await page.locator('.monaco-editor .view-lines').click();
   await page.keyboard.press('ControlOrMeta+Shift+P');
   await expect(page.getByRole('dialog', { name: 'Command palette' })).toBeVisible();
@@ -40,8 +40,8 @@ test('Monaco consumes current Aetheris Helix completion and keeps source editabl
   console.log(`LX browser timings: editor visible ${editorVisibleMs.toFixed(1)} ms, Helix SDK ${helixMs.toFixed(1)} ms, Loft SDK ${loftMs.toFixed(1)} ms, Helix suggestion visible ${helixRenderMs.toFixed(1)} ms`);
   await page.locator('input[type="file"]').setInputFiles({ name: 'selector.firmament', mimeType: 'text/plain', buffer: Buffer.from('Model SelectorWitness {\n Units: mm\n Box Body { Size: [30mm, 20mm, 10mm] }\n}\n') });
   await expect(page.locator('.bottom-tabs')).toContainText('selector.firmament');
-  await expect(page.locator('.status-ready')).toContainText('READY', { timeout: 120_000 });
-  await expect(page.locator('.statusbar')).toContainText('1 DEFS');
+  await expect(page.locator('.status-ready')).toContainText('Ready', { timeout: 120_000 });
+  await expect(page.locator('.statusbar')).toContainText('1 definition ');
   await page.locator('.monaco-editor .view-lines').click();
   await page.keyboard.press('ControlOrMeta+End');
   await page.keyboard.insertText('\nface(');
@@ -51,7 +51,7 @@ test('Monaco consumes current Aetheris Helix completion and keeps source editabl
   await expect(page.locator('.view-lines')).toContainText('face(+Z)');
   await page.locator('input[type="file"]').setInputFiles({ name: 'hole-selector.firmament', mimeType: 'text/plain', buffer: Buffer.from('Model HoleWitness {\n Units: mm\n Box Body { Size: [30mm, 20mm, 10mm] }\n Modify Body { Hole<Shaft> H { On: +Z Center: Point2(0mm, 0mm) Diameter: 10mm End: ThroughAll } }\n}\n') });
   await expect(page.locator('.bottom-tabs')).toContainText('hole-selector.firmament');
-  await expect(page.locator('.status-ready')).toContainText('READY', { timeout: 120_000 });
+  await expect(page.locator('.status-ready')).toContainText('Ready', { timeout: 120_000 });
   await page.locator('.monaco-editor .view-lines').click();
   await page.keyboard.press('ControlOrMeta+End');
   await page.keyboard.insertText('\nface(');
@@ -63,11 +63,11 @@ test('Monaco consumes current Aetheris Helix completion and keeps source editabl
   await replaceEditorSource(page, 'Model Bad {\n Box Body { Size: [30mm, 20mm, 10mm] \n}\n');
   const diagnosticStart = performance.now();
   await page.keyboard.press('ControlOrMeta+Enter');
-  await expect(page.locator('.statusbar')).toContainText('1 DIAGNOSTICS');
-  await expect(page.locator('.statusbar')).toContainText('1 DEFS');
-  await expect(page.locator('.statusbar')).toContainText('MODEL OUT OF DATE');
+  await expect(page.locator('.statusbar')).toContainText('1 problem');
+  await expect(page.locator('.statusbar')).toContainText('1 definition ');
+  await expect(page.locator('.statusbar')).toContainText('Out of date');
   await expect(page.locator('.squiggly-error')).toHaveCount(1);
-  await page.getByRole('button', { name: /PROBLEMS/ }).click();
+  await page.getByRole('button', { name: /^Problems/ }).click();
   await expect(page.locator('.diagnostic-list .diagnostic')).toHaveCount(1);
   await page.locator('.diagnostic-list .diagnostic').click();
   await expect(page.getByRole('textbox', { name: 'Editor content' })).toBeFocused();

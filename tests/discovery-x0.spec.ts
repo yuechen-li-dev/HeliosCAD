@@ -60,8 +60,8 @@ test('anonymous discovery, source, auth-then-fork, and real editor', async ({ pa
   await page.getByRole('button', { name: 'Create account' }).click();
   await expect(page.locator('.monaco-editor')).toBeVisible();
   await expect(page.locator('.view-lines')).toContainText('CartesianLampShade');
-  await expect(page.locator('.status-ready')).toContainText('READY', { timeout: 90000 });
-  await expect(page.locator('.statusbar')).toContainText('0 DIAGNOSTICS');
+  await expect(page.locator('.status-ready')).toContainText('Ready', { timeout: 90000 });
+  await expect(page.locator('.statusbar')).toContainText('No problems');
   await page.locator('.cloud-project-bar').getByRole('button', { name: 'Discover' }).click();
   await expect(page.getByRole('heading', { name: 'Explore models. Make one yours.' })).toBeVisible();
   await page.getByRole('button', { name: 'My Projects' }).click();
@@ -78,7 +78,7 @@ test('publish saved revision and keep private edits out of public detail', async
   await page.getByRole('button', { name: 'Create account' }).click();
   await page.getByLabel('Project name').fill('Publication box');
   await page.getByRole('button', { name: 'Create project' }).click();
-  await expect(page.locator('.status-ready')).toContainText('READY', { timeout: 90000 });
+  await expect(page.locator('.status-ready')).toContainText('Ready', { timeout: 90000 });
   await page.locator('.cloud-editor-actions').getByRole('button', { name: 'Publish' }).click();
   await page.getByRole('form', { name: 'Publish model' }).getByLabel('Description').fill('Published revision test');
   await page.getByRole('form', { name: 'Publish model' }).getByRole('button', { name: 'Publish' }).click();
@@ -102,7 +102,7 @@ test('publish saved revision and keep private edits out of public detail', async
   await visitor.getByLabel('Password').fill(password);
   await visitor.getByRole('button', { name: 'Create account' }).click();
   await expect(visitor.locator('.view-lines')).toContainText('Model Untitled');
-  await expect(visitor.locator('.status-ready')).toContainText('READY', { timeout: 90000 });
+  await expect(visitor.locator('.status-ready')).toContainText('Ready', { timeout: 90000 });
   await anonymous.close();
 });
 

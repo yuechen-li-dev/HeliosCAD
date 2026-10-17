@@ -3,7 +3,7 @@ import { replaceEditorSource } from './editor';
 
 test('Inter is loaded throughout the IDE and wrapping keeps long source clear of the scrollbar', async ({ page }) => {
   await page.goto('/local');
-  await expect(page.locator('.status-ready')).toContainText('READY');
+  await expect(page.locator('.status-ready')).toContainText('Ready');
   await page.evaluate(() => document.fonts.ready);
   expect(await page.evaluate(() => document.fonts.check('14px "Inter Variable"'))).toBe(true);
   for (const selector of ['.topbar', '.view-lines', '.line-numbers', '.dock-output']) {

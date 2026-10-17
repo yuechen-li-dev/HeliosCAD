@@ -16,10 +16,10 @@ test('saving a changed source during a Worker build survives project reopen', as
   await expect(page.getByRole('heading', { name: 'Your projects' })).toBeVisible();
   await page.getByLabel('Project name').fill('Save during build');
   await page.getByRole('button', { name: 'Create project' }).click();
-  await expect(page.locator('.status-ready')).toContainText('READY');
-  await page.getByRole('button', { name: /Command Palette/ }).click();
+  await expect(page.locator('.status-ready')).toContainText('Ready');
+  await page.getByRole('button', { name: /Command palette/ }).click();
   await page.getByLabel('Search commands').fill('Helix');
-  await page.getByRole('button', { name: /New Helix Model/ }).click();
+  await page.getByRole('button', { name: /New Helix model/ }).click();
   await expect(page.locator('.view-lines')).toContainText('Helix Winding');
   await expect(page.locator('.status-ready')).toContainText('Building');
   await page.getByRole('button', { name: 'Save', exact: true }).click();

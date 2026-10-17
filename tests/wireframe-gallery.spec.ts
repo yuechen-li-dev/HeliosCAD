@@ -64,7 +64,7 @@ test('wireframe catalog stays light until opened and carries the chosen theme in
   await page.screenshot({ path: `${evidence}/dark.png` });
   expect(runtimeRequests).toEqual([]);
   await page.getByRole('button', { name: 'New part', exact: true }).click();
-  await expect(page.locator('.status-ready')).toContainText('READY');
+  await expect(page.locator('.status-ready')).toContainText('Ready');
   await expect(page.locator('.workspace-identity')).toContainText('Untitled part');
   await expect(page.locator('.view-lines')).toContainText('Model Untitled');
   await expect(page.getByLabel('Theme')).toHaveValue('bronze-age');
@@ -85,13 +85,13 @@ test('wireframe catalog stays light until opened and carries the chosen theme in
 test('New assembly opens an editable starter and rebuilds through the real SDK', async ({ page }) => {
   await page.goto('/');
   await page.getByRole('button', { name: 'New assembly', exact: true }).click();
-  await expect(page.locator('.status-ready')).toContainText('READY');
+  await expect(page.locator('.status-ready')).toContainText('Ready');
   await expect(page.locator('.workspace-identity')).toContainText('Untitled assembly');
-  await expect(page.locator('.statusbar')).toContainText('2 DEFS · 3 OCC');
+  await expect(page.locator('.statusbar')).toContainText('2 definitions · 3 occurrences');
   await replaceEditorSource(page, assemblySource.replace('H: 8mm', 'H: 12mm'));
   await page.getByRole('button', { name: 'Build', exact: true }).click();
-  await expect(page.locator('.status-ready')).toContainText('READY');
-  await expect(page.locator('.statusbar')).toContainText('0 DIAGNOSTICS');
+  await expect(page.locator('.status-ready')).toContainText('Ready');
+  await expect(page.locator('.statusbar')).toContainText('No problems');
   await expect(page.locator('.view-lines')).toContainText('H: 12mm');
   const download = page.waitForEvent('download');
   await page.getByRole('button', { name: 'Export STEP', exact: true }).click();

@@ -129,7 +129,7 @@ export function HeliosApp({ project, initialWorkspace, onShowcase, onSave, onPub
       setSelectedEntityId(null);
       setSelectedFaceId(null); setSelectedSelection(null);
       setViewCommand(`${snapshot?.mesh.cameras?.length ? 'authored' : 'fit'}-${Date.now()}`);
-      setLastTiming({ label: 'WORKER BUILD', milliseconds: result.milliseconds });
+      setLastTiming({ label: 'Built in', milliseconds: result.milliseconds });
       if (snapshot?.timings) setPhaseTiming(`COMPILE ${snapshot.timings.compileMilliseconds.toFixed(0)}MS · MESH ${(snapshot.timings.meshMilliseconds ?? 0).toFixed(0)}MS · TRANSFER ${(snapshot.workerTiming?.transportMilliseconds ?? 0).toFixed(0)}MS · ${(snapshot.workerTiming?.payloadBytes ?? 0)}B`);
       setBusy(null);
     } else {
@@ -449,7 +449,7 @@ export function HeliosApp({ project, initialWorkspace, onShowcase, onSave, onPub
           .then(refused => { if (refused) pushOutput(`Connection refused · ${refused}`); });
       },
       onReorder: (operation: LanguageEditOperation, label: string) => {
-        void structuralEdit([operation], { nodeId: 'node' in operation ? operation.node : '', label })
+        void structuralEdit([operation], { nodeId: 'node' in operation ? operation.node ?? '' : '', label })
           .then(refused => { if (refused) pushOutput(`Move refused · ${refused}`); });
       },
     };
@@ -495,7 +495,7 @@ export function HeliosApp({ project, initialWorkspace, onShowcase, onSave, onPub
       if (result.success) select(runtime.session()?.tree.rootId ?? null);
       return result.success;
     } catch (error) { setDiagnostics([toDiagnostic(error, 'HELIOS-PROPERTY')]); if (isWorkerFailure(error)) setBusy('Worker failed'); return false; }
-    finally { setLastTiming({ label: 'PROPERTY REBUILD', milliseconds: performance.now() - started }); setBusy(value => value === 'Building' ? null : value); }
+    finally { setLastTiming({ label: 'Rebuilt in', milliseconds: performance.now() - started }); setBusy(value => value === 'Building' ? null : value); }
   };
   const rewriteField = async (field: FieldProjection, number: number) => {
     if (!model || !fieldProjection || source !== model.source || fieldProjection.semanticId !== selectedEntityId) {
@@ -512,7 +512,7 @@ export function HeliosApp({ project, initialWorkspace, onShowcase, onSave, onPub
       editSource(rewrite.source);
       const success = await submitBuild(rewrite.source, sourceName, sourceRevisionRef.current);
       if (success) select(selectedEntityId);
-      setLastTiming({ label: 'SOURCE REBUILD', milliseconds: performance.now() - started });
+      setLastTiming({ label: 'Rebuilt in', milliseconds: performance.now() - started });
       return success;
     } catch (error) { setDiagnostics([toDiagnostic(error, 'HELIOS-FIELD-REWRITE')]); if (isWorkerFailure(error)) setBusy('Worker failed'); return false; }
     finally { setBusy(value => value === 'Rewriting source' ? null : value); }
@@ -526,7 +526,7 @@ export function HeliosApp({ project, initialWorkspace, onShowcase, onSave, onPub
     if (revision !== sourceRevisionRef.current) return;
     setBusy('Exporting');
     pushOutput(`STEP export started · ${sourceName}`);
-    try { const bytes = await runtime.exportSTEP(); if (revision !== sourceRevisionRef.current) return; downloadBlob(new Blob([Uint8Array.from(bytes).buffer], { type: 'model/step' }), `${stripExtension(sourceName)}.step`); setLastTiming({ label: 'STEP DOWNLOAD STARTED', milliseconds: performance.now() - started }); pushOutput(`STEP download started · ${bytes.length} bytes · ${(performance.now() - started).toFixed(0)} ms`); }
+    try { const bytes = await runtime.exportSTEP(); if (revision !== sourceRevisionRef.current) return; downloadBlob(new Blob([Uint8Array.from(bytes).buffer], { type: 'model/step' }), `${stripExtension(sourceName)}.step`); setLastTiming({ label: 'STEP prepared in', milliseconds: performance.now() - started }); pushOutput(`STEP download started · ${bytes.length} bytes · ${(performance.now() - started).toFixed(0)} ms`); }
     catch (error) { setDiagnostics([toDiagnostic(error, 'HELIOS-EXPORT')]); pushOutput(`STEP export failed · ${error instanceof Error ? error.message : String(error)}`); if (isWorkerFailure(error)) setBusy('Worker failed'); }
     finally { setBusy(value => value === 'Exporting' ? null : value); }
   };
@@ -599,27 +599,27 @@ export function HeliosApp({ project, initialWorkspace, onShowcase, onSave, onPub
     { id: 'insert-box', label: 'Insert Box', detail: 'Insert a 30 × 20 × 10 mm Box inside Model', run: addBox },
     ...(['Helix', 'Loft'] as const).flatMap(kind => {
       const entry = semanticSchema?.constructs.find(item => item.id === kind)?.entry;
-      return entry ? [{ id: `new-${kind.toLowerCase()}`, label: `New ${kind} Model`, detail: `Open the Aetheris ${kind} entry template`, run: () => newDocument(entry, `${kind.toLowerCase()}.firmament`) }] : [];
+      return entry ? [{ id: `new-${kind.toLowerCase()}`, label: `New ${kind} model`, detail: `Open the Aetheris ${kind} entry template`, run: () => newDocument(entry, `${kind.toLowerCase()}.firmament`) }] : [];
     }),
     { id: 'insert-hole', label: 'Insert Hole', detail: 'Append a centered through hole', run: addHole },
-    { id: 'rebuild', label: 'Rebuild Model', detail: 'Ctrl+Enter', run: () => void rebuildSource() },
-    { id: 'format', label: 'Format Document', detail: 'Aetheris canonical formatter', run: () => void sourcePanel.current?.formatDocument() },
+    { id: 'rebuild', label: 'Rebuild model', detail: 'Ctrl+Enter', run: () => void rebuildSource() },
+    { id: 'format', label: 'Format document', detail: 'Aetheris canonical formatter', run: () => void sourcePanel.current?.formatDocument() },
     ...(model?.mesh.schema !== 'aetheris/scene-display-mesh/1' ? [{ id: 'export', label: 'Export STEP', run: () => void exportStep() }] : []),
     { id: 'save', label: 'Save', detail: onSave ? 'Save project source' : 'Download Firmament source', run: () => onSave ? void save() : downloadSource() },
-    { id: 'open', label: 'Open File', run: () => fileInput.current?.click() },
-    { id: 'new', label: 'New Firmament File', detail: 'Start a new single-file model', run: () => loadSample('new') },
-    { id: 'assembly', label: 'Open Assembly Example', run: () => loadSample('assembly') },
-    { id: 'source', label: 'Go to Source', run: goToSource },
-    ...(['front', 'top', 'right', 'iso', 'fit', 'fitselection'] as const).map(view => ({ id: view, label: `${view === 'iso' ? 'Isometric' : view === 'fitselection' ? 'Fit Selection' : view[0].toUpperCase() + view.slice(1)} View`, run: () => view === 'fit' || view === 'fitselection' ? setViewCommand(`${view}-${Date.now()}`) : namedView(view) }))
+    { id: 'open', label: 'Open file', run: () => fileInput.current?.click() },
+    { id: 'new', label: 'New Firmament file', detail: 'Start a new single-file model', run: () => loadSample('new') },
+    { id: 'assembly', label: 'Open assembly example', run: () => loadSample('assembly') },
+    { id: 'source', label: 'Go to source', run: goToSource },
+    ...(['front', 'top', 'right', 'iso', 'fit', 'fitselection'] as const).map(view => ({ id: view, label: `${view === 'iso' ? 'Isometric' : view === 'fitselection' ? 'Fit selection' : view[0].toUpperCase() + view.slice(1)} view`, run: () => view === 'fit' || view === 'fitselection' ? setViewCommand(`${view}-${Date.now()}`) : namedView(view) }))
   ];
 
   return <div className={`helios-app${project ? ' cloud-mode' : ''}`}>
     <header className="topbar">
       <button className="brand" onClick={() => project ? location.assign('/') : onShowcase ? onShowcase() : setExamplesOpen(true)} aria-label="Helios home"><span className="helios-symbol">H</span><div><strong>HELIOS</strong><small>by Aetheris</small></div></button>
       <div className="workspace-identity"><strong>{workspaceTitle}</strong><small>{project ? 'Saved project' : 'Local workspace'} · Firmament</small></div>
-      <nav className="workspace-tabs" aria-label="Workspace"><button onClick={() => setExamplesOpen(true)}>Examples</button><button onClick={() => fileInput.current?.click()}>Open File</button><button title="Download the active Firmament document · Ctrl+S" onClick={() => onSave ? void save() : downloadSource()}>Save source</button><button className="build-action" disabled={buildStarted !== null || !!busy} title="Build project · Ctrl+Enter" onClick={() => void rebuildSource()}>{buildStarted !== null ? `Building · ${elapsedSeconds.toFixed(1)}s` : 'Build'}</button>{model?.mesh.schema !== 'aetheris/scene-display-mesh/1' && <button disabled={!model || !!busy} onClick={() => void exportStep()}>Export STEP</button>}</nav>
+      <nav className="workspace-tabs" aria-label="Workspace"><button onClick={() => setExamplesOpen(true)}>Examples</button><button onClick={() => fileInput.current?.click()}>Open file</button><button title="Download the active Firmament document · Ctrl+S" onClick={() => onSave ? void save() : downloadSource()}>Save source</button><button className="build-action" disabled={buildStarted !== null || !!busy} title="Build project · Ctrl+Enter" onClick={() => void rebuildSource()}>{buildStarted !== null ? `Building · ${elapsedSeconds.toFixed(1)} s` : 'Build'}</button>{model?.mesh.schema !== 'aetheris/scene-display-mesh/1' && <button disabled={!model || !!busy} onClick={() => void exportStep()}>Export STEP</button>}</nav>
       <div className="toolbar">
-        <button className="palette-trigger" onClick={() => setPaletteOpen(true)}>⌕ <span>Command Palette</span><kbd>Ctrl+Shift+P</kbd></button>
+        <button className="palette-trigger" onClick={() => setPaletteOpen(true)}>⌕ <span>Command palette</span><kbd>Ctrl+Shift+P</kbd></button>
       </div>
       <div className="top-actions"><button title="Toggle utility dock" aria-label="Toggle utility dock" aria-pressed={shellLayout.utilityOpen} onClick={() => shellLayout.setUtilityOpen(value => !value)}>▥</button><select aria-label="Theme" value={theme} onChange={event => setTheme(event.target.value as ThemeName)}><option value="bronze-age">Bronze Age</option><option value="apollonia">Apollonia</option></select></div>
       <input ref={fileInput} hidden type="file" multiple accept=".firmament,.firmasm,.txt" onChange={async event => {
@@ -636,10 +636,10 @@ export function HeliosApp({ project, initialWorkspace, onShowcase, onSave, onPub
     <main className={`workspace ${shellLayout.utilityOpen ? '' : 'utility-collapsed'} ${shellLayout.bottomOpen ? '' : 'bottom-collapsed'}`} ref={shellLayout.ref} style={shellLayout.style}>
       <div className="workbench">
         <div className="editor-pane">
-        <div className="editor-mode" role="tablist" aria-label="Editing view">
+        <div className="editor-mode"><div className="segmented" role="tablist" aria-label="Editing view">
           <button role="tab" aria-selected={editorMode === 'graph'} className={editorMode === 'graph' ? 'active' : ''} onClick={() => setEditorMode('graph')}>Graph</button>
           <button role="tab" aria-selected={editorMode === 'source'} className={editorMode === 'source' ? 'active' : ''} onClick={() => setEditorMode('source')}>Source</button>
-        </div>
+        </div></div>
         {editorMode === 'graph' && <GraphPanel outline={outline} error={outlineError} diagnostics={shownDiagnostics} selection={graphSelection} theme={theme}
           onSelect={(unitId, row, graph) => selectFromGraph(unitId, row, graph)} onOpenSource={(unitId, row, graph) => openFromGraph(unitId, row, graph)}
           authoring={graphAuthoring()} assembly={assemblyView()}

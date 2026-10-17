@@ -1,8 +1,8 @@
 import { lazy, Suspense } from 'react';
 import ReactDOM from 'react-dom/client';
 import { CloudApp } from './cloud/CloudApp';
-import '@fontsource-variable/inter';
-import '@fontsource-variable/inter/wght-italic.css';
+import '@fontsource-variable/inter/opsz.css';
+import '@fontsource-variable/inter/opsz-italic.css';
 import './themes/helios.css';
 import './themes/showcase.css';
 import { ShowcaseApp } from './showcase/ShowcaseApp';

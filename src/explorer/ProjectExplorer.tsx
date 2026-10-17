@@ -14,7 +14,7 @@ interface Props {
 /** Explicit browser-session documents; cloud projects retain their single-source contract. */
 export function ProjectExplorer({ projectName, fileName, dirty, dirtyFiles, onOpen, onNew, onReveal, documents = [fileName], onSelectFile, cloud }: Props) {
   return <section className="panel project-explorer" aria-label="Project explorer">
-    <div className="panel-heading"><span>PROJECT FILES</span><span className="panel-meta">{documents.length} FILE{documents.length === 1 ? '' : 'S'}</span></div>
+    <div className="panel-heading"><span>Project files</span><span className="panel-meta">{documents.length} {documents.length === 1 ? 'file' : 'files'}</span></div>
     <div className="explorer-actions">
       <button onClick={onNew} title="New Firmament source">New</button>
       <button onClick={onOpen} title="Open Firmament source">Open</button>
