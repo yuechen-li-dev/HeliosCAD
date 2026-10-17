@@ -20,6 +20,7 @@ import {
 } from "@aetheris/three-telos";
 import type { ModelSession, MotionPose, SelectionDescription } from "@aetheris/cad";
 import { posedMesh } from "./pose";
+import { applyNamedView, WORLD_UP } from "./viewCommands";
 import type { DisplayMode, ThemeName, ViewMode } from "../app/types";
 import { HELIOS_PRESENTATIONS } from "./presentation";
 const LegacyViewport = lazy(() =>
@@ -51,18 +52,32 @@ interface Props {
   captureRef?: MutableRefObject<(() => string) | null>;
 }
 
-/** Legacy is explicitly transitional and used only when WebGPU is unavailable. */
+/** Why WebGPU cannot draw here, or null when an adapter is available. A browser can expose
+ * `navigator.gpu` and still have no adapter (blocklisted or software-only GPUs, headless, remote
+ * desktops), so the adapter itself is asked, once per page. */
+let webGpuProbe: Promise<string | null> | null = null;
+export function probeWebGpu(): Promise<string | null> {
+  return webGpuProbe ??= (async () => {
+    if (typeof navigator === "undefined" || !navigator.gpu) return "This browser has no WebGPU.";
+    try { return (await navigator.gpu.requestAdapter()) ? null : "No WebGPU adapter is available on this device."; }
+    catch (error) { return `WebGPU could not start: ${error instanceof Error ? error.message : String(error)}`; }
+  })();
+}
+
+/** WebGPU (Telos) when the device has an adapter; otherwise, or when Telos fails to start, the WebGL
+ * renderer. Both share the camera convention in viewCommands.ts, so the model looks the same. */
 export function Viewport(props: Props) {
   const [generation, setGeneration] = useState(0);
-  if (typeof navigator === "undefined" || !navigator.gpu)
+  const [fallback, setFallback] = useState<string | null | undefined>(undefined);
+  useEffect(() => { let live = true; void probeWebGpu().then(reason => { if (live) setFallback(current => current ?? reason); }); return () => { live = false; }; }, []);
+  if (fallback === undefined) return <section className="viewport-shell" aria-label="3D viewport" aria-busy="true"><div className="viewport-status" role="status">Preparing viewport…</div></section>;
+  if (fallback !== null)
     return (
-      <div data-display-host="transitional-webgl">
-        <Suspense
-          fallback={<div role="status">Preparing browser fallback…</div>}
-        >
+      <div className="viewport-fallback" data-display-host="transitional-webgl">
+        <Suspense fallback={<div className="viewport-status" role="status">Preparing the WebGL viewport…</div>}>
           <LegacyViewport {...props} />
         </Suspense>
-        <small>Transitional WebGL: WebGPU unavailable</small>
+        <small className="viewport-renderer-note" title={`Drawing with WebGL. ${fallback}`} aria-label={`Drawing with WebGL. ${fallback}`}>WebGL</small>
       </div>
     );
   return (
@@ -70,11 +85,12 @@ export function Viewport(props: Props) {
       key={generation}
       {...props}
       onRetry={() => setGeneration((value) => value + 1)}
+      onUnavailable={reason => setFallback(reason)}
     />
   );
 }
 
-function TelosViewport(props: Props & { onRetry(): void }) {
+function TelosViewport(props: Props & { onRetry(): void; onUnavailable(reason: string): void }) {
   const container = useRef<HTMLDivElement>(null),
     canvas = useRef<HTMLCanvasElement>(null),
     host = useRef<TelosHost | null>(null);
@@ -176,29 +192,7 @@ function TelosViewport(props: Props & { onRetry(): void }) {
         const camera = value.model.mesh.cameras[0];
         current.camera.applyDisplayCamera(camera); setAuthoredCamera(camera.name);
       }
-      const directions: Record<string, [number, number, number]> = {
-        front: [0, -1, 0],
-        top: [0, 0, 1],
-        right: [1, 0, 0],
-        iso: [1, 1, 1],
-      };
-      if (directions[command]) {
-        if (command !== "iso") current.camera.mode = "orthographic";
-        const distance = Math.max(
-          current.camera.position.distanceTo(current.camera.target),
-          current.camera.near * 10,
-        );
-        current.camera.position
-          .set(...directions[command])
-          .normalize()
-          .multiplyScalar(distance)
-          .add(current.camera.target);
-        current.camera.up.set(
-          0,
-          command === "top" ? 1 : 0,
-          command === "top" ? 0 : 1,
-        );
-      }
+      applyNamedView(current.camera, command);
       if (command === "fit") current.fit();
       if (command === "fitselection" && selectedIds.size)
         current.fit(selectedIds);
@@ -275,7 +269,7 @@ function TelosViewport(props: Props & { onRetry(): void }) {
           return;
         }
         host.current = current;
-        current.camera.up.set(0, 0, 1);
+        current.camera.up.set(...WORLD_UP);
         current.attach(container.current!);
         apply();
         setReady(true);
@@ -286,7 +280,8 @@ function TelosViewport(props: Props & { onRetry(): void }) {
           };
       })
       .catch((error) => {
-        if (!disposed) setDiagnostic(String(error));
+        // Telos never started: the WebGL renderer can still show the model.
+        if (!disposed) latest.current.onUnavailable(`WebGPU could not start (${error instanceof Error ? error.message : String(error)}).`);
       });
     return () => {
       disposed = true;
@@ -372,7 +367,10 @@ function TelosViewport(props: Props & { onRetry(): void }) {
                 <summary>Details</summary>
                 {diagnostic}
               </details>
-              <button onClick={props.onRetry}>Restart viewport</button>
+              <div className="viewport-error-actions">
+                <button onClick={props.onRetry}>Restart viewport</button>
+                <button onClick={() => props.onUnavailable(`WebGPU stopped (${diagnostic}).`)}>Use WebGL</button>
+              </div>
             </>
           )}
         </div>

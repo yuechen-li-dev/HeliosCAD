@@ -3,7 +3,11 @@ import type { MotionPose } from '@aetheris/cad';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import type { DisplayEdgePolyline, ModelSession, SelectionDescription } from '@aetheris/cad';
+import { TelosCamera } from '@aetheris/three-telos';
 import type { DisplayMode, ThemeName, ViewMode } from '../app/types';
+import { applyNamedView, WORLD_UP } from './viewCommands';
+import { HELIOS_PRESENTATIONS } from './presentation';
+import { referenceGrid } from './referenceGrid';
 
 interface Props {
   model: ModelSession | null;
@@ -19,7 +23,7 @@ interface Props {
   pose?: MotionPose | null;
 }
 
-type MeshMeta = { definitionId: string; occurrenceId: string; edgeId?: string; highlight?: boolean };
+type MeshMeta = { definitionId: string; occurrenceId: string; edgeId?: string; highlight?: boolean; baseColor?: readonly number[] };
 
 export function LegacyViewport(props: Props) {
   const host = useRef<HTMLDivElement>(null);
@@ -53,42 +57,54 @@ function createScene(host: HTMLDivElement, onSelect: Props['onSelect']) {
   const renderer = new THREE.WebGLRenderer({ antialias: true });
   renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
   renderer.outputColorSpace = THREE.SRGBColorSpace;
+  // Telos tone-maps with the Narkowicz ACES fit; three's ACES filmic (exposure 1) is its close match.
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
   host.appendChild(renderer.domElement);
-  const perspective = new THREE.PerspectiveCamera(35, 1, 0.1, 10000);
-  const orthographic = new THREE.OrthographicCamera(-70, 70, 70, -70, 0.1, 10000);
-  perspective.position.set(90, 70, 90);
-  orthographic.position.copy(perspective.position);
+  // The same camera authority as the WebGPU viewport: framing, views and projection come from a
+  // TelosCamera and are copied onto these three.js cameras. Z is up before the controls exist,
+  // because OrbitControls fixes its orbit axis from camera.up when it is created.
+  const authority = new TelosCamera();
+  authority.up.set(...WORLD_UP);
+  const perspective = new THREE.PerspectiveCamera(authority.fov, 1, authority.near, authority.far);
+  const orthographic = new THREE.OrthographicCamera(-1, 1, 1, -1, authority.near, authority.far);
+  perspective.up.set(...WORLD_UP); orthographic.up.set(...WORLD_UP);
   let camera: THREE.Camera = perspective;
   const controls = new OrbitControls(perspective, renderer.domElement);
   controls.enableDamping = true;
   controls.dampingFactor = 0.12;
-  const ambient = new THREE.HemisphereLight(0xffffff, 0x263128, 2.1);
-  const key = new THREE.DirectionalLight(0xffffff, 2.8); key.position.set(60, 100, 80);
-  scene.add(ambient, key);
-  const grid = new THREE.GridHelper(400, 40, 0x6a715f, 0x414942); grid.rotation.x = Math.PI / 2; scene.add(grid);
-  const axes = new THREE.AxesHelper(25); scene.add(axes);
+  // Lights, backdrop colour and grid come from the same presentation the WebGPU viewport uses
+  // (applyAppearance), with the hemisphere's sky along world up.
+  const lights = { ambient: new THREE.AmbientLight(), hemisphere: new THREE.HemisphereLight(), key: new THREE.DirectionalLight(), fill: new THREE.DirectionalLight() };
+  lights.hemisphere.position.set(...WORLD_UP);
+  scene.add(...Object.values(lights));
+  const grid = { minor: gridLines(), major: gridLines(), key: '' };
+  const backdrop = createBackdrop();
+  scene.add(backdrop, grid.minor, grid.major);
   const group = new THREE.Group(); scene.add(group);
   const raycaster = new THREE.Raycaster();
   raycaster.params.Line!.threshold = 1.5;
   const pointer = new THREE.Vector2();
-  let hovered: THREE.Mesh | null = null;
-  let selectedIds = new Set<string>();
   let dirty = true;
   let raf = 0;
   const invalidate = () => { dirty = true; if (!raf) raf = requestAnimationFrame(render); };
   const render = () => {
     raf = 0;
     const damping = controls.update();
+    if (dirty || damping) updateGrid(state);
     if (dirty || damping) renderer.render(scene, camera);
     dirty = false;
     if (damping) raf = requestAnimationFrame(render);
   };
   controls.addEventListener('change', invalidate);
+  // OrbitControls turns about Z (fixed when it was created). The top view looks down Z with Y up on
+  // screen; a drag from there goes back to Z up, which the controls' pole clamp makes seamless.
+  controls.addEventListener('start', () => { if (camera.up.z < 0.5) camera.up.set(...WORLD_UP); });
   const resize = new ResizeObserver(() => {
     const width = Math.max(host.clientWidth, 1), height = Math.max(host.clientHeight, 1);
     renderer.setSize(width, height, false);
-    perspective.aspect = width / height; perspective.updateProjectionMatrix();
-    const extent = 70; orthographic.left = -extent * width / height; orthographic.right = extent * width / height; orthographic.top = extent; orthographic.bottom = -extent; orthographic.updateProjectionMatrix();
+    (backdrop.material as THREE.ShaderMaterial).uniforms.viewport.value.set(width, height);
+    authority.resize(width, height);
+    projectFrom(authority, perspective, orthographic);
     invalidate();
   });
   resize.observe(host);
@@ -104,7 +120,7 @@ function createScene(host: HTMLDivElement, onSelect: Props['onSelect']) {
   };
   renderer.domElement.addEventListener('pointermove', event => {
     const next = hitTest(event)?.object instanceof THREE.Mesh ? hitTest(event)?.object as THREE.Mesh : undefined;
-    if (hovered !== next) { hovered = next ?? null; updateMaterials(group, selectedIds, hovered); invalidate(); }
+    if (state.hovered !== (next ?? null)) { state.hovered = next ?? null; updateMaterials(state); invalidate(); }
   });
   renderer.domElement.addEventListener('click', event => {
     const hit = hitTest(event);
@@ -115,7 +131,8 @@ function createScene(host: HTMLDivElement, onSelect: Props['onSelect']) {
       : state.model?.describeSelection(meta.definitionId, hit.faceIndex ?? 0, meta.occurrenceId);
     onSelect(resolved?.semanticEntityId ?? null, resolved?.faceId ?? null, resolved);
   });
-  const state = { scene, renderer, perspective, orthographic, get camera() { return camera; }, set camera(value) { camera = value; }, controls, grid, group, model: null as ModelSession | null, selectionMode: 'face' as 'face' | 'edge', selectedIds, hovered, invalidate,
+  controls.addEventListener('change', () => publishCamera(renderer.domElement, camera, controls.target, authority));
+  const state = { scene, renderer, perspective, orthographic, authority, lights, backdrop, theme: 'apollonia' as ThemeName, displayMode: 'shaded' as DisplayMode, get camera() { return camera; }, set camera(value) { camera = value; }, controls, grid, group, model: null as ModelSession | null, selectionMode: 'face' as 'face' | 'edge', selectedIds: new Set<string>(), hovered: null as THREE.Mesh | null, invalidate,
     capture() { renderer.render(scene, camera); return renderer.domElement.toDataURL('image/png'); },
     dispose() { cancelAnimationFrame(raf); resize.disconnect(); controls.dispose(); renderer.dispose(); host.replaceChildren(); } };
   invalidate();
@@ -138,9 +155,11 @@ function loadModel(state: ReturnType<typeof createScene>, model: ModelSession | 
   for (const occurrence of model.mesh.occurrences) {
     const geometry = occurrence.definitionId ? geometries.get(occurrence.definitionId) : undefined;
     if (!geometry || !occurrence.definitionId) continue;
-    const mesh = new THREE.Mesh(geometry, material(false, false));
+    // The occurrence's resolved appearance, as the WebGPU viewport shows it; Telos' default otherwise.
+    const look = occurrence.material;
+    const mesh = new THREE.Mesh(geometry, material(look?.roughness ?? 0.62, look?.opacity ?? 1));
     mesh.matrix.fromArray(occurrence.transform); mesh.matrixAutoUpdate = false;
-    mesh.userData = { definitionId: occurrence.definitionId, occurrenceId: occurrence.id } satisfies MeshMeta;
+    mesh.userData = { definitionId: occurrence.definitionId, occurrenceId: occurrence.id, baseColor: look?.baseColor ?? DEFAULT_COLOR } satisfies MeshMeta;
     state.group.add(mesh);
     // Triangle adjacency is display tessellation, not BRep topology. Only draw
     // polylines supplied by the kernel's edge tessellator.
@@ -157,6 +176,8 @@ function loadModel(state: ReturnType<typeof createScene>, model: ModelSession | 
       state.group.add(edges);
     }
   }
+  // New parts take the current theme, display mode and selection colours.
+  applyAppearance(state, state.theme, state.displayMode);
   fit(state);
   performance.clearMeasures('helios-display-update');
   performance.measure('helios-display-update', { start: started, end: performance.now() });
@@ -200,50 +221,178 @@ function selectEntity(state: ReturnType<typeof createScene>, model: ModelSession
       state.group.add(overlay);
     }
   }
-  updateMaterials(state.group, state.selectedIds, state.hovered);
+  updateMaterials(state);
   state.invalidate();
 }
 
-function updateMaterials(group: THREE.Group, selectedIds: Set<string>, hovered: THREE.Mesh | null) {
-  for (const object of group.children) if (object instanceof THREE.Mesh && !(object.userData as MeshMeta).highlight) {
-    const selected = selectedIds.has((object.userData as MeshMeta).occurrenceId);
-    (object.material as THREE.MeshStandardMaterial).color.set(selected ? 0xe7ad45 : object === hovered ? 0x78b9a4 : 0xb8beb3);
-    (object.material as THREE.MeshStandardMaterial).emissive.set(selected ? 0x382406 : 0x000000);
-  } else if (object instanceof THREE.LineSegments) {
-    const selected = selectedIds.has((object.userData as MeshMeta).occurrenceId);
-    (object.material as THREE.LineBasicMaterial).color.set(selected ? 0xffca63 : 0x323a35);
+/** Telos' default part colour (#b8beb3), linear. */
+const DEFAULT_COLOR = new THREE.Color(0xb8beb3).toArray();
+
+/** Selection and hover tint each part's own colour toward the theme's selection colour, as Telos does. */
+function updateMaterials(state: ReturnType<typeof createScene>) {
+  const selection = HELIOS_PRESENTATIONS[state.theme].lighting.selection;
+  const edge = state.theme === 'bronze-age' ? 0x323a35 : 0x69716d;
+  for (const object of state.group.children) {
+    const meta = object.userData as MeshMeta;
+    const selected = state.selectedIds.has(meta.occurrenceId);
+    if (object instanceof THREE.Mesh && !meta.highlight) {
+      const strength = selected ? 0.52 : object === state.hovered ? 0.16 : 0;
+      const base = meta.baseColor ?? DEFAULT_COLOR;
+      (object.material as THREE.MeshStandardMaterial).color.setRGB(...[0, 1, 2].map(i => base[i] * (1 - strength) + selection[i] * strength) as [number, number, number], THREE.LinearSRGBColorSpace);
+    } else if (object instanceof THREE.LineSegments) (object.material as THREE.LineBasicMaterial).color.set(selected ? 0xffca63 : edge);
   }
 }
 
+/** The studio and paper backdrops of three-telos' background shader, drawn behind everything.
+ * Colours are display-encoded and written as they are, like Telos does. */
+function createBackdrop() {
+  const material = new THREE.ShaderMaterial({
+    depthTest: false, depthWrite: false, toneMapped: false,
+    uniforms: { viewport: { value: new THREE.Vector2(1, 1) }, kind: { value: 0 }, base: { value: new THREE.Vector3() },
+      accent: { value: new THREE.Vector3() }, intensity: { value: 1 }, vignette: { value: 0 } },
+    vertexShader: 'varying vec2 vUv; void main() { vUv = uv; gl_Position = vec4(position.xy, 0.99999, 1.0); }',
+    fragmentShader: `
+      uniform vec2 viewport; uniform int kind; uniform vec3 base; uniform vec3 accent; uniform float intensity; uniform float vignette;
+      varying vec2 vUv;
+      void main() {
+        vec2 p = vUv * 2.0 - 1.0; p.x *= viewport.x / max(viewport.y, 1.0);
+        vec3 color = base;
+        if (kind == 1) color = mix(color * 0.88, color + accent * 0.12, vUv.y);
+        else { vec2 q = p - vec2(-0.3, 0.5); color += accent * exp(-dot(q, q) * 0.65) * 0.10; color *= 0.8 + 0.2 * vUv.y; }
+        vec2 c = vUv - 0.5;
+        float shade = 1.0 - clamp(dot(c, c) * vignette * 1.2, 0.0, 0.5);
+        gl_FragColor = vec4(clamp(color * intensity * shade, 0.0, 1.0), 1.0);
+      }`,
+  });
+  const quad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), material);
+  quad.frustumCulled = false;
+  quad.renderOrder = -2;
+  quad.raycast = () => undefined;
+  return quad;
+}
+
+function gridLines() {
+  const lines = new THREE.LineSegments(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ transparent: true, depthWrite: false }));
+  lines.raycast = () => undefined;
+  lines.renderOrder = -1;
+  return lines;
+}
+
+/** Redraw the reference grid when the view has moved far enough to change its lines. */
+function updateGrid(state: ReturnType<typeof createScene>) {
+  const authority = pull(state);
+  authority.update();
+  const next = referenceGrid(authority, HELIOS_PRESENTATIONS[state.theme].grid);
+  if (next.key === state.grid.key) return;
+  state.grid.key = next.key;
+  for (const [lines, points] of [[state.grid.minor, next.minor], [state.grid.major, next.major]] as const)
+    lines.geometry.setAttribute('position', new THREE.Float32BufferAttribute(points as number[], 3));
+}
+
+/** Presentation colours are linear for lights and display-encoded (sRGB) for backdrop and grid. */
+const linearColor = (rgb: readonly number[]) => new THREE.Color().setRGB(rgb[0], rgb[1], rgb[2], THREE.LinearSRGBColorSpace);
+const displayColor = (rgb: readonly number[]) => new THREE.Color().setRGB(rgb[0], rgb[1], rgb[2], THREE.SRGBColorSpace);
+
 function applyAppearance(state: ReturnType<typeof createScene>, theme: ThemeName, mode: DisplayMode) {
-  state.scene.background = new THREE.Color(theme === 'bronze-age' ? 0x111814 : 0xe9ece8);
-  (state.grid.material as THREE.Material).opacity = theme === 'bronze-age' ? 0.28 : 0.4;
-  (state.grid.material as THREE.Material).transparent = true;
+  const presentation = HELIOS_PRESENTATIONS[theme];
+  const { lighting, backdrop } = presentation;
+  state.theme = theme;
+  state.displayMode = mode;
+  const uniforms = (state.backdrop.material as THREE.ShaderMaterial).uniforms;
+  uniforms.kind.value = backdrop.kind === 'paper' ? 1 : 0;
+  uniforms.base.value.set(...backdrop.base);
+  uniforms.accent.value.set(...backdrop.accent);
+  uniforms.intensity.value = backdrop.intensity;
+  uniforms.vignette.value = backdrop.vignette;
+  // Telos' shading terms, rescaled for three.js' physically based lights (a Lambert surface under a
+  // light of intensity π reflects its full colour).
+  const exposure = lighting.exposure * Math.PI;
+  state.lights.ambient.intensity = lighting.ambient * exposure;
+  state.lights.hemisphere.color = linearColor(lighting.sky);
+  state.lights.hemisphere.groundColor = linearColor(lighting.ground);
+  state.lights.hemisphere.intensity = lighting.hemisphere * 0.5 * exposure;
+  for (const [light, direction, color, intensity] of [
+    [state.lights.key, lighting.key, lighting.keyColor, lighting.keyIntensity * 0.5],
+    [state.lights.fill, lighting.fill, lighting.fillColor, lighting.fillIntensity * 0.6],
+  ] as const) {
+    light.position.set(direction[0], direction[1], direction[2]).normalize();
+    light.color = linearColor(color);
+    light.intensity = intensity * exposure;
+  }
+  rim.rimColor.value = linearColor(lighting.rim);
+  rim.rimStrength.value = lighting.rimIntensity * 0.32 * lighting.exposure;
+  for (const [lines, color, opacity] of [[state.grid.minor, presentation.grid.minor, presentation.grid.minorOpacity], [state.grid.major, presentation.grid.major, presentation.grid.majorOpacity]] as const) {
+    const material = lines.material as THREE.LineBasicMaterial;
+    material.color = displayColor(color);
+    material.opacity = opacity;
+  }
+  state.grid.key = '';
   for (const object of state.group.children) if (object instanceof THREE.Mesh) {
     if ((object.userData as MeshMeta).highlight) continue;
     const mat = object.material as THREE.MeshStandardMaterial;
     mat.wireframe = mode === 'wireframe';
     mat.flatShading = mode !== 'shaded'; mat.needsUpdate = true;
-  } else if (object instanceof THREE.LineSegments) {
-    object.visible = mode === 'edges';
-    (object.material as THREE.LineBasicMaterial).color.set(theme === 'bronze-age' ? 0x323a35 : 0x69716d);
-  }
+  } else if (object instanceof THREE.LineSegments) object.visible = mode === 'edges';
+  updateMaterials(state);
   state.invalidate();
 }
 
 function applyViewCommand(state: ReturnType<typeof createScene>, mode: ViewMode, command: string) {
   command = command.split('-')[0];
-  const prior = state.camera;
-  state.camera = mode === 'orthographic' ? state.orthographic : state.perspective;
-  state.controls.object = state.camera as THREE.PerspectiveCamera;
-  if (prior !== state.camera) state.camera.position.copy(prior.position);
-  const center = state.controls.target;
-  const distance = Math.max(state.camera.position.distanceTo(center), 100);
-  const directions: Record<string, THREE.Vector3> = { front: new THREE.Vector3(0, -1, 0), top: new THREE.Vector3(0, 0, 1), right: new THREE.Vector3(1, 0, 0), iso: new THREE.Vector3(1, 1, 1).normalize() };
-  if (directions[command]) state.camera.position.copy(center).addScaledVector(directions[command], distance);
-  if (command === 'fit') fit(state);
-  else if (command === 'fitselection') fitSelection(state);
-  else { state.camera.up.set(0, command === 'top' ? 1 : 0, command === 'top' ? 0 : 1); state.camera.lookAt(center); state.controls.update(); state.invalidate(); }
+  const authority = pull(state);
+  authority.mode = mode;
+  const camera = state.model?.mesh.cameras?.[0];
+  if (command === 'authored' && camera) authority.applyDisplayCamera(camera);
+  applyNamedView(authority, command);
+  if (command === 'fit') { fit(state); return; }
+  if (command === 'fitselection') { fitSelection(state); return; }
+  authority.update();
+  push(state);
+}
+
+/** The authority, updated with wherever the user has orbited, panned or zoomed to. */
+function pull(state: ReturnType<typeof createScene>) {
+  const { authority, camera, controls } = state;
+  authority.position.copy(camera.position);
+  authority.target.copy(controls.target);
+  authority.up.copy(camera.up);
+  if (camera instanceof THREE.OrthographicCamera) authority.span = (camera.top - camera.bottom) / camera.zoom;
+  return authority;
+}
+
+/** Show what the authority describes: its camera kind, pose and projection. */
+function push(state: ReturnType<typeof createScene>) {
+  const { authority, controls } = state;
+  const camera = authority.mode === 'orthographic' ? state.orthographic : state.perspective;
+  state.camera = camera;
+  controls.object = camera;
+  camera.up.copy(authority.up);
+  camera.position.copy(authority.position);
+  controls.target.copy(authority.target);
+  camera.zoom = 1;
+  projectFrom(authority, state.perspective, state.orthographic);
+  camera.lookAt(authority.target);
+  controls.update();
+  publishCamera(state.renderer.domElement, camera, controls.target, authority);
+  state.invalidate();
+}
+
+/** Projection from the authority: the same field of view, orthographic span and clipping. */
+function projectFrom(authority: TelosCamera, perspective: THREE.PerspectiveCamera, orthographic: THREE.OrthographicCamera) {
+  const aspect = authority.width / authority.height;
+  perspective.fov = authority.fov; perspective.aspect = aspect; perspective.near = authority.near; perspective.far = authority.far;
+  perspective.updateProjectionMatrix();
+  const h = authority.span / 2;
+  orthographic.left = -h * aspect; orthographic.right = h * aspect; orthographic.top = h; orthographic.bottom = -h;
+  orthographic.near = authority.near; orthographic.far = authority.far;
+  orthographic.updateProjectionMatrix();
+}
+
+/** The camera state in the same shape the WebGPU viewport publishes, so the two can be compared. */
+function publishCamera(canvas: HTMLCanvasElement, camera: THREE.Camera, target: THREE.Vector3, authority: TelosCamera) {
+  const span = camera instanceof THREE.OrthographicCamera ? (camera.top - camera.bottom) / camera.zoom : authority.span;
+  canvas.setAttribute('data-surface-inspection', JSON.stringify({ camera: { position: camera.position.toArray(), target: target.toArray(),
+    up: camera.up.toArray(), span, mode: camera instanceof THREE.OrthographicCamera ? 'orthographic' : 'perspective' } }));
 }
 
 function definitionEdges(model: ModelSession, definitionId: string): readonly DisplayEdgePolyline[] {
@@ -252,13 +401,12 @@ function definitionEdges(model: ModelSession, definitionId: string): readonly Di
 
 function fit(state: ReturnType<typeof createScene>, objects: readonly THREE.Object3D[] = [state.group]) {
   const box = new THREE.Box3();
-  for (const object of objects) box.expandByObject(object);
+  for (const object of objects) if (!(object.userData as MeshMeta).highlight) box.expandByObject(object);
   if (box.isEmpty()) { state.invalidate(); return; }
-  const center = box.getCenter(new THREE.Vector3());
-  const size = box.getSize(new THREE.Vector3()).length();
-  state.controls.target.copy(center);
-  state.camera.position.copy(center).add(new THREE.Vector3(1, 0.8, 1).normalize().multiplyScalar(Math.max(size * 1.5, 30)));
-  state.camera.lookAt(center); state.controls.update(); state.invalidate();
+  // The authority frames the bounds exactly as the WebGPU viewport does.
+  const authority = pull(state);
+  authority.fit(box.min.toArray(), box.max.toArray());
+  push(state);
 }
 
 function fitSelection(state: ReturnType<typeof createScene>) {
@@ -266,7 +414,22 @@ function fitSelection(state: ReturnType<typeof createScene>) {
   fit(state, selected.length ? selected : [state.group]);
 }
 
-function material(selected: boolean, wireframe: boolean) { return new THREE.MeshStandardMaterial({ color: selected ? 0xe7ad45 : 0xb8beb3, metalness: 0.15, roughness: 0.62, side: THREE.DoubleSide, wireframe }); }
+// Telos' shader lights the full base colour, so no metalness here: three's standard material would
+// take that share out of the diffuse light. Colour is set per part in updateMaterials.
+function material(roughness: number, opacity: number) {
+  const result = new THREE.MeshStandardMaterial({ metalness: 0, roughness, side: THREE.DoubleSide, transparent: opacity < 1, opacity, depthWrite: opacity >= 1 });
+  result.onBeforeCompile = shader => {
+    Object.assign(shader.uniforms, rim);
+    shader.fragmentShader = shader.fragmentShader
+      .replace('void main() {', 'uniform vec3 rimColor;\nuniform float rimStrength;\nvoid main() {')
+      .replace('#include <opaque_fragment>', 'outgoingLight += rimColor * pow(1.0 - max(dot(normal, geometryViewDir), 0.0), 3.0) * rimStrength;\n#include <opaque_fragment>');
+  };
+  result.customProgramCacheKey = () => 'helios-rim';
+  return result;
+}
+
+/** Telos' rim term, which outlines a part against the backdrop; set from the presentation. */
+const rim = { rimColor: { value: new THREE.Color() }, rimStrength: { value: 0 } };
 function disposeObject(object: THREE.Object3D) { if (object instanceof THREE.Mesh || object instanceof THREE.LineSegments) { object.geometry.dispose(); (object.material as THREE.Material).dispose(); } }
 
 function applyPose(group: THREE.Group, model: ModelSession, pose: MotionPose | null) {

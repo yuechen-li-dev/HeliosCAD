@@ -146,6 +146,18 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 }
 .viewport-error { border-color: #b56c56; }
 .viewport-status button { display: block; margin-top: 8px; padding: 5px 10px; cursor: pointer; }
+.viewport-error-actions { display: flex; gap: 6px; }
+
+/* The WebGL renderer, when this device cannot run WebGPU: it fills the same cell, so the camera's
+   aspect (and with it every framing) matches the WebGPU viewport. */
+.viewport-fallback { position: relative; display: grid; min-width: 0; min-height: 0; }
+.viewport-fallback > .viewport-shell { min-height: 0; }
+.viewport-renderer-note {
+  position: absolute; right: 12px; bottom: 10px; z-index: 2;
+  padding: 2px 8px; border: 1px solid var(--border); border-radius: 999px;
+  color: var(--text-secondary); background: color-mix(in srgb, var(--panel-bg) 85%, transparent);
+  font: 500 10px/16px var(--font-family); letter-spacing: .04em; cursor: help;
+}
 
 /* Graph view: the model as connected parts. One colour per kind of declaration,
    carried by the card's left edge; everything else stays in the panel palette. */

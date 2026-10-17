@@ -1,5 +1,6 @@
 import { defineConfig } from 'vitest/config';
 import { fileURLToPath } from 'node:url';
+import { existsSync, realpathSync } from 'node:fs';
 import react from '@vitejs/plugin-react';
 import { aetherisCad } from '@aetheris/cad/vite';
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
@@ -44,8 +45,14 @@ function localTerminal(): Plugin {
   };
 }
 
+/** The linked telos package, as Vite sees it after resolving symlinks (a symlinked checkout would otherwise 403 its shaders). */
+function telosRoot() {
+  const linked = fileURLToPath(new URL('../Aetheris/Aetheris.Web.Runtime/telos', import.meta.url));
+  return existsSync(linked) ? realpathSync(linked) : linked;
+}
+
 export default defineConfig({
   plugins: [aetherisCad(), react(), localTerminal()],
-  server: { port: 4173, fs: { allow: [fileURLToPath(new URL('.', import.meta.url)), fileURLToPath(new URL('../Aetheris/Aetheris.Web.Runtime/telos', import.meta.url))] }, proxy: { '/api': 'http://127.0.0.1:5189' } },
+  server: { port: 4173, fs: { allow: [fileURLToPath(new URL('.', import.meta.url)), telosRoot()] }, proxy: { '/api': 'http://127.0.0.1:5189' } },
   test: { include: ['src/**/*.test.ts', 'src/**/*.test.tsx'], environment: 'jsdom', setupFiles: './src/test/setup.ts', css: true }
 });
