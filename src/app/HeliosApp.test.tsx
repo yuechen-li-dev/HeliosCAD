@@ -5,12 +5,29 @@ import { helixModelSource } from '../commands/sourceAuthoring';
 
 const { runtimeMock } = vi.hoisted(() => ({ runtimeMock: { info: { packageVersion: '2.0.0-preview.3' }, initialize: vi.fn(), restart: vi.fn(), open: vi.fn(), schema: vi.fn(), describeConstruct: vi.fn(), rewriteField: vi.fn(), setSource: vi.fn(), setProperty: vi.fn(), rebuild: vi.fn(), exportSTEP: vi.fn(), dispose: vi.fn(), session: vi.fn() } }));
 vi.mock('../sdk/CadRuntime', () => ({ WebSdkCadRuntime: class { constructor() { return runtimeMock; } } }));
-vi.mock('../viewport/Viewport', () => ({ Viewport: ({ onSelect }: { onSelect(id: string, face: string): void }) => <button data-testid="viewport" onClick={() => onSelect('box:plate', 'face:top')}>Viewport geometry</button> }));
+vi.mock('../viewport/Viewport', () => ({ Viewport: ({ onSelect, showConcepts }: { onSelect(id: string, face: string): void; showConcepts?: boolean }) => <button data-testid="viewport" data-concepts-visible={showConcepts} onClick={() => onSelect('box:plate', 'face:top')}>Viewport geometry</button> }));
 
 import { HeliosApp } from './HeliosApp';
 const model = fakeModel({ sourceName: 'editable-bracket.firmament' });
 
 describe('Helios IDE shell', () => {
+  it('toggles retained Concept Struct guides without recompiling or changing the model', async () => {
+    const conceptModel = fakeModel({ mesh: { ...model.mesh, definitions: model.mesh.definitions.map(d => ({ ...d, concepts: [
+      { id: 'Design.Axis', owner: 'Design', kind: 'Axis', points: [0, 0, 0, 0, 0, 20], provenance: 'compiler' },
+    ] })) } });
+    runtimeMock.open.mockResolvedValue({ model: conceptModel, diagnostics: [] });
+    runtimeMock.session.mockReturnValue(conceptModel);
+    render(<HeliosApp />);
+    const toggle = screen.getByRole('button', { name: 'Concepts' });
+    await waitFor(() => expect(toggle).toBeEnabled());
+    expect(toggle).toHaveAttribute('aria-pressed', 'false');
+    fireEvent.click(toggle);
+    expect(toggle).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByTestId('viewport')).toHaveAttribute('data-concepts-visible', 'true');
+    fireEvent.click(toggle);
+    expect(screen.getByTestId('viewport')).toHaveAttribute('data-concepts-visible', 'false');
+    expect(runtimeMock.rebuild).not.toHaveBeenCalled();
+  });
   beforeEach(() => { localStorage.clear(); vi.clearAllMocks(); vi.stubGlobal('URL', { ...URL, createObjectURL: vi.fn(() => 'blob:helios-test'), revokeObjectURL: vi.fn() }); vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => undefined); runtimeMock.open.mockResolvedValue({ model, diagnostics: [] }); runtimeMock.restart.mockResolvedValue(runtimeMock.info); runtimeMock.schema.mockResolvedValue({ version: 'firmament-semantic-schema/1', constructs: [{ id: 'Helix', entry: helixModelSource }] }); runtimeMock.describeConstruct.mockRejectedValue(new Error('No projection in fake model')); runtimeMock.setSource.mockResolvedValue(ok()); runtimeMock.setProperty.mockResolvedValue(ok()); runtimeMock.rebuild.mockResolvedValue(ok()); runtimeMock.exportSTEP.mockResolvedValue(new Uint8Array([1])); runtimeMock.session.mockImplementation(() => runtimeMock.open.mock.calls.length ? model : null); });
   it('shows the active file in the Files dock', async () => { render(<HeliosApp />); await waitFor(() => expect(runtimeMock.open).toHaveBeenCalled()); fireEvent.click(screen.getByRole('tab', { name: 'Files' })); expect(screen.getByRole('region', { name: 'Project explorer' })).toHaveTextContent('editable-bracket.firmament'); expect(screen.getByRole('region', { name: 'Model browser' })).toBeVisible(); });
   it('persists Apollonia', async () => { render(<HeliosApp />); fireEvent.change(screen.getByLabelText('Theme'), { target: { value: 'apollonia' } }); await waitFor(() => expect(localStorage.getItem('helios-theme')).toBe('apollonia')); });

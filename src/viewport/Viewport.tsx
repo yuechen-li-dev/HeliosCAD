@@ -9,6 +9,7 @@ import {
 } from "react";
 import {
   TelosHost,
+  conceptWireframe,
   fromDisplayMesh,
   clearColor,
   inspectSurfaces,
@@ -30,6 +31,7 @@ const LegacyViewport = lazy(() =>
 );
 
 interface Props {
+  showConcepts?: boolean;
   busyMessage?: string | null;
   errorMessage?: string | null;
   aaMode?: import("@aetheris/three-telos").TelosAAMode;
@@ -161,9 +163,12 @@ function TelosViewport(props: Props & { onRetry(): void; onUnavailable(reason: s
           ? [0.18, 0.22, 0.2, 0.85]
           : [0.3, 0.35, 0.32, 0.85],
     }));
+    const concepts = value.showConcepts && value.model ? conceptWireframe(posedMesh(value.model.mesh, value.pose)) : [];
+    canvas.current?.setAttribute("data-concept-wires", String(concepts.length / 2));
     const displayScene = { ...scene, meshes, lines, fields: scene.fields.map(f=>({...f, selected:selectedIds.has(f.identity.occurrenceId), visible:value.displayMode !== "wireframe"})) };
-    current.setScene(inspectSurfaces(inspection.current.mode === "normal" && !inspection.current.face ? displayScene : scene,
-      inspection.current.mode, inspection.current.face));
+    const inspected = inspectSurfaces(inspection.current.mode === "normal" && !inspection.current.face ? displayScene : scene,
+      inspection.current.mode, inspection.current.face);
+    current.setScene({ ...inspected, lines: [...inspected.lines, ...concepts] });
     canvas.current?.setAttribute("data-surface-inspection", JSON.stringify({ mode: inspection.current.mode,
       isolatedFace: inspection.current.face ?? null,
       usesFieldProxy: scene.fields.some(field => field.proxy) && (!!inspection.current.face || inspection.current.mode === "patches"),
@@ -296,7 +301,7 @@ function TelosViewport(props: Props & { onRetry(): void; onUnavailable(reason: s
   }, []);
   useEffect(() => {
     apply();
-  }, [props.model, props.model?.revision, props.pose, props.selectedEntityId, props.selectedTopologyId,
+  }, [props.showConcepts, props.model, props.model?.revision, props.pose, props.selectedEntityId, props.selectedTopologyId,
     props.theme, props.displayMode, props.viewMode, props.viewCommand, props.aaMode, props.aaDebug,
     inspectionMode, isolatedFaceKey]);
   useEffect(() => { setIsolatedFaceKey(""); }, [props.model?.id, props.model?.revision]);

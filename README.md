@@ -2,6 +2,17 @@
 
 Helios is a human-facing 3D design studio using the public `@aetheris/cad` browser runtime. Leviathan owns sign-in, accounts, project ownership, revision metadata, and object storage. Firmament source is the saved project truth; the editor rebuilds geometry and exports STEP from that source.
 
+## Concept Struct visualization
+
+In the editor, **Concepts** toggles compiler-retained Concept Struct geometry as
+gold construction wireframes. WebGPU adds a faint halo; the WebGL fallback uses
+the same guides. They follow occurrence placement and motion without changing
+material geometry or intercepting selection. Open Firmament source to retain
+compile-time scaffolds; STEP alone does not contain them. The button is disabled
+when no supported spatial Concept values are available. See Aetheris's
+[shared display contract](../Aetheris/docs/public/three-telos.md#concept-struct-wireframes)
+for the supported value kinds and finite guide sizes.
+
 ## Showcase and community
 
 The root opens a curated, anonymous showcase. Five real projects demonstrate a mounting plate, CODEX threaded bolt, Industrial ATLAS, sunburst electric guitar, and warm-modern house. Source documents load on demand; multi-file projects preserve includes, shared definitions and Scene cameras. The welcome screen does not initialize the geometry runtime. See [the showcase guide](docs/public/helios-showcase.md).

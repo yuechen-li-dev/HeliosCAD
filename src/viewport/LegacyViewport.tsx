@@ -3,13 +3,15 @@ import type { MotionPose } from '@aetheris/cad';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import type { DisplayEdgePolyline, ModelSession, SelectionDescription } from '@aetheris/cad';
-import { TelosCamera } from '@aetheris/three-telos';
+import { TelosCamera, conceptWireframeGroup, disposeConceptWireframe } from '@aetheris/three-telos';
 import type { DisplayMode, ThemeName, ViewMode } from '../app/types';
 import { applyNamedView, WORLD_UP } from './viewCommands';
 import { HELIOS_PRESENTATIONS } from './presentation';
 import { referenceGrid } from './referenceGrid';
+import { posedMesh } from './pose';
 
 interface Props {
+  showConcepts?: boolean;
   busyMessage?: string | null;
   errorMessage?: string | null;
   model: ModelSession | null;
@@ -40,6 +42,15 @@ export function LegacyViewport(props: Props) {
   }, []);
 
   useEffect(() => { if (state.current) loadModel(state.current, props.model); }, [props.model, props.model?.revision]);
+  useEffect(() => {
+    const current = state.current;
+    current?.renderer.domElement.setAttribute('data-concept-wires', '0');
+    if (!current || !props.showConcepts || !props.model) return;
+    const guides = conceptWireframeGroup(posedMesh(props.model.mesh, props.pose));
+    current.renderer.domElement.setAttribute('data-concept-wires', String(guides.children.length));
+    current.scene.add(guides); current.invalidate();
+    return () => { disposeConceptWireframe(guides); current.invalidate(); };
+  }, [props.showConcepts, props.model, props.model?.revision, props.pose]);
   useEffect(() => { if (state.current) selectEntity(state.current, props.model, props.selectedEntityId, props.selectedTopologyId); }, [props.model, props.selectedEntityId, props.selectedTopologyId]);
   useEffect(() => { if (state.current) applyAppearance(state.current, props.theme, props.displayMode); }, [props.theme, props.displayMode]);
   useEffect(() => { if (state.current) applyViewCommand(state.current, props.viewMode, props.viewCommand); }, [props.viewMode, props.viewCommand]);
