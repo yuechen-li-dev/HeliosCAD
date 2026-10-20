@@ -28,11 +28,17 @@ USDA declares its units and axis. STL and OBJ use millimetres; STL has no unit f
 
 For parts, GLB also carries supported datum/diameter PMI: exact nominal and
 upper/lower allowances in `asset.extras.pmi`, associated STEP face references,
-and separate font-outline/leader line primitives. Body mesh buffers remain
+and separate font-outline/leader and gold surface-marker primitives. Body mesh buffers remain
 unchanged. The metadata schema is `aetheris/pmi-display/1`; values and annotation
 coordinates use millimetres before the common GLB axis/unit conversion. This is
 presentation metadata, not an AP242 semantic extension. Unsupported callout
 kinds or unresolved associations reject annotated GLB export explicitly.
+Datum attachments use a small patch inside the selected plane. Diameter attachments
+highlight the associated cylindrical wall and physical rim wires, with a leader
+ending on the wall rather than inside the solid or at a rim corner. Surface-normal
+stems identify the attachments. The default body look is lightly translucent when
+PMI is present; explicitly authored appearances remain unchanged. Gold markers do
+not intercept face/edge selection and do not alter the STEP or body mesh.
 Callout geometry currently uses a static XY plane; orbit to read it, or use the
 viewport legend. It is not a camera-facing text system or a production drawing.
 USDA, STL and OBJ do not carry PMI.

@@ -4,7 +4,7 @@ import type { MotionPose } from '@aetheris/cad';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import type { DisplayEdgePolyline, ModelSession, SelectionDescription } from '@aetheris/cad';
-import { TelosCamera, conceptWireframeGroup, disposeConceptWireframe, pmiGroup } from '@aetheris/three-telos';
+import { TelosCamera, conceptWireframeGroup, disposeConceptWireframe, pmiGroup, disposePmiGroup, pmiBodyMaterial } from '@aetheris/three-telos';
 import type { DisplayMode, ThemeName, ViewMode } from '../app/types';
 import { applyNamedView, WORLD_UP } from './viewCommands';
 import { HELIOS_PRESENTATIONS } from './presentation';
@@ -65,7 +65,7 @@ export function LegacyViewport(props: Props) {
   useEffect(() => {
     const current = state.current; if (!current) return;
     const group = pmiGroup(props.model?.mesh.annotations); current.scene.add(group); current.invalidate();
-    return () => { disposeConceptWireframe(group); current.invalidate(); };
+    return () => { disposePmiGroup(group); current.invalidate(); };
   }, [props.model, props.model?.revision]);
   useEffect(() => {
     const current = state.current;
@@ -202,7 +202,8 @@ function loadModel(state: ReturnType<typeof createScene>, model: ModelSession | 
     if (!geometry || !occurrence.definitionId) continue;
     // The occurrence's resolved appearance, as the WebGPU viewport shows it; Telos' default otherwise.
     const look = occurrence.material;
-    const mesh = new THREE.Mesh(geometry, material(look?.roughness ?? 0.62, look?.opacity ?? 1));
+    const opacity = pmiBodyMaterial({ opacity: look?.opacity ?? 1 }, !!model.mesh.annotations?.length, !!look).opacity;
+    const mesh = new THREE.Mesh(geometry, material(look?.roughness ?? 0.62, opacity));
     mesh.matrix.fromArray(occurrence.transform); mesh.matrixAutoUpdate = false;
     mesh.userData = { definitionId: occurrence.definitionId, occurrenceId: occurrence.id, baseColor: look?.baseColor ?? DEFAULT_COLOR } satisfies MeshMeta;
     state.group.add(mesh);
