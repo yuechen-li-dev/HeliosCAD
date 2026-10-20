@@ -4,7 +4,7 @@ import type { MotionPose } from '@aetheris/cad';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import type { DisplayEdgePolyline, ModelSession, SelectionDescription } from '@aetheris/cad';
-import { TelosCamera, conceptWireframeGroup, disposeConceptWireframe } from '@aetheris/three-telos';
+import { TelosCamera, conceptWireframeGroup, disposeConceptWireframe, pmiGroup } from '@aetheris/three-telos';
 import type { DisplayMode, ThemeName, ViewMode } from '../app/types';
 import { applyNamedView, WORLD_UP } from './viewCommands';
 import { HELIOS_PRESENTATIONS } from './presentation';
@@ -62,6 +62,11 @@ export function LegacyViewport(props: Props) {
     return () => { disposeConceptWireframe(group); current.invalidate(); };
   }, [props.measurementTick, props.measurementTool]);
   useEffect(() => { if (state.current) loadModel(state.current, props.model); }, [props.model, props.model?.revision]);
+  useEffect(() => {
+    const current = state.current; if (!current) return;
+    const group = pmiGroup(props.model?.mesh.annotations); current.scene.add(group); current.invalidate();
+    return () => { disposeConceptWireframe(group); current.invalidate(); };
+  }, [props.model, props.model?.revision]);
   useEffect(() => {
     const current = state.current;
     current?.renderer.domElement.setAttribute('data-concept-wires', '0');
@@ -442,6 +447,10 @@ function definitionEdges(model: ModelSession, definitionId: string): readonly Di
 function fit(state: ReturnType<typeof createScene>, objects: readonly THREE.Object3D[] = [state.group]) {
   const box = new THREE.Box3();
   for (const object of objects) if (!(object.userData as MeshMeta).highlight) box.expandByObject(object);
+  if (objects.length === 1 && objects[0] === state.group)
+    for (const annotation of state.model?.mesh.annotations ?? [])
+      for (const line of annotation.lines) for (const point of line)
+        box.expandByPoint(new THREE.Vector3(point[0], point[1], point[2]));
   if (box.isEmpty()) { state.invalidate(); return; }
   // The authority frames the bounds exactly as the WebGPU viewport does.
   const authority = pull(state);

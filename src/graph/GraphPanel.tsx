@@ -260,7 +260,7 @@ export function GraphPanel(props: Props) {
           ? 'Drag from one frame to another to join them; click a joint to edit it.' : 'Click a part or a joint to see it.'}</small>
       </div> : <div>
         {summary ? <><span>{summary.containers.length ? summary.containers.join(', ') : props.outline?.document}</span>
-          <small>{count(summary.units, 'part')}, {count(summary.links, 'connection')}. {props.authoring
+          <small>{count(summary.units, 'authoring step')}, {count(summary.links, 'connection')}. {props.authoring
             ? 'Double-click the canvas to add; drag from a card’s right edge to connect.' : 'Select a part to see its values; double-click to open its source.'}</small></> : <span>Model graph</span>}
       </div>}
       {props.authoring && !showAssembly && <button className="graph-add" aria-label="Add a body or feature" onClick={() => setPaletteAt(at => at ? null : { x: 12, y: 8 })}>+ Add</button>}

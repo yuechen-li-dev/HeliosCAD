@@ -1,4 +1,4 @@
-import { MeasurementTool, bindMeasurementPicking, measurementLines } from '@aetheris/three-telos';
+import { MeasurementTool, bindMeasurementPicking, measurementLines, pmiLines } from '@aetheris/three-telos';
 import {
   lazy,
   Suspense,
@@ -90,6 +90,7 @@ export function Viewport(props: Props) {
     [props.model, props.model?.revision, props.pose, props.measurementDisabledReason]);
   return <div tabIndex={0} style={{position:'relative',width:'100%',height:'100%'}} aria-label="Model measurement workspace">
     <ViewportRenderer {...props} measurementTool={tool.current} measurementTick={measurementTick} /><div ref={panel} />
+    {!!props.model?.mesh.annotations?.length && <aside className="pmi-legend" aria-label="PMI annotations"><strong>PMI · mm</strong>{props.model.mesh.annotations.map(item => <div key={item.id}><span>{item.name}</span> {item.text}</div>)}</aside>}
   </div>;
 }
 function ViewportRenderer(props: Props) {
@@ -192,7 +193,7 @@ function TelosViewport(props: Props & { onRetry(): void; onUnavailable(reason: s
     const displayScene = { ...scene, meshes, lines, fields: scene.fields.map(f=>({...f, selected:selectedIds.has(f.identity.occurrenceId), visible:value.displayMode !== "wireframe"})) };
     const inspected = inspectSurfaces(inspection.current.mode === "normal" && !inspection.current.face ? displayScene : scene,
       inspection.current.mode, inspection.current.face);
-    current.setScene({ ...inspected, lines: [...inspected.lines, ...concepts, ...measurementLines(value.measurementTool?.result ?? null)] });
+    current.setScene({ ...inspected, lines: [...inspected.lines, ...concepts, ...measurementLines(value.measurementTool?.result ?? null), ...pmiLines(value.model?.mesh.annotations)] });
     canvas.current?.setAttribute("data-surface-inspection", JSON.stringify({ mode: inspection.current.mode,
       isolatedFace: inspection.current.face ?? null,
       usesFieldProxy: scene.fields.some(field => field.proxy) && (!!inspection.current.face || inspection.current.mode === "patches"),

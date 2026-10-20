@@ -27,7 +27,12 @@ Open the root page to browse local examples. No account or backend is required f
 
 Build always targets the project root, including edits in supporting files. Switching files does not build or discard edits. A failed build retains the last valid geometry and labels it as out of date. Problems show the compiler's actual diagnostic codes and explanations.
 
-Part and Assembly builds expose **Export STEP**. The SDK currently has no OpenUSD/GLB export API, and Scene has no STEP export; those buttons are not offered. Aetheris CLI Scene export remains a separate native workflow.
+The **Export** picker offers the formats admitted by the compiled model, including
+STEP AP242, GLB and USDA. Scene has no STEP product export. See
+[export formats and limits](exports.md), including supported datum/diameter PMI
+labels and tolerance metadata in GLB. **Import STEP** opens the supported
+canonical single-part annotation workflow; **Open file** also reopens portable
+`.helios.zip` workspaces containing source and immutable STEP assets.
 
 Drag pane separators or focus them and use arrow keys. The utility dock and bottom panel can collapse. **Ctrl+Shift+P** opens the command palette, which includes formatting and existing source-authoring actions. The terminal is available only on the local Vite development host, and starts when its tab is opened.
 

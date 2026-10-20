@@ -475,3 +475,12 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .viewport-pane canvas { transition: filter .18s ease; }
 .viewport-pane.ghosted canvas { filter: grayscale(.85) opacity(.5); }
 
+.pmi-author { display: grid; gap: 8px; padding: 14px; border-bottom: 1px solid var(--border, #ddd); }
+.pmi-author label { display: grid; grid-template-columns: 1fr 110px; align-items: center; gap: 8px; }
+.pmi-author input { min-width: 0; width: 100%; }
+.pmi-author p, .pmi-author small { margin: 0; line-height: 1.4; }
+.pmi-legend { position: absolute; right: 14px; top: 92px; padding: 10px 14px; background: #fffffff2; color: #153356; border: 1px solid #ccd4df; pointer-events: none; font-size: 12px; line-height: 1.6; }
+.pmi-legend span { font-weight: 600; padding-right: 8px; }
+.viewport-toolbar { flex-wrap: wrap; justify-content: flex-start; gap: 3px; padding-block: 3px; }
+.viewport-toolbar > div { flex-wrap: wrap; }
+.viewport-pane { grid-template-rows: auto minmax(0, 1fr) auto; }

@@ -16,9 +16,10 @@ interface Props {
   onGoToSource?(source: SourceReference): void;
   onReferenceFace?(): void;
   onReferenceHoleWall?(): void;
+  annotationEditor?: ReactNode;
 }
 
-export function Inspector({ model, schema, projection, projectionCurrent = true, entityId, faceId, selection, diagnostics, onApply, onRewriteField, onGoToSource, onReferenceFace, onReferenceHoleWall }: Props) {
+export function Inspector({ model, schema, projection, projectionCurrent = true, entityId, faceId, selection, diagnostics, onApply, onRewriteField, onGoToSource, onReferenceFace, onReferenceHoleWall, annotationEditor }: Props) {
   const entity = entityId ? model?.entity(entityId) : undefined;
   const occurrence = model?.mesh.occurrences.find(item => item.semanticEntityId === entityId || item.id === entityId);
   const properties = useMemo(() => model?.properties.filter(property => property.ownerEntityId === entityId) ?? [], [entityId, model]);
@@ -34,6 +35,11 @@ export function Inspector({ model, schema, projection, projectionCurrent = true,
   return <section className="panel inspector" aria-label="Inspector">
     <div className="panel-heading"><span>Selection</span></div>
     <div className="inspector-scroll">
+      {model?.mesh.importedAsset && <Section id="imported-asset" label="Imported geometry · read-only">
+        <dl className="identity-list"><dt>Asset</dt><dd>{model.mesh.importedAsset.path}</dd><dt>SHA-256 (UTF-8 text)</dt><dd className="identifier">{model.mesh.importedAsset.sha256}</dd><dt>Geometry</dt><dd>{model.mesh.importedAsset.qualification?.geometryStatus ?? 'Not assessed'}</dd></dl>
+        <p>Select a planar face to add a datum, or a cylindrical face to add a diameter. Save workspace retains the original asset.</p>
+      </Section>}
+      {annotationEditor}
       {entity ? <>
         <div className="entity-hero"><span className="entity-glyph">{entity.kind === 'Hole' ? '⊙' : '◆'}</span><div><strong>{entity.name}</strong><small>{displayKind(entity.kind)}</small></div></div>
         <Section id="identity" label="Identity">

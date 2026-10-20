@@ -26,6 +26,28 @@ currently playing, the viewport camera, Concept guides, edge overlays, or select
 highlights. GLB includes the existing millimetre/Z-up to metre/Y-up conversion;
 USDA declares its units and axis. STL and OBJ use millimetres; STL has no unit field.
 
+For parts, GLB also carries supported datum/diameter PMI: exact nominal and
+upper/lower allowances in `asset.extras.pmi`, associated STEP face references,
+and separate font-outline/leader line primitives. Body mesh buffers remain
+unchanged. The metadata schema is `aetheris/pmi-display/1`; values and annotation
+coordinates use millimetres before the common GLB axis/unit conversion. This is
+presentation metadata, not an AP242 semantic extension. Unsupported callout
+kinds or unresolved associations reject annotated GLB export explicitly.
+Callout geometry currently uses a static XY plane; orbit to read it, or use the
+viewport legend. It is not a camera-facing text system or a production drawing.
+USDA, STL and OBJ do not carry PMI.
+
+**Import STEP** opens a supported canonical single part as immutable geometry
+with a Firmament annotation layer. Pick a planar face to add a datum, or a
+cylindrical face to enter a nominal and explicit upper/lower diameter allowances.
+The viewport displays supported callouts and an annotation legend. **Save
+workspace** retains STEP text and source in `.helios.zip`; **Open file** reopens
+it. Local checkpoints retain assets too. Cloud single-source saving refuses
+multi-file workspaces. Arbitrary vendor files, imported assemblies and existing
+semantic-PMI layers in an imported STEP are not qualified in this first slice;
+they are not silently reconstructed or stripped. Reopen the original workspace
+to continue annotation work.
+
 Automatic drawings currently cover rectangular plate/box stock with disjoint
 circular Z-through holes. Other shapes fail with a precise drawing diagnostic.
 The picker does not bypass this check or substitute reference-only sheets. Drawing

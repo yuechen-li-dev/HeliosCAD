@@ -37,6 +37,8 @@ import { MotionStrip } from '../viewport/MotionStrip';
 import { poseCoverage } from '../viewport/pose';
 import type { ExportFormat } from '@aetheris/cad';
 import { ExportPicker } from './ExportPicker';
+import { importedProject, isStep, packProject, sourceFiles, unpackProject } from './localProject';
+import { PmiAuthor } from '../inspector/PmiAuthor';
 
 type UtilityTab = { kind: 'files' } | { kind: 'inspector' } | { kind: 'examples' } | { kind: 'llm' } | { kind: 'version-control' };
 
@@ -69,6 +71,7 @@ export function HeliosApp({ project, initialWorkspace, onShowcase, onSave, onPub
   const [selectedFaceId, setSelectedFaceId] = useState<string | null>(null);
   const [selectedSelection, setSelectedSelection] = useState<SelectionDescription | null>(null);
   const [busy, setBusy] = useState<BusyState>('Initializing Aetheris Worker');
+  const [workerFailed, setWorkerFailed] = useState(false);
   const [sourceRevision, setSourceRevision] = useState(0);
   const sourceRevisionRef = useRef(0);
   const [displayRevision, setDisplayRevision] = useState<number | null>(null);
@@ -127,6 +130,7 @@ export function HeliosApp({ project, initialWorkspace, onShowcase, onSave, onPub
   const acceptBuild = (result: BuildResult) => {
     if (result.status === 'superseded' || result.request.sourceRevision !== sourceRevisionRef.current) return;
     setDiagnostics(result.diagnostics);
+    setWorkerFailed(result.diagnostics.some(item => item.code === 'HELIOS-WORKER'));
     pushOutput(result.status === 'completed' ? `Build finished in ${result.milliseconds.toFixed(0)} ms · ${result.diagnostics.length} diagnostics` :
       `Build failed · ${result.diagnostics.length} diagnostics`);
     if (result.status === 'completed' && result.model) {
@@ -140,7 +144,7 @@ export function HeliosApp({ project, initialWorkspace, onShowcase, onSave, onPub
       if (snapshot?.timings) setPhaseTiming(`COMPILE ${snapshot.timings.compileMilliseconds.toFixed(0)}MS · MESH ${(snapshot.timings.meshMilliseconds ?? 0).toFixed(0)}MS · TRANSFER ${(snapshot.workerTiming?.transportMilliseconds ?? 0).toFixed(0)}MS · ${(snapshot.workerTiming?.payloadBytes ?? 0)}B`);
       setBusy(null);
     } else {
-      setBusy(result.diagnostics.some(item => item.code === 'HELIOS-WORKER') ? 'Worker failed' : null);
+      setBusy(null);
     }
     setBuildStarted(null);
   };
@@ -157,7 +161,7 @@ export function HeliosApp({ project, initialWorkspace, onShowcase, onSave, onPub
       if (submission === latestSubmission.current) setBusy('Building');
     } catch (error) {
       setDiagnostics([toDiagnostic(error, 'HELIOS-WORKER')]);
-      setBusy('Worker failed'); setBuildStarted(null);
+      setWorkerFailed(true); setBusy(null); setBuildStarted(null);
       pushOutput(`Runtime initialization failed · ${error instanceof Error ? error.message : String(error)}`);
       return false;
     }
@@ -208,6 +212,12 @@ export function HeliosApp({ project, initialWorkspace, onShowcase, onSave, onPub
   };
 
   const downloadSource = () => {
+    if (Object.keys(projectDocuments.current).length > 1) {
+      const documents = { ...projectDocuments.current, [sourceName]: source };
+      downloadBlob(new Blob([Uint8Array.from(packProject({ root: projectRoot.current ?? sourceName, documents })).buffer], { type: 'application/zip' }), `${stripExtension(projectRoot.current ?? sourceName)}.helios.zip`);
+      savedSources.current = { ...documents }; setDirtyFiles(new Set()); setSaveState('Saved');
+      pushOutput('Workspace download started · includes immutable STEP assets and annotation source'); return;
+    }
     downloadText(source, sourceName);
     savedSources.current[sourceName] = source;
     setDirtyFiles(files => { const next = new Set(files); next.delete(sourceName); return next; });
@@ -658,19 +668,32 @@ export function HeliosApp({ project, initialWorkspace, onShowcase, onSave, onPub
     <header className="topbar">
       <button className="brand" onClick={() => project ? location.assign('/') : onShowcase ? onShowcase() : setExamplesOpen(true)} aria-label="Helios home"><span className="helios-symbol">H</span><div><strong>HELIOS</strong><small>by Aetheris</small></div></button>
       <div className="workspace-identity"><strong>{workspaceTitle}</strong><small>{project ? 'Saved project' : 'Local workspace'} · Firmament</small></div>
-      <nav className="workspace-tabs" aria-label="Workspace"><button onClick={() => setExamplesOpen(true)}>Examples</button><button onClick={() => fileInput.current?.click()}>Open file</button><button title="Download the active Firmament document · Ctrl+S" onClick={() => onSave ? void save() : downloadSource()}>Save source</button><button className="build-action" disabled={buildStarted !== null || !!busy} title="Build project · Ctrl+Enter" onClick={() => void rebuildSource()}>{buildStarted !== null ? `Building · ${elapsedSeconds.toFixed(1)} s` : 'Build'}</button><ExportPicker formats={model?.exportFormats ?? []} disabled={!model || !!busy || buildStarted !== null} open={exportOpen} onOpen={setExportOpen} onExport={exportSelected} /></nav>
+      <nav className="workspace-tabs" aria-label="Workspace"><button onClick={() => setExamplesOpen(true)}>Examples</button><button onClick={() => fileInput.current?.click()}>Open file</button><button onClick={() => fileInput.current?.click()} title="Import a supported canonical STEP part as immutable geometry">Import STEP</button><button title="Download source, or a portable workspace with all imported assets · Ctrl+S" onClick={() => onSave ? void save() : downloadSource()}>{!onSave && Object.keys(projectDocuments.current).length > 1 ? 'Save workspace' : 'Save source'}</button><button className="build-action" disabled={buildStarted !== null || !!busy} title="Build project · Ctrl+Enter" onClick={() => void rebuildSource()}>{buildStarted !== null ? `Building · ${elapsedSeconds.toFixed(1)} s` : 'Build'}</button><ExportPicker formats={model?.exportFormats ?? []} disabled={!model || !!busy || buildStarted !== null} open={exportOpen} onOpen={setExportOpen} onExport={exportSelected} /></nav>
       <div className="toolbar">
         <button className="palette-trigger" onClick={() => setPaletteOpen(true)}>⌕ <span>Command palette</span><kbd>Ctrl+Shift+P</kbd></button>
       </div>
       <div className="top-actions"><button title="Toggle utility dock" aria-label="Toggle utility dock" aria-pressed={shellLayout.utilityOpen} onClick={() => shellLayout.setUtilityOpen(value => !value)}>▥</button><select aria-label="Theme" value={theme} onChange={event => setTheme(event.target.value as ThemeName)}><option value="bronze-age">Bronze Age</option><option value="apollonia">Apollonia</option></select></div>
-      <input ref={fileInput} hidden type="file" multiple accept=".firmament,.firmasm,.txt" onChange={async event => {
+      <input ref={fileInput} hidden type="file" multiple accept=".firmament,.firmasm,.step,.stp,.zip" onChange={async event => {
         const files = Array.from(event.target.files ?? []); if (!files.length) return;
-        if (project && files.length > 1) { setDiagnostics([toDiagnostic(new Error('This saved project stores one document. Open multi-file projects from Helios home.'), 'project-single-source')]); event.target.value = ''; return; }
-        const entries = await Promise.all(files.map(async file => [file.name, await file.text()] as const));
-        if (new Set(entries.map(([name])=>name)).size !== entries.length) { setDiagnostics([toDiagnostic(new Error('Choose files with unique project-relative names.'), 'project-duplicate-path')]); return; }
-        projectDocuments.current = Object.fromEntries(entries); setProjectFileNames(entries.map(([name])=>name));
-        const root = entries.find(([name]) => name.endsWith('.firmasm')) ?? entries[0]; projectRoot.current = root[0]; setWorkspaceTitle(stripExtension(root[0]));
-        void open(root[1], root[0]); event.target.value = '';
+        event.target.value = '';
+        try {
+          if (files.some(file => file.size > 32 * 1024 * 1024) || files.reduce((sum, file) => sum + file.size, 0) > 64 * 1024 * 1024) throw new Error('Local import supports files up to 32 MB and workspaces up to 64 MB.');
+          let next;
+          if (files.length === 1 && /\.zip$/i.test(files[0].name)) next = unpackProject(new Uint8Array(await files[0].arrayBuffer()));
+          else if (files.length === 1 && isStep(files[0].name)) next = importedProject(files[0].name, await files[0].text());
+          else {
+            if (files.some(file => !/\.(firmament|firmasm|step|stp)$/i.test(file.name))) throw new Error('Open Firmament source, STEP, or a .helios.zip workspace.');
+            const entries = await Promise.all(files.map(async file => [file.name, await file.text()] as const));
+            if (new Set(entries.map(([name]) => name)).size !== entries.length) throw new Error('Choose unique project-relative names.');
+            const root = entries.find(([name]) => /\.firmasm$/i.test(name)) ?? entries.find(([name]) => /\.firmament$/i.test(name));
+            if (!root) throw new Error('Choose one STEP part, or a Firmament root with its STEP assets.');
+            next = { root: root[0], documents: Object.fromEntries(entries) };
+          }
+          if (project && Object.keys(next.documents).length > 1) throw new Error('Imported workspaces currently save locally. Open this from the local workspace; cloud projects store one source document.');
+          projectDocuments.current = next.documents; projectRoot.current = next.root;
+          setProjectFileNames(sourceFiles(next.documents)); setWorkspaceTitle(stripExtension(next.root)); setUtilityTab({ kind: 'inspector' });
+          await open(next.documents[next.root], next.root);
+        } catch (error) { setDiagnostics([toDiagnostic(error, 'HELIOS-OPEN')]); setBusy(null); }
       }} />
     </header>
     {project && <div className="cloud-project-bar"><button onClick={() => { if (saveState === 'Saved' || confirm('Leave this project with unsaved source?')) onBack?.(); }}>← Discover</button><strong>{project.name}</strong><span className="cloud-save-state" role="status">{saveState}</span><div className="cloud-editor-actions"><button className="cloud-save" onClick={() => void save()}>Save</button>{onPublish && <button onClick={() => { setPublishState(''); setPublishOpen(true); }}>Publish</button>}<button onClick={() => downloadText(source, sourceName)}>Download source</button><button onClick={() => { if (saveState === 'Saved' || confirm('Sign out with unsaved source?')) onSignOut?.(); }}>Sign out</button></div></div>}
@@ -745,7 +768,9 @@ export function HeliosApp({ project, initialWorkspace, onShowcase, onSave, onPub
         <div className="utility-content">
           {matchKind(utilityTab, {
             files: () => <><ProjectExplorer projectName={workspaceTitle} fileName={sourceName} dirty={dirtyFiles.has(sourceName)} dirtyFiles={dirtyFiles} documents={projectFileNames.length ? projectFileNames : [sourceName]} cloud={!!project} onSelectFile={projectFileNames.length ? switchFile : undefined} onOpen={() => fileInput.current?.click()} onNew={() => loadSample('new')} onReveal={() => sourcePanel.current?.focusAt()} /><ModelTree tree={model?.tree ?? null} selectedId={selectedEntityId} onSelect={id => select(id)} /></>,
-            inspector: () => <><ModelTree tree={model?.tree ?? null} selectedId={selectedEntityId} onSelect={id => select(id)} /><Inspector model={model} schema={semanticSchema} projection={fieldProjection} projectionCurrent={source === model?.source} entityId={selectedEntityId} faceId={selectedFaceId} selection={selectedSelection} diagnostics={diagnostics} onApply={applyProperty} onRewriteField={rewriteField} onGoToSource={navigateSource} onReferenceFace={referenceFace} onReferenceHoleWall={referenceHoleWall} /></>,
+            inspector: () => <><ModelTree tree={model?.tree ?? null} selectedId={selectedEntityId} onSelect={id => select(id)} /><Inspector model={model} schema={semanticSchema} projection={fieldProjection} projectionCurrent={source === model?.source} entityId={selectedEntityId} faceId={selectedFaceId} selection={selectedSelection} diagnostics={diagnostics} onApply={applyProperty} onRewriteField={rewriteField} onGoToSource={navigateSource} onReferenceFace={referenceFace} onReferenceHoleWall={referenceHoleWall}
+              annotationEditor={selectedSelection?.sourceAddressability === 'ImportedStable' && selectedSelection.selector && ['Plane', 'Cylinder'].includes(selectedSelection.surfaceKind ?? '') ?
+                <PmiAuthor key={`${model?.revision}:${selectedSelection.selector}`} selection={selectedSelection} outline={outline} disabled={!!busy || sourceRevision !== displayRevision} onApply={(operations, label) => structuralEdit(operations, { nodeId: '', label })} /> : undefined} /></>,
             examples: () => <div className="dock-gallery"><ExampleGallery onOpen={id => void openExample(id)} opening={openingExample} unavailableReason={busy ? "A project operation is running. Open another example when it finishes." : undefined} /></div>,
             llm: () => null,
             'version-control': () => null,
@@ -763,7 +788,7 @@ export function HeliosApp({ project, initialWorkspace, onShowcase, onSave, onPub
                 if (!Object.hasOwn(next.documents, next.root)) throw new Error('The checkpoint is missing its root document.');
                 const active = Object.hasOwn(next.documents, sourceName) ? sourceName : next.root;
                 projectRoot.current = next.root; projectDocuments.current = { ...next.documents };
-                setProjectFileNames(Object.keys(next.documents));
+                setProjectFileNames(sourceFiles(next.documents));
                 const before = sourceRevisionRef.current;
                 if (active !== sourceName || !sourcePanel.current?.replace({ source: sourceName, start: 0, length: source.length, line: 1, column: 1 }, source, next.documents[active])
                     || sourceRevisionRef.current === before) editSource(next.documents[active], active);
@@ -776,7 +801,7 @@ export function HeliosApp({ project, initialWorkspace, onShowcase, onSave, onPub
       </aside>
       <div className="bottom-region"><ResizeHandle axis="vertical" label="Resize bottom panel" value={shellLayout.bottomPixels} onResize={shellLayout.resizeBottom} /><BottomDock collapsed={!shellLayout.bottomOpen} onToggle={() => shellLayout.setBottomOpen(value => !value)} diagnostics={shownDiagnostics} busy={busy} sourceName={sourceName} sourceRevision={sourceRevision} displayRevision={displayRevision} lastTiming={lastTiming} events={phaseTiming ? [...outputEvents, phaseTiming] : outputEvents} onDiagnosticClick={diagnostic => { if (diagnostic.source) navigateSource(diagnostic.source); }} /></div>
     </main>
-    <WorkspaceStatus busy={busy} elapsed={elapsedSeconds} runtimeName={runtimeName} model={model} sourceRevision={sourceRevision} displayRevision={displayRevision} diagnostics={shownDiagnostics} timing={lastTiming} theme={theme} viewMode={viewMode} onRestart={() => { void buildClient.restart().then(() => submitBuild(source, sourceName)).catch(error => setDiagnostics([toDiagnostic(error, 'HELIOS-WORKER-RESTART')])); }} />
+    <WorkspaceStatus busy={busy ?? (workerFailed ? 'Worker failed' : null)} elapsed={elapsedSeconds} runtimeName={runtimeName} model={model} sourceRevision={sourceRevision} displayRevision={displayRevision} diagnostics={shownDiagnostics} timing={lastTiming} theme={theme} viewMode={viewMode} onRestart={() => { void buildClient.restart().then(() => submitBuild(source, sourceName)).catch(error => setDiagnostics([toDiagnostic(error, 'HELIOS-WORKER-RESTART')])); }} />
     {paletteOpen && <CommandPalette commands={paletteCommands} onClose={() => setPaletteOpen(false)} />}
     {examplesOpen && <ExampleDialog onClose={() => setExamplesOpen(false)}><ExampleGallery onOpen={id => void openExample(id)} opening={openingExample} unavailableReason={busy ? "A project operation is running. Open another example when it finishes." : undefined} /></ExampleDialog>}
     {publishOpen && onPublish && project && <div className="publish-backdrop"><form className="publish-dialog" aria-label="Publish model" onSubmit={event => { event.preventDefault(); const fields = new FormData(event.currentTarget); if (saveState !== 'Saved' || !model || model.source !== source || displayRevision !== sourceRevision) { setPublishState('Save and rebuild the current source before publishing.'); return; } const png = capturePreview.current?.(); if (!png?.startsWith('data:image/png;base64,')) { setPublishState('A preview could not be captured.'); return; } setPublishState('Publishing…'); void onPublish({ expectedRevisionId: project.revisionId, title: String(fields.get('title')).trim(), description: String(fields.get('description')).trim(), category: String(fields.get('category')), tags: String(fields.get('tags')).split(',').map(x => x.trim()).filter(Boolean), previewPngBase64: png.slice('data:image/png;base64,'.length) }).then(() => { setPublishOpen(false); setPublishState(''); }).catch(error => setPublishState(error instanceof Error ? error.message : 'Publish failed')); }}><h2>Publish model</h2><p>Publish the saved revision and this viewport view. Later edits stay private until you publish again.</p><label>Title<input name="title" defaultValue={project.name} maxLength={160} required /></label><label>Description<textarea name="description" maxLength={2000} /></label><label>Category<select name="category"><option>Mechanical</option><option>Assemblies</option><option>Sheet Metal</option><option>Surface</option><option>Furniture</option><option>Architecture</option><option>Game Assets</option></select></label><label>Tags, separated by commas<input name="tags" /></label>{publishState && <p role="status">{publishState}</p>}<div><button type="button" onClick={() => setPublishOpen(false)}>Cancel</button><button type="submit">Publish</button></div></form></div>}
