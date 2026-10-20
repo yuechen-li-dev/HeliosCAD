@@ -1,3 +1,4 @@
+import { MeasurementTool, bindMeasurementPicking, measurementLines } from '@aetheris/three-telos';
 import {
   lazy,
   Suspense,
@@ -31,6 +32,9 @@ const LegacyViewport = lazy(() =>
 );
 
 interface Props {
+  measurementDisabledReason?: string;
+  measurementTool?: MeasurementTool;
+  measurementTick?: number;
   showConcepts?: boolean;
   busyMessage?: string | null;
   errorMessage?: string | null;
@@ -69,6 +73,26 @@ export function probeWebGpu(): Promise<string | null> {
 /** WebGPU (Telos) when the device has an adapter; otherwise, or when Telos fails to start, the WebGL
  * renderer. Both share the camera convention in viewCommands.ts, so the model looks the same. */
 export function Viewport(props: Props) {
+  const panel = useRef<HTMLDivElement>(null), tool = useRef<MeasurementTool | undefined>(undefined);
+  const latestModel = useRef(props.model); latestModel.current = props.model;
+  const [measurementTick, setMeasurementTick] = useState(0);
+  useEffect(() => {
+    if (!panel.current) return;
+    tool.current = new MeasurementTool(panel.current, request => {
+      if (!latestModel.current) throw new Error('Build a model before measuring.');
+      return latestModel.current.measure(request);
+    }, () => setMeasurementTick(value => value + 1));
+    setMeasurementTick(value => value + 1);
+    return () => { tool.current?.dispose(); tool.current = undefined; };
+  }, []);
+  useEffect(() => { tool.current?.setContext(`${props.model?.id}:${props.model?.revision}`,
+    props.measurementDisabledReason || (props.pose ? 'Return to the built pose before measuring.' : !props.model ? 'Build a model before measuring.' : props.model.measurementAvailable === false ? 'This scene or mesh-only build has no retained BRep measurement geometry.' : '')); },
+    [props.model, props.model?.revision, props.pose, props.measurementDisabledReason]);
+  return <div tabIndex={0} style={{position:'relative',width:'100%',height:'100%'}} aria-label="Model measurement workspace">
+    <ViewportRenderer {...props} measurementTool={tool.current} measurementTick={measurementTick} /><div ref={panel} />
+  </div>;
+}
+function ViewportRenderer(props: Props) {
   const [generation, setGeneration] = useState(0);
   const [fallback, setFallback] = useState<string | null | undefined>(undefined);
   useEffect(() => { let live = true; void probeWebGpu().then(reason => { if (live) setFallback(current => current ?? reason); }); return () => { live = false; }; }, []);
@@ -168,7 +192,7 @@ function TelosViewport(props: Props & { onRetry(): void; onUnavailable(reason: s
     const displayScene = { ...scene, meshes, lines, fields: scene.fields.map(f=>({...f, selected:selectedIds.has(f.identity.occurrenceId), visible:value.displayMode !== "wireframe"})) };
     const inspected = inspectSurfaces(inspection.current.mode === "normal" && !inspection.current.face ? displayScene : scene,
       inspection.current.mode, inspection.current.face);
-    current.setScene({ ...inspected, lines: [...inspected.lines, ...concepts] });
+    current.setScene({ ...inspected, lines: [...inspected.lines, ...concepts, ...measurementLines(value.measurementTool?.result ?? null)] });
     canvas.current?.setAttribute("data-surface-inspection", JSON.stringify({ mode: inspection.current.mode,
       isolatedFace: inspection.current.face ?? null,
       usesFieldProxy: scene.fields.some(field => field.proxy) && (!!inspection.current.face || inspection.current.mode === "patches"),
@@ -220,6 +244,13 @@ function TelosViewport(props: Props & { onRetry(): void; onUnavailable(reason: s
       const rect = element.getBoundingClientRect();
       return [event.clientX - rect.left, event.clientY - rect.top];
     };
+    const unbindMeasurement = bindMeasurementPicking(element, () => latest.current.measurementTool, (x,y) => {
+      const current = host.current; if (!current) return null;
+      const ray = current.camera.worldRay([x,y]), hit = current.picker.pick([x,y], 'face');
+      if (!hit) return null;
+      const face = hit.faceId == null ? null : Number(String(hit.faceId).split(':').pop());
+      return { occurrenceId: hit.occurrenceId, faceId: Number.isInteger(face) ? face : null, rayOrigin: ray.origin.toArray(), rayDirection: ray.direction.toArray() };
+    });
     const click = (event: MouseEvent) => {
       const current = host.current;
       if (!current) return;
@@ -289,6 +320,7 @@ function TelosViewport(props: Props & { onRetry(): void; onUnavailable(reason: s
         if (!disposed) latest.current.onUnavailable(`WebGPU could not start (${error instanceof Error ? error.message : String(error)}).`);
       });
     return () => {
+      unbindMeasurement();
       disposed = true;
       initialization.abort();
       element.removeEventListener("click", click);
@@ -301,7 +333,7 @@ function TelosViewport(props: Props & { onRetry(): void; onUnavailable(reason: s
   }, []);
   useEffect(() => {
     apply();
-  }, [props.showConcepts, props.model, props.model?.revision, props.pose, props.selectedEntityId, props.selectedTopologyId,
+  }, [props.measurementTick, props.measurementTool, props.showConcepts, props.model, props.model?.revision, props.pose, props.selectedEntityId, props.selectedTopologyId,
     props.theme, props.displayMode, props.viewMode, props.viewCommand, props.aaMode, props.aaDebug,
     inspectionMode, isolatedFaceKey]);
   useEffect(() => { setIsolatedFaceKey(""); }, [props.model?.id, props.model?.revision]);

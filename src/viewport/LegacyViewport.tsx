@@ -1,3 +1,4 @@
+import { bindMeasurementPicking, measurementGroup, type MeasurementTool } from '@aetheris/three-telos';
 import { useEffect, useRef, type MutableRefObject } from 'react';
 import type { MotionPose } from '@aetheris/cad';
 import * as THREE from 'three';
@@ -11,6 +12,8 @@ import { referenceGrid } from './referenceGrid';
 import { posedMesh } from './pose';
 
 interface Props {
+  measurementTool?: MeasurementTool;
+  measurementTick?: number;
   showConcepts?: boolean;
   busyMessage?: string | null;
   errorMessage?: string | null;
@@ -31,16 +34,33 @@ type MeshMeta = { definitionId: string; occurrenceId: string; edgeId?: string; h
 
 export function LegacyViewport(props: Props) {
   const host = useRef<HTMLDivElement>(null);
+  const latest = useRef(props); latest.current = props;
   const state = useRef<ReturnType<typeof createScene> | null>(null);
 
   useEffect(() => {
     if (!host.current) return;
     const sceneState = createScene(host.current, props.onSelect);
     state.current = sceneState;
+    const element = sceneState.renderer.domElement;
+    const unbind = bindMeasurementPicking(element, () => latest.current.measurementTool, (x,y) => {
+      const raycaster = new THREE.Raycaster();
+      raycaster.setFromCamera(new THREE.Vector2(x / element.clientWidth * 2 - 1, 1 - y / element.clientHeight * 2), sceneState.camera);
+      const hit = raycaster.intersectObjects(sceneState.group.children, false).find(h => h.object instanceof THREE.Mesh && !(h.object.userData as MeshMeta).highlight);
+      if (!hit) return null;
+      const meta = hit.object.userData as MeshMeta;
+      const resolved = sceneState.model?.describeSelection(meta.definitionId, hit.faceIndex ?? 0, meta.occurrenceId);
+      const face = Number(resolved?.faceId?.split(':').pop());
+      return { occurrenceId: meta.occurrenceId, faceId: Number.isInteger(face) ? face : null, rayOrigin: raycaster.ray.origin.toArray(), rayDirection: raycaster.ray.direction.toArray() };
+    });
     if (props.captureRef) props.captureRef.current = sceneState.capture;
-    return () => { if (props.captureRef) props.captureRef.current = null; sceneState.dispose(); state.current = null; };
+    return () => { unbind(); if (props.captureRef) props.captureRef.current = null; sceneState.dispose(); state.current = null; };
   }, []);
 
+  useEffect(() => {
+    const current = state.current; if (!current) return;
+    const group = measurementGroup(props.measurementTool?.result ?? null); current.scene.add(group); current.invalidate();
+    return () => { disposeConceptWireframe(group); current.invalidate(); };
+  }, [props.measurementTick, props.measurementTool]);
   useEffect(() => { if (state.current) loadModel(state.current, props.model); }, [props.model, props.model?.revision]);
   useEffect(() => {
     const current = state.current;
