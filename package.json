@@ -38,6 +38,7 @@
     "@types/react": "latest",
     "@types/react-dom": "latest",
     "@types/three": "0.183.1",
+    "fake-indexeddb": "^6.2.6",
     "jsdom": "latest",
     "vitest": "latest"
   }

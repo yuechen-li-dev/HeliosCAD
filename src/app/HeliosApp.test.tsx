@@ -1,3 +1,4 @@
+import 'fake-indexeddb/auto';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fakeModel, ok } from '../test/fakes';
@@ -11,6 +12,38 @@ import { HeliosApp } from './HeliosApp';
 const model = fakeModel({ sourceName: 'editable-bracket.firmament' });
 
 describe('Helios IDE shell', () => {
+  it('separates version history from chat and restores source through the normal build', async () => {
+    render(<HeliosApp />);
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Build' })).toBeEnabled());
+    const original = (screen.getByLabelText('Firmament source') as HTMLTextAreaElement).value;
+    fireEvent.click(screen.getByRole('tab', { name: 'AI Author' }));
+    fireEvent.change(screen.getByLabelText('Engineering requirements'), { target: { value: 'Keep the mounting holes' } });
+    fireEvent.change(screen.getByLabelText('Engineering intent'), { target: { value: 'My unsent request' } });
+    expect(screen.queryByRole('button', { name: 'Save checkpoint' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('tab', { name: 'Version Control' }));
+    expect(screen.getByRole('region', { name: 'Version Control' })).toBeVisible();
+    fireEvent.click(screen.getByRole('button', { name: 'Save checkpoint' }));
+    await screen.findByRole('button', { name: 'Restore Manual checkpoint' });
+    fireEvent.change(screen.getByLabelText('Firmament source'), { target: { value: 'Model Changed {}' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Restore Manual checkpoint' }));
+    await waitFor(() => expect(runtimeMock.setSource).toHaveBeenCalledWith(original, 'editable-bracket.firmament', expect.any(Number), { 'editable-bracket.firmament': original }));
+    await screen.findByRole('button', { name: 'Restore Restored Manual checkpoint' });
+    expect(screen.getByLabelText('Firmament source')).toHaveValue(original);
+    fireEvent.click(screen.getByRole('tab', { name: 'AI Author' }));
+    expect(screen.getByLabelText('Engineering intent')).toHaveValue('My unsent request');
+    expect(screen.getByLabelText('Engineering requirements')).toHaveValue('Keep the mounting holes');
+    expect(screen.queryByRole('region', { name: 'Version Control' })).not.toBeInTheDocument();
+  });
+  it('refuses a cloud save that would omit module files', async () => {
+    const onSave = vi.fn();
+    render(<HeliosApp onSave={onSave} initialWorkspace={{ title: 'Modules', root: 'root.firmasm', documents: {
+      'root.firmasm': 'Assembly Shared {}', 'part.firmament': 'Model Part {}',
+    } }} />);
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Build' })).toBeEnabled());
+    fireEvent.click(screen.getByRole('button', { name: 'Save source' }));
+    expect(onSave).not.toHaveBeenCalled();
+    expect(screen.getByText(/Cloud save refused:/)).toBeVisible();
+  });
   it('preserves the exporter diagnostic code and returns no failed download', async () => {
     runtimeMock.exportArtifacts.mockRejectedValue(Object.assign(new Error('Drawing family is unsupported'), { code: 'drawing-definition-incomplete' }));
     render(<HeliosApp />);

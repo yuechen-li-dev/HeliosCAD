@@ -10,7 +10,7 @@ export class ApiError extends Error {
   }
 }
 
-async function request<T>(path: string, init: RequestInit = {}, retryCsrf = true): Promise<T> {
+export async function request<T>(path: string, init: RequestInit = {}, retryCsrf = true): Promise<T> {
   const method = init.method?.toUpperCase() ?? 'GET';
   const headers = new Headers(init.headers);
   if (method !== 'GET' && method !== 'HEAD') {
@@ -20,9 +20,9 @@ async function request<T>(path: string, init: RequestInit = {}, retryCsrf = true
   }
   const response = await fetch(path, { ...init, headers, credentials: 'same-origin' });
   if (!response.ok) {
-    const body = await response.json().catch(() => ({})) as { error?: string; details?: string[] };
+    const body = await response.json().catch(() => ({})) as { error?: string; message?: string; details?: string[] };
     if (response.status === 400 && body.error === 'invalid_csrf_token' && retryCsrf) { await refreshCsrf(); return request<T>(path, init, false); }
-    throw new ApiError(response.status, body.error ?? `http_${response.status}`, body.details?.join(', '));
+    throw new ApiError(response.status, body.error ?? `http_${response.status}`, body.details?.join(', ') ?? body.message);
   }
   return response.status === 204 ? undefined as T : response.json() as Promise<T>;
 }

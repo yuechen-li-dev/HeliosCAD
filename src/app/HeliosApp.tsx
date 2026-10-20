@@ -18,7 +18,7 @@ import { ModelTree } from '../model-tree/ModelTree';
 import { ExampleGallery } from '../showcase/ExampleGallery';
 import { ExampleDialog } from '../showcase/ExampleDialog';
 import { loadShowcase, type WorkspaceProject } from '../showcase/catalog';
-import { AuthorPanel } from '../author/AuthorPanel';
+import { WorkspacePanels } from './WorkspacePanels';
 import { ResizeHandle } from './ResizeHandle';
 import { WorkspaceStatus } from './WorkspaceStatus';
 import { useTheme } from '../themes/useTheme';
@@ -38,7 +38,7 @@ import { poseCoverage } from '../viewport/pose';
 import type { ExportFormat } from '@aetheris/cad';
 import { ExportPicker } from './ExportPicker';
 
-type UtilityTab = { kind: 'files' } | { kind: 'inspector' } | { kind: 'examples' } | { kind: 'llm' };
+type UtilityTab = { kind: 'files' } | { kind: 'inspector' } | { kind: 'examples' } | { kind: 'llm' } | { kind: 'version-control' };
 
 export function HeliosApp({ project, initialWorkspace, onShowcase, onSave, onPublish, onBack, onSignOut }: { project?: Project; initialWorkspace?: WorkspaceProject; onShowcase?: () => void; onSave?: (source: string) => Promise<void>; onPublish?: (payload: { expectedRevisionId: string; title: string; description: string; category: string; tags: string[]; previewPngBase64: string }) => Promise<void>; onBack?: () => void; onSignOut?: () => void } = {}) {
   const [runtime] = useState(() => new WebSdkCadRuntime());
@@ -192,6 +192,11 @@ export function HeliosApp({ project, initialWorkspace, onShowcase, onSave, onPub
 
   const save = async () => {
     if (!onSave) return;
+    if (Object.keys(projectDocuments.current).length > 1 || projectRoot.current && projectRoot.current !== sourceName) {
+      setSaveState('Cloud save requires a single root document. Use local project checkpoints for this workspace.');
+      pushOutput('Cloud save refused: the current server save contract cannot persist all module files. Local checkpoints preserve the project.');
+      return;
+    }
     const revision = sourceRevisionRef.current;
     setSaveState('Saving…');
     try {
@@ -736,14 +741,37 @@ export function HeliosApp({ project, initialWorkspace, onShowcase, onSave, onPub
         </div>
       </div>
       <aside className="utility-dock" aria-label="Utility panel">
-        <div className="dock-tabs" role="tablist" aria-label="Utilities">{([['files', 'Files'], ['inspector', 'Inspector'], ['examples', 'Examples'], ['llm', 'AI Author']] as const).map(([id, label]) => <button key={id} role="tab" aria-selected={utilityTab.kind === id} className={utilityTab.kind === id ? 'active' : ''} onClick={() => setUtilityTab({ kind: id })}>{label}</button>)}</div>
+        <div className="dock-tabs" role="tablist" aria-label="Utilities">{([['files', 'Files'], ['inspector', 'Inspector'], ['examples', 'Examples'], ['llm', 'AI Author'], ['version-control', 'Version Control']] as const).map(([id, label]) => <button key={id} role="tab" aria-selected={utilityTab.kind === id} className={utilityTab.kind === id ? 'active' : ''} onClick={() => setUtilityTab({ kind: id })}>{label}</button>)}</div>
         <div className="utility-content">
           {matchKind(utilityTab, {
             files: () => <><ProjectExplorer projectName={workspaceTitle} fileName={sourceName} dirty={dirtyFiles.has(sourceName)} dirtyFiles={dirtyFiles} documents={projectFileNames.length ? projectFileNames : [sourceName]} cloud={!!project} onSelectFile={projectFileNames.length ? switchFile : undefined} onOpen={() => fileInput.current?.click()} onNew={() => loadSample('new')} onReveal={() => sourcePanel.current?.focusAt()} /><ModelTree tree={model?.tree ?? null} selectedId={selectedEntityId} onSelect={id => select(id)} /></>,
             inspector: () => <><ModelTree tree={model?.tree ?? null} selectedId={selectedEntityId} onSelect={id => select(id)} /><Inspector model={model} schema={semanticSchema} projection={fieldProjection} projectionCurrent={source === model?.source} entityId={selectedEntityId} faceId={selectedFaceId} selection={selectedSelection} diagnostics={diagnostics} onApply={applyProperty} onRewriteField={rewriteField} onGoToSource={navigateSource} onReferenceFace={referenceFace} onReferenceHoleWall={referenceHoleWall} /></>,
             examples: () => <div className="dock-gallery"><ExampleGallery onOpen={id => void openExample(id)} opening={openingExample} unavailableReason={busy ? "A project operation is running. Open another example when it finishes." : undefined} /></div>,
-            llm: () => <AuthorPanel />,
+            llm: () => null,
+            'version-control': () => null,
           })}
+          <WorkspacePanels key={project?.id ?? 'local-workspace'} active={utilityTab.kind} workspace={{
+              id: project?.id ?? 'local-workspace',
+              busy: !!busy || buildStarted !== null,
+              snapshot: () => ({ revision: sourceRevisionRef.current, project: {
+                root: projectRoot.current ?? sourceName,
+                documents: { ...projectDocuments.current, [sourceName]: source },
+              } }),
+              apply: async (next, expectedRevision, label) => {
+                if (sourceRevisionRef.current !== expectedRevision) throw new Error('The working source changed. Reconcile the candidate against the current revision.');
+                if (busy || buildStarted !== null) throw new Error('Wait for the current operation before applying project changes.');
+                if (!Object.hasOwn(next.documents, next.root)) throw new Error('The checkpoint is missing its root document.');
+                const active = Object.hasOwn(next.documents, sourceName) ? sourceName : next.root;
+                projectRoot.current = next.root; projectDocuments.current = { ...next.documents };
+                setProjectFileNames(Object.keys(next.documents));
+                const before = sourceRevisionRef.current;
+                if (active !== sourceName || !sourcePanel.current?.replace({ source: sourceName, start: 0, length: source.length, line: 1, column: 1 }, source, next.documents[active])
+                    || sourceRevisionRef.current === before) editSource(next.documents[active], active);
+                setDirtyFiles(new Set(Object.keys(next.documents).filter(name => savedSources.current[name] !== next.documents[name])));
+                pushOutput(label);
+                return submitBuild(next.documents[active], active, sourceRevisionRef.current);
+              },
+            }} />
         </div>
       </aside>
       <div className="bottom-region"><ResizeHandle axis="vertical" label="Resize bottom panel" value={shellLayout.bottomPixels} onResize={shellLayout.resizeBottom} /><BottomDock collapsed={!shellLayout.bottomOpen} onToggle={() => shellLayout.setBottomOpen(value => !value)} diagnostics={shownDiagnostics} busy={busy} sourceName={sourceName} sourceRevision={sourceRevision} displayRevision={displayRevision} lastTiming={lastTiming} events={phaseTiming ? [...outputEvents, phaseTiming] : outputEvents} onDiagnosticClick={diagnostic => { if (diagnostic.source) navigateSource(diagnostic.source); }} /></div>
