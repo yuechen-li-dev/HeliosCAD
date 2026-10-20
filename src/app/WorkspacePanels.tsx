@@ -3,21 +3,32 @@ import { AuthorPanel } from '../author/AuthorPanel';
 import { Checkpoints, type Checkpoint } from '../version-control/checkpoints';
 import { VersionControlPanel } from '../version-control/VersionControlPanel';
 import type { EditableWorkspace, ProjectSnapshot } from './projectSnapshot';
+import { ReferenceLibrary } from '../author/ReferenceLibrary';
 
 const history = new Checkpoints();
 const errorText = (error: unknown) => error instanceof Error ? error.message : String(error);
 
 /** Shared checkpoint ownership; both tabs stay mounted when inspecting other utilities. */
 export function WorkspacePanels({ workspace, active }: { workspace: EditableWorkspace; active: string }) {
-  const current = useRef(workspace); current.current = workspace;
+  const current = useRef(workspace);
+  const [referenceIds, setReferenceIds] = useState<string[]>([]);
   const [requirements, setRequirements] = useState('');
   const [checkpoints, setCheckpoints] = useState<Checkpoint[]>([]);
   const [agentBusy, setAgentBusy] = useState(false);
+  const [referenceBusy, setReferenceBusy] = useState(false);
   const [saving, setSaving] = useState(false);
   const [restoring, setRestoring] = useState(false);
   const [error, setError] = useState('');
   const [restoredRevision, setRestoredRevision] = useState(0);
-  const busy = !!workspace.busy || agentBusy || saving || restoring;
+  const busy = !!workspace.busy || agentBusy || referenceBusy || saving || restoring;
+  current.current = { ...workspace, snapshot: () => {
+    const snapshot = workspace.snapshot(); const project = { ...snapshot.project }; delete project.referenceIds;
+    if (referenceIds.length) project.referenceIds = [...referenceIds];
+    return { ...snapshot, project };
+  }, apply: async (project, revision, label) => {
+    const built = await workspace.apply(project, revision, label);
+    setReferenceIds(project.referenceIds ?? []); return built;
+  } };
 
   async function refresh() { setCheckpoints(await history.list(current.current.id)); }
   useEffect(() => { void refresh().catch(error => setError('Checkpoint storage unavailable: ' + errorText(error))); }, [workspace.id]);
@@ -52,10 +63,13 @@ export function WorkspacePanels({ workspace, active }: { workspace: EditableWork
     } finally { setRestoring(false); }
   }
   return <>
-    <div hidden={active !== 'llm'}><AuthorPanel workspace={{ ...workspace, busy: !!workspace.busy || saving || restoring }}
+    <div hidden={active !== 'llm'}><AuthorPanel workspace={{ ...current.current, busy: !!workspace.busy || referenceBusy || saving || restoring }}
       requirements={requirements} onRequirementsChange={setRequirements} onCheckpoint={checkpoint}
       restoredRevision={restoredRevision} onBusyChange={setAgentBusy} /></div>
     <div hidden={active !== 'version-control'}><VersionControlPanel checkpoints={checkpoints} busy={busy}
       restoring={restoring} error={error} onSave={() => void save()} onRestore={saved => void restore(saved)} /></div>
+    <div className="reference-library-container" hidden={active !== 'files'}><ReferenceLibrary selected={referenceIds} disabled={busy} onBusyChange={setReferenceBusy} onChange={ids => {
+      setReferenceIds(ids); setRestoredRevision(revision => revision + 1);
+    }} /></div>
   </>;
 }

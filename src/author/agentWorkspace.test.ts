@@ -2,6 +2,8 @@ import { describe, expect, it, vi } from 'vitest';
 import type { Aetheris } from '@aetheris/cad';
 import { AgentWorkspace, runAgent, type AgentGateway } from './agentWorkspace';
 import type { ProjectSnapshot } from '../app/projectSnapshot';
+import { webcrypto } from 'node:crypto';
+import { projectHashes } from './engineeringEvidence';
 
 const project = (): ProjectSnapshot => ({ root: 'part.firmament', documents: { 'part.firmament': 'Model Part { units: mm Box Body { size: [10mm,20mm,30mm] } }', 'module.firmament': 'Struct Module {}' } });
 function compiler(accepted = true) {
@@ -9,6 +11,24 @@ function compiler(accepted = true) {
   return { compile: vi.fn().mockResolvedValue({ model: accepted ? model : null, diagnostics: [] }), terminate: vi.fn(), language: { outline: vi.fn(), schema: vi.fn() }, model };
 }
 describe('agent compiler workspace', () => {
+  it('routes registered engineering tools through the gateway and exports only a fresh successful candidate', async () => {
+    vi.stubGlobal('crypto', webcrypto);
+    const cad = compiler();
+    const artifacts = [{ fileName: 'Part.step', mediaType: 'model/step', bytes: new Uint8Array([1]) }];
+    Object.assign(cad.model, { exportArtifacts: vi.fn().mockResolvedValue(artifacts) });
+    const workspace = new AgentWorkspace(project(), cad as unknown as Aetheris);
+    const invoke = vi.fn().mockResolvedValue({ root: project().root, documentHashes: await projectHashes(project()), status: 'draft-for-human-review' });
+    const respond = vi.fn().mockResolvedValueOnce({ output: [], text: '', calls: [{ callId: 'c1', name: 'engineering__prepare_review', arguments: '{}' }], inputTokens: 0, outputTokens: 0 })
+      .mockResolvedValueOnce({ output: [], text: 'Prepared', calls: [], inputTokens: 0, outputTokens: 0 });
+    await runAgent({ respond, invoke }, workspace, 'gpt-6.1-sol', '', [], new AbortController().signal, vi.fn());
+    expect(invoke).toHaveBeenCalledOnce();
+    await expect(workspace.execute('export_review', { formats: '["step"]' })).rejects.toThrow('Build');
+    await workspace.execute('build', {});
+    expect(await workspace.execute('export_review', { formats: '["step"]' })).toMatchObject({ approved: false });
+    expect(workspace.reviewPackage?.bytes.length).toBeGreaterThan(0);
+    await workspace.execute('edit_file', { path: project().root, before: '10mm', after: '20mm' });
+    expect(workspace.reviewPackage).toBeNull();
+  });
   it('edits only a candidate and requires a fresh successful build for measurements', async () => {
     const original = project(), cad = compiler(), workspace = new AgentWorkspace(original, cad as unknown as Aetheris);
     await workspace.execute('edit_file', { path: original.root, before: '10mm', after: '40mm' });

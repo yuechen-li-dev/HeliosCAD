@@ -1,5 +1,5 @@
-export interface ProjectSnapshot { root: string; documents: Record<string, string> }
-export const cloneProject = (project: ProjectSnapshot): ProjectSnapshot => ({ root: project.root, documents: Object.assign(Object.create(null), project.documents) });
+export interface ProjectSnapshot { root: string; documents: Record<string, string>; referenceIds?: string[] }
+export const cloneProject = (project: ProjectSnapshot): ProjectSnapshot => ({ ...project, root: project.root, documents: Object.assign(Object.create(null), project.documents), ...(project.referenceIds ? { referenceIds: [...project.referenceIds] } : {}) });
 
 export interface EditableWorkspace {
   id: string;

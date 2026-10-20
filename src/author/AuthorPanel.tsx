@@ -2,14 +2,15 @@ import { useEffect, useRef, useState } from 'react';
 import { request } from '../cloud/api';
 import { AgentWorkspace, runAgent, type AgentGateway, type AgentTurn } from './agentWorkspace';
 import { cloneProject, type EditableWorkspace, type ProjectSnapshot } from '../app/projectSnapshot';
+import { projectHashes } from './engineeringEvidence';
 const gateway: AgentGateway = { async respond(model, snapshot, requirements, input, signal) {
-  const documentHashes = Object.fromEntries(await Promise.all(Object.entries(snapshot.documents).map(async ([path, source]) => {
-    const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(source));
-    return [path, Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, '0')).join('')];
-  })));
+  const documentHashes = await projectHashes(snapshot);
   const result = await request<{ turn: AgentTurn }>('/api/helios/author/respond', { method: 'POST', signal,
-    body: JSON.stringify({ model, root: snapshot.root, documents: Object.keys(snapshot.documents), documentHashes, requirements, input }) });
+    body: JSON.stringify({ model, root: snapshot.root, documents: Object.keys(snapshot.documents), documentHashes, requirements, input, referenceIds: snapshot.referenceIds ?? [] }) });
   return result.turn;
+}, async invoke(name, args, snapshot, requirements, signal) {
+  return request('/api/helios/author/tools/invoke', { method: 'POST', signal, body: JSON.stringify({ name, arguments: args,
+    root: snapshot.root, documentHashes: await projectHashes(snapshot), requirements, referenceIds: snapshot.referenceIds ?? [] }) });
 } };
 const errorText = (error: unknown) => error instanceof Error ? error.message : String(error);
 interface AuthorProvider { id: string; label: string; configured: boolean; credentialVariable: string; models: { id: string; label: string }[] }
@@ -33,6 +34,7 @@ export function AuthorPanel({ workspace, requirements, onRequirementsChange, onC
   const [activity, updateActivity] = useState('');
   function setActivity(value: string) { updateActivity(value); onBusyChange(!!value); }
   const [answer, setAnswer] = useState('');
+  const [reviewPackage, setReviewPackage] = useState<AgentWorkspace['reviewPackage']>(null);
   const [error, setError] = useState('');
   const [candidate, setCandidate] = useState<{ project: ProjectSnapshot; base: ProjectSnapshot; revision: number; built: boolean } | null>(null);
   const [transcript, setTranscript] = useState<unknown[]>([]);
@@ -47,10 +49,10 @@ export function AuthorPanel({ workspace, requirements, onRequirementsChange, onC
     }).catch(() => { if (!abort.signal.aborted) setConnection('Connect to an updated Leviathan server for AI providers. Sign in for agent requests.'); });
     return () => { abort.abort(); cancellation.current?.abort(); };
   }, []);
-  useEffect(() => { setTranscript([]); setCandidate(null); setAnswer(''); setError(''); }, [workspace.id, restoredRevision]);
+  useEffect(() => { setTranscript([]); setCandidate(null); setAnswer(''); setError(''); setReviewPackage(null); }, [workspace.id, restoredRevision]);
   function changeModel(providerId: string, model: string) {
     setProviderId(providerId); setModel(model);
-    setTranscript([]); setCandidate(null); setAnswer(''); setError('');
+    setTranscript([]); setCandidate(null); setAnswer(''); setError(''); setReviewPackage(null);
   }
   async function apply(next: NonNullable<typeof candidate>) {
     if (!next.built) throw new Error('The candidate must build successfully before application.');
@@ -69,7 +71,7 @@ export function AuthorPanel({ workspace, requirements, onRequirementsChange, onC
     const abort = new AbortController(); cancellation.current = abort;
     const deadline = setTimeout(() => abort.abort(new Error('Agent time budget reached. Candidate changes were not applied.')), minutes * 60_000);
     let sandbox: AgentWorkspace | undefined;
-    setError(''); setAnswer(''); setCandidate(null); setActivity('Saving recovery checkpoint…');
+    setError(''); setAnswer(''); setCandidate(null); setReviewPackage(null); setActivity('Saving recovery checkpoint…');
     try {
       await onCheckpoint('Before AI task', base.project);
       sandbox = await AgentWorkspace.create(base.project, abort.signal);
@@ -78,6 +80,7 @@ export function AuthorPanel({ workspace, requirements, onRequirementsChange, onC
         setActivity(text);
       });
       abort.signal.throwIfAborted(); setTranscript(result.transcript); setAnswer(result.text + `\n\nReported token usage: ${result.tokens}.`); setPrompt('');
+      setReviewPackage(sandbox.reviewPackage ?? null);
       const changed = JSON.stringify(base.project) !== JSON.stringify(sandbox.project);
       if (changed) {
         if (!sandbox.built) { setActivity('Checking candidate build…'); await sandbox.execute('build', {}); }
@@ -106,6 +109,10 @@ export function AuthorPanel({ workspace, requirements, onRequirementsChange, onC
       <label>Task budget (minutes)<input aria-label="Agent time budget" type="number" min="1" max="60" value={minutes} disabled={!!activity} onChange={e => setMinutes(Math.max(1, Math.min(60, Number(e.target.value) || 5)))} /></label>
       {error && <p role="alert">{error}</p>}
       {answer && <div className="agent-answer">{answer}</div>}
+      {reviewPackage && <button onClick={() => {
+        const url = URL.createObjectURL(new Blob([reviewPackage.bytes.slice().buffer], { type: 'application/zip' }));
+        const anchor = document.createElement('a'); anchor.href = url; anchor.download = reviewPackage.fileName; anchor.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
+      }}>Download draft review package</button>}
       {candidate && <div><strong>{candidate.built ? 'Built candidate' : 'Rejected candidate'} · source changes</strong>
         {Object.keys(candidate.project.documents).filter(p => candidate!.project.documents[p] !== candidate!.base.documents[p]).map(path => <details key={path}><summary>{path}</summary><p>Before</p><pre>{candidate!.base.documents[path] ?? '(new file)'}</pre><p>After</p><pre>{candidate!.project.documents[path]}</pre></details>)}
         <button disabled={!candidate.built || !!activity || workspace.busy} onClick={() => void apply(candidate).catch(error => setError(errorText(error)))}>Apply candidate</button>

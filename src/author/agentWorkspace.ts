@@ -1,8 +1,12 @@
-import { Aetheris, type ModelSession, type MeasurementRequest } from '@aetheris/cad';
+import { Aetheris, type ModelSession, type MeasurementRequest, type ExportFormat } from '@aetheris/cad';
+import { reviewZip, type ReviewManifest } from './engineeringEvidence';
 
 import { cloneProject, type ProjectSnapshot } from '../app/projectSnapshot';
 export interface AgentTurn { output: unknown[]; text: string; calls: { callId: string; name: string; arguments: string }[]; inputTokens: number; outputTokens: number }
-export interface AgentGateway { respond(model: string, snapshot: ProjectSnapshot, requirements: string, input: unknown[], signal: AbortSignal): Promise<AgentTurn> }
+export interface AgentGateway {
+  respond(model: string, snapshot: ProjectSnapshot, requirements: string, input: unknown[], signal: AbortSignal): Promise<AgentTurn>;
+  invoke?(name: string, args: Record<string, unknown>, snapshot: ProjectSnapshot, requirements: string, signal: AbortSignal): Promise<unknown>;
+}
 
 /** Compiler sandbox. No tool has filesystem, shell, provider credential or live-model authority. */
 export class AgentWorkspace {
@@ -11,6 +15,8 @@ export class AgentWorkspace {
   private builtVersion = -1;
   private model: ModelSession | null = null;
   private disposed = false;
+  reviewManifest: ReviewManifest | null = null;
+  reviewPackage: { fileName: string; bytes: Uint8Array } | null = null;
   private readonly abort = () => this.dispose();
   constructor(project: ProjectSnapshot, private cad: Aetheris, private signal?: AbortSignal) {
     this.project = cloneProject(project);
@@ -50,6 +56,7 @@ export class AgentWorkspace {
       const next = before === '' ? after : current.replace(before, () => after);
       if (Object.values({ ...this.project.documents, [key]: next }).reduce((n, s) => n + s.length, 0) > 2_000_000) throw new Error('Candidate project exceeds the source budget.');
       this.project.documents[key] = next; ++this.version;
+      this.reviewPackage = null;
       return { path: key, status: 'candidate-edited', appliedToWorkingProject: false, buildRequired: true };
     }
     if (name === 'outline') {
@@ -75,6 +82,21 @@ export class AgentWorkspace {
       if (typeof args.request !== 'string') throw new Error('request must contain MeasurementRequest JSON.');
       return this.model!.measure(JSON.parse(args.request) as MeasurementRequest);
     }
+    if (name === 'export_review') {
+      if (!this.built || !this.reviewManifest) throw new Error('Build the current candidate and prepare its review manifest first.');
+      this.reviewPackage = null;
+      if (typeof args.formats !== 'string') throw new Error('formats must contain a JSON array of admitted export format names.');
+      const formats = JSON.parse(args.formats) as ExportFormat[];
+      if (!Array.isArray(formats) || formats.length === 0 || formats.length > 8 || new Set(formats).size !== formats.length) throw new Error('Select 1–8 distinct export formats.');
+      const artifacts = await this.model!.exportArtifacts(formats);
+      if (!artifacts.length) throw new Error('The compiler produced no review exports.');
+      const bytes = await reviewZip(this.project, { ...this.reviewManifest, compilerBuild: {
+        status: 'candidate-built-not-applied', minimumMm: this.model!.mesh.minimumMm, maximumMm: this.model!.mesh.maximumMm,
+      } }, artifacts);
+      if (this.disposed) throw new Error('The review export was cancelled.');
+      this.reviewPackage = { fileName: 'engineering-review.zip', bytes };
+      return { status: 'draft-review-package-ready-to-download', files: artifacts.map(a => a.fileName), approved: false };
+    }
     throw new Error(`Unknown engineering tool '${name}'.`);
   }
 }
@@ -92,7 +114,13 @@ export async function runAgent(gateway: AgentGateway, workspace: AgentWorkspace,
     for (const call of turn.calls) {
       signal.throwIfAborted(); activity(call.name);
       let output: unknown;
-      try { output = { ok: true, result: await workspace.execute(call.name, JSON.parse(call.arguments)) }; }
+      try {
+        const args = JSON.parse(call.arguments);
+        const result = call.name.startsWith('engineering__') && gateway.invoke
+          ? await gateway.invoke(call.name, args, workspace.project, requirements, signal) : await workspace.execute(call.name, args);
+        if (call.name === 'engineering__prepare_review') workspace.reviewManifest = result as ReviewManifest;
+        output = { ok: true, result };
+      }
       catch (error) { output = { ok: false, error: error instanceof Error ? error.message : String(error) }; }
       signal.throwIfAborted();
       transcript.push({ type: 'function_call_output', call_id: call.callId, output: JSON.stringify(output) });
