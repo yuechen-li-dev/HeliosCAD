@@ -94,7 +94,13 @@ export function buildAssemblyGraph(outline: LanguageOutline, assemblyId?: string
     ?? (anchorField.text.trim() === root.name ? { part: root.id, port: '' } : null) : null;
 
   const portsOf = (part: OutlineNode, local: readonly OutlineNode[]) => {
-    const ports = new Map<string, string[]>(local.filter(n => n.kind === 'Semantic' && n.name).map(n => [n.name!, []]));
+    const definitionEdge = outline.edges.find(e => e.from === part.id && e.via.startsWith('initializer') && !e.toDocument);
+    const definition = definitionEdge && nodes.get(definitionEdge.to);
+    const publications = (definition?.children ?? []).flatMap(id => {
+      const expose = nodes.get(id);
+      return expose?.kind === 'Expose' ? expose.children.map(child => nodes.get(child)).filter((n): n is OutlineNode => !!n) : [];
+    });
+    const ports = new Map<string, string[]>([...local, ...publications].filter(n => n.kind === 'Semantic' && n.name).map(n => [n.name!, []]));
     for (const joint of joints) for (const end of [joint.a, joint.b]) if (end?.part === part.id) {
       // A joint on `Hinge.Frame` lands on the Hinge port when the part shows one.
       const key = ports.has(end.port) ? end.port : [...ports.keys()].find(k => end.port.startsWith(`${k}.`)) ?? end.port;
@@ -145,15 +151,32 @@ export function portPath(graph: AssemblyGraph, end: AssemblyEnd) {
   return part.kind === 'ground' ? `${graph.root.name}.${end.port}` : `${graph.root.name}.${part.name}.${end.port}`;
 }
 
-/** A new joint between two ports, written after the assembly's last joint. */
-export function jointOperation(graph: AssemblyGraph, kind: string, a: AssemblyEnd, b: AssemblyEnd, outline: LanguageOutline): LanguageEditOperation | { reason: string } {
-  if (a.part === b.part) return { reason: 'A joint connects two different parts.' };
+/** A modern typed contract plus named Mate; one source transaction replaces the moving Placement. */
+export function jointOperations(graph: AssemblyGraph, kind: string, a: AssemblyEnd, b: AssemblyEnd, outline: LanguageOutline, replacing?: string): readonly LanguageEditOperation[] | { reason: string } {
+  if (a.part === b.part) return { reason: 'A mate connects two different components.' };
+  if (!portOf(graph, a) || !portOf(graph, b)) return { reason: 'Choose two published frames.' };
   const from = portPath(graph, a), to = portPath(graph, b);
-  if (!from || !to) return { reason: 'Those ports are not on parts of this assembly.' };
-  const names = new Set(outline.nodes.map(node => node.name));
-  const stem = `${graph.parts.find(p => p.id === a.part)!.name}${graph.parts.find(p => p.id === b.part)!.name}`;
-  let name = stem;
-  for (let i = 2; names.has(name); i++) name = `${stem}${i}`;
-  const last = [...graph.joints].reverse()[0];
-  return { kind: 'insertDeclaration', parent: graph.assembly.id, ...(last ? { after: last.id } : {}), source: `Interface<${kind}> ${name} { A: ${from}; B: ${to}; }` };
+  if (!from || !to) return { reason: 'Choose frames belonging to this assembly.' };
+  const moving = graph.parts.find(p => p.id === b.part);
+  if (moving?.anchored) return { reason: 'The moving component is anchored. Choose it as the fixed frame instead.' };
+  const edited = replacing ? graph.joints.find(j => j.id === replacing) : undefined;
+  if (replacing && !edited) return { reason: 'The mate changed. Select it again.' };
+  const operations: LanguageEditOperation[] = outline.nodes.filter(n => n.parentId === b.part && n.kind === 'Placement')
+    .map(n => ({ kind: 'removeDeclaration', node: n.id }));
+  if (edited) {
+    if (edited.kind !== kind) return { reason: 'Retain this mate type to preserve its authored contract. Create a new relationship to change type.' };
+    const node = outline.nodes.find(n => n.id === edited.id)!;
+    operations.push(...(['A', 'B'] as const).map(field => ({ kind: 'setField' as const, node: edited.id,
+      field: node.fields.find(f => f.name.toLowerCase() === field.toLowerCase())?.name ?? field, value: field === 'A' ? from : to })));
+    return operations;
+  }
+  const names = new Set(outline.nodes.map(n => n.name));
+  const unique = (stem: string) => { let value = stem; for (let i = 2; names.has(value); i++) value = `${stem}${i}`; names.add(value); return value; };
+  const existing = outline.nodes.find(n => n.parentId === null && n.kind === 'Interface' && n.variant === kind && !n.fields.length && !n.children.length);
+  const contract = existing?.name ?? unique(`${kind}Mate`);
+  const name = unique(`${graph.parts.find(p => p.id === a.part)!.name}${moving!.name}`);
+  if (!existing) operations.push({ kind: 'insertDeclaration', parent: null, first: true, source: `Interface<${kind}> ${contract} { }` });
+  const source = `Mate ${name}: ${contract} { A: ${from}; B: ${to}; }`;
+  operations.push({ kind: 'insertDeclaration', parent: graph.assembly.id, source });
+  return operations;
 }

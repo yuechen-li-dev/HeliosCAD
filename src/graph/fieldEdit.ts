@@ -48,7 +48,7 @@ export type VectorPart = { readonly kind: 'quantity'; readonly value: Quantity }
 
 export type FieldEditor =
   | { readonly kind: 'quantity'; readonly value: Quantity }
-  | { readonly kind: 'vector'; readonly parts: readonly VectorPart[] }
+  | { readonly kind: 'vector'; readonly parts: readonly VectorPart[]; readonly pointType?: 'Point2' | 'Point3' }
   | { readonly kind: 'text' };
 
 const identifier = /^[A-Za-z_][A-Za-z0-9_]*$/;
@@ -58,19 +58,24 @@ export function editorFor(field: OutlineField): FieldEditor {
     const value = parseQuantity(field.text);
     if (value) return { kind: 'quantity', value };
   }
-  if (field.shape === 'sequence') {
-    const parts = splitSequence(field.text)?.map((text): VectorPart | null => {
+  // Project only simple point constructors already recognized by the compiler's
+  // outline. Expressions remain source-owned; this is not an expression evaluator.
+  const point = field.shape === 'call' ? /^\s*(Point[23])\s*\(([^()]*)\)\s*$/.exec(field.text) : null;
+  if (field.shape === 'sequence' || point) {
+    const parts = splitSequence(point ? `[${point[2]}]` : field.text)?.map((text): VectorPart | null => {
       const value = parseQuantity(text);
       return value ? { kind: 'quantity', value } : identifier.test(text) ? { kind: 'name', name: text } : null;
     });
-    if (parts && parts.length >= 2 && parts.length <= 4 && parts.every((p): p is VectorPart => !!p) && parts.some(p => p.kind === 'quantity'))
-      return { kind: 'vector', parts };
+    if (parts && parts.length >= 2 && parts.length <= 4 && (!point || parts.length === Number(point[1].slice(-1)))
+      && parts.every((p): p is VectorPart => !!p) && parts.some(p => p.kind === 'quantity'))
+      return point ? { kind: 'vector', parts, pointType: point[1] as 'Point2' | 'Point3' } : { kind: 'vector', parts };
   }
   return { kind: 'text' };
 }
 
-export function vectorText(parts: readonly VectorPart[]) {
-  return `[${parts.map(p => p.kind === 'quantity' ? formatQuantity(p.value) : p.name).join(', ')}]`;
+export function vectorText(parts: readonly VectorPart[], constructor?: 'Point2' | 'Point3') {
+  const values = parts.map(p => p.kind === 'quantity' ? formatQuantity(p.value) : p.name).join(', ');
+  return constructor ? `${constructor}(${values})` : `[${values}]`;
 }
 
 /** A parameter declaration for a value: `Static Thickness: Length = 8mm`; null when its type cannot be told. */

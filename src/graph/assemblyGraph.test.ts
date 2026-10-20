@@ -5,7 +5,7 @@ import articulated from './fixtures/articulated.outline.json';
 import machine from './fixtures/executable-machine.outline.json';
 import atlas from './fixtures/atlas-industrial.outline.json';
 import chimera from './fixtures/chimera.outline.json';
-import { assembliesOf, buildAssemblyGraph, jointOperation, layoutAssembly, portOf } from './assemblyGraph';
+import { assembliesOf, buildAssemblyGraph, jointOperations, layoutAssembly, portOf } from './assemblyGraph';
 
 const outline = (json: unknown) => json as LanguageOutline;
 const summary = (json: unknown, assembly?: string) => {
@@ -28,8 +28,8 @@ describe('assembly graph', () => {
   it('puts joints on the assembly frame onto a ground card and reads frames exposed by subassemblies', () => {
     expect(assembliesOf(outline(articulated)).map(a => a.name)).toEqual(['Articulated', 'Arm']);
     expect(summary(articulated)).toEqual({
-      parts: ['Articulated [ground, anchored] Root', 'First = Arm [subassembly] Tool,Mount', 'Slider = Link<H:4mm> [part] Pivot.Frame',
-        'Follower = Link<H:4mm> [part] Pivot.Frame', 'Second = Arm [subassembly] '],
+      parts: ['Articulated [ground, anchored] Root', 'First = Arm [subassembly] Tool,Mount', 'Slider = Link<H:4mm> [part] Pivot',
+        'Follower = Link<H:4mm> [part] Pivot', 'Second = Arm [subassembly] '],
       joints: ['Slide Prismatic: Articulated.Root.Frame -> Slider.Pivot.Frame', 'Follow Fixed: First.Tool -> Follower.Pivot.Frame',
         'Shoulder Revolute: Articulated.Root.Frame -> First.Mount'],
     });
@@ -62,12 +62,24 @@ describe('assembly graph', () => {
     expect(x('Link1')).toBeLessThan(x('Link2'));
   });
 
-  it('writes a new joint between two ports with a unique name after the last joint', () => {
+  it('writes a typed contract and named mate between published ports', () => {
     const graph = buildAssemblyGraph(outline(twoLinkArm))!;
     const [base, link1] = graph.parts;
-    expect(jointOperation(graph, 'Fixed', { part: link1.id, port: 'Output' }, { part: base.id, port: 'Hinge' }, outline(twoLinkArm))).toEqual({
-      kind: 'insertDeclaration', parent: 'TwoLinkArm', after: 'TwoLinkArm/Elbow',
-      source: 'Interface<Fixed> Link1Base { A: TwoLinkArm.Link1.Output; B: TwoLinkArm.Base.Hinge; }' });
-    expect(jointOperation(graph, 'Fixed', { part: base.id, port: 'Hinge' }, { part: base.id, port: 'Hinge' }, outline(twoLinkArm))).toEqual({ reason: 'A joint connects two different parts.' });
+    expect(jointOperations(graph, 'Fixed', { part: base.id, port: 'Hinge' }, { part: link1.id, port: 'Input' }, outline(twoLinkArm))).toEqual([{ kind: 'insertDeclaration', parent: null, first: true, source: 'Interface<Fixed> FixedMate { }' },
+      { kind: 'insertDeclaration', parent: 'TwoLinkArm', source: 'Mate BaseLink1: FixedMate { A: TwoLinkArm.Base.Hinge; B: TwoLinkArm.Link1.Input; }' }]);
+    expect(jointOperations(graph, 'Fixed', { part: base.id, port: 'Hinge' }, { part: base.id, port: 'Hinge' }, outline(twoLinkArm))).toEqual({ reason: 'A mate connects two different components.' });
+  });
+
+  it('retargets an existing mate without replacing its contract or authored options', () => {
+    const source = outline(machine);
+    const graph = buildAssemblyGraph(source)!;
+    const joint = graph.joints[0];
+    expect(jointOperations(graph, joint.kind, joint.b!, joint.a!, source, joint.id)).toEqual([
+      { kind: 'setField', node: joint.id, field: 'A', value: 'ExecutableMachine.Frame.Left' },
+      { kind: 'setField', node: joint.id, field: 'B', value: 'ExecutableMachine.CellA.Port' },
+    ]);
+    expect(jointOperations(graph, 'Fixed', joint.b!, joint.a!, source, joint.id)).toEqual({
+      reason: 'Retain this mate type to preserve its authored contract. Create a new relationship to change type.',
+    });
   });
 });

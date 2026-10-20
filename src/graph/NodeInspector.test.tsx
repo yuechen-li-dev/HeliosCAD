@@ -22,6 +22,24 @@ const renderInspector = (overrides: Partial<Parameters<typeof NodeInspector>[0]>
 };
 
 describe('node inspector', () => {
+  it('edits point coordinates without requiring constructor syntax or replacing references', () => {
+    const center = { ...field('Center', 'Point2(0mm, Offset)', 'call'), span: { start: 20, length: 19 } };
+    const hole = { ...plate, kind: 'Hole', fields: [center] };
+    const props = renderInspector({ node: hole });
+    const x = screen.getByLabelText('X');
+    fireEvent.change(x, { target: { value: '20' } }); fireEvent.keyDown(x, { key: 'Enter' }); fireEvent.blur(x);
+    expect(props.onCommit).toHaveBeenCalledExactlyOnceWith(hole, center, 'Point2(20mm, Offset)');
+    expect(screen.getByRole('button', { name: /Y.*Offset/ })).toBeVisible();
+    expect(screen.queryByRole('button', { name: 'Make Center a parameter' })).toBeNull();
+  });
+
+  it('discloses a document build error when no precise node diagnostic exists', () => {
+    renderInspector({ edit: { nodeId: 'Plate', field: null, label: 'Added Hole', warnings: [], status: 'failed' },
+      buildProblems: [{ code: 'overlap', severity: 'error', message: 'Hole overlaps CenterMount' }] });
+    expect(screen.getByText('Build error · not located on this declaration')).toBeVisible();
+    expect(screen.getByText('Hole overlaps CenterMount')).toBeVisible();
+  });
+
   it('commits one vector component as the whole list, once', () => {
     const props = renderInspector();
     const x = screen.getByLabelText('X');

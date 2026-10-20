@@ -23,6 +23,13 @@ export function BottomDock({ diagnostics, busy, sourceName, sourceRevision, disp
   const [terminalOutput, setTerminalOutput] = useState('');
   const outputRef = useRef<HTMLPreElement>(null);
   const terminalAvailable = Boolean(import.meta.hot);
+  // Keep every compiler message and its navigation target, but show the reason a
+  // build failed before planner information. Stable sorting preserves source order.
+  const severityOrder = { error: 0, warning: 1, info: 2 };
+  const orderedDiagnostics = [...diagnostics].sort((a, b) => severityOrder[a.severity] - severityOrder[b.severity]);
+  const problemCount = diagnostics.filter(item => item.severity !== 'info').length;
+  const status = busy ?? (diagnostics.some(item => item.severity === 'error')
+    ? displayRevision === sourceRevision ? 'Needs attention' : 'Build failed' : 'Ready');
   const tabs: readonly (readonly [DockTab, string])[] = terminalAvailable
     ? [['errors', 'Problems'], ['output', 'Output'], ['terminal', 'Terminal · local']]
     : [['errors', 'Problems'], ['output', 'Output']];
@@ -45,7 +52,7 @@ export function BottomDock({ diagnostics, busy, sourceName, sourceRevision, disp
 
   return <section className="bottom-dock" aria-label="Bottom pane">
     <div className="dock-tabs" role="tablist" aria-label="Bottom pane tabs">
-      {tabs.map(([id, label]) => <button key={id} role="tab" aria-label={label} aria-selected={tab === id} className={tab === id ? 'active' : ''} onClick={() => { setTab(id); if (collapsed) onToggle?.(); }}>{label}{id === 'errors' && diagnostics.length > 0 && <span className="badge error">{diagnostics.length}</span>}</button>)}
+      {tabs.map(([id, label]) => <button key={id} role="tab" aria-label={label} aria-selected={tab === id} className={tab === id ? 'active' : ''} onClick={() => { setTab(id); if (collapsed) onToggle?.(); }}>{label}{id === 'errors' && problemCount > 0 && <span className="badge error">{problemCount}</span>}</button>)}
       <button className="dock-collapse" aria-label={collapsed ? 'Expand bottom panel' : 'Collapse bottom panel'} onClick={onToggle}>{collapsed ? '⌃' : '⌄'}</button>
     </div>
     <div className="bottom-content" hidden={collapsed}>
@@ -53,8 +60,8 @@ export function BottomDock({ diagnostics, busy, sourceName, sourceRevision, disp
         <pre ref={outputRef} aria-label="Terminal output">{terminalAvailable ? terminalOutput || 'Starting local PowerShell…' : 'Local terminal is available with npm run dev.'}</pre>
         {terminalAvailable && <div className="terminal-command"><span>PS&gt;</span><input aria-label="Terminal command" value={command} onChange={event => setCommand(event.target.value)} onKeyDown={event => { if (event.key === 'Enter') runCommand(); }} placeholder="Enter a command" /><button onClick={runCommand}>Run</button></div>}
       </div>
-      {tab === 'output' && <div className="dock-output"><p>{busy ?? 'Ready'} · {sourceName}</p><p>Source revision {sourceRevision} · displayed model revision {displayRevision ?? '—'}</p>{lastTiming && <p>{lastTiming.label} {lastTiming.milliseconds.toFixed(0)} ms</p>}{displayRevision !== sourceRevision && displayRevision !== null && <p>Showing the last successful build.</p>}{events.map((event, index) => <p key={index}>{event}</p>)}</div>}
-      {tab === 'errors' && <div className="dock-errors">{diagnostics.length ? diagnostics.map((diagnostic, index) => <button key={`${diagnostic.code}-${index}`} onClick={() => onDiagnosticClick(diagnostic)}><span className={diagnostic.severity}>{diagnostic.severity[0].toUpperCase() + diagnostic.severity.slice(1)}</span><span>{diagnostic.source ? `${diagnostic.source.source}:${diagnostic.source.line}:${diagnostic.source.column}` : sourceName}</span><span>{withoutCode(diagnostic.message, diagnostic.code)}</span><small>{diagnostic.code}{diagnostic.details && ` · ${diagnostic.details}`}</small></button>) : <p>No problems.</p>}</div>}
+      {tab === 'output' && <div className="dock-output"><p>{status} · {sourceName}</p><p>Source revision {sourceRevision} · displayed model revision {displayRevision ?? '—'}</p>{lastTiming && <p>{lastTiming.label} {lastTiming.milliseconds.toFixed(0)} ms</p>}{displayRevision !== sourceRevision && displayRevision !== null && <p>Showing the last successful build.</p>}{events.map((event, index) => <p key={index}>{event}</p>)}</div>}
+      {tab === 'errors' && <div className="dock-errors">{diagnostics.length ? orderedDiagnostics.map((diagnostic, index) => <button key={`${diagnostic.code}-${index}`} onClick={() => onDiagnosticClick(diagnostic)}><span className={diagnostic.severity}>{diagnostic.severity[0].toUpperCase() + diagnostic.severity.slice(1)}</span><span>{diagnostic.source ? `${diagnostic.source.source}:${diagnostic.source.line}:${diagnostic.source.column}` : sourceName}</span><span>{withoutCode(diagnostic.message, diagnostic.code)}</span><small>{diagnostic.code}{diagnostic.details && ` · ${diagnostic.details}`}</small></button>) : <p>No problems.</p>}</div>}
     </div>
   </section>;
 }

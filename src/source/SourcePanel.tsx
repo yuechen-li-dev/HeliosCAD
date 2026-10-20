@@ -85,16 +85,18 @@ monaco.editor.defineTheme('helios-apollonia', {
   }
 });
 
-export interface SourcePanelHandle { focusAt(reference?: SourceReference): void; cursor(): number; insert(value: string, offset?: number): void; replace(reference: SourceReference, expected: string, replacement: string): boolean; formatDocument(): Promise<void> }
+export interface SourcePanelHandle { focusAt(reference?: SourceReference): void; cursor(): number; insert(value: string, offset?: number): void; replace(reference: SourceReference, expected: string, replacement: string): boolean; formatDocument(): Promise<void>; history(direction: 'undo' | 'redo'): Promise<void> }
 interface Props {
   disabled?: boolean; source: string; diagnostics: readonly Diagnostic[]; runtime?: CadRuntime; model?: ModelSession | null;
   selectedSelector?: string | null; theme?: 'bronze-age' | 'apollonia'; onSourceChange(value: string): void; onRebuild(): void;
   onDiagnosticClick(diagnostic: Diagnostic): void; onCursorChange?(offset: number): void; onInsert?(value: string, offset: number): void;
   onLiveDiagnostics?(diagnostics: readonly Diagnostic[]): void; onLanguageError?(error: unknown): void;
   fileName?: string; dirty?: boolean;
+  onHistoryState?(state: { undo: boolean; redo: boolean }): void;
+  onHistoryApplied?(source: string): void;
 }
 
-export const SourcePanel = forwardRef<SourcePanelHandle, Props>(function SourcePanel({ source, diagnostics, runtime, model, selectedSelector, theme = 'bronze-age', onSourceChange, onRebuild, onDiagnosticClick, onCursorChange, onInsert, onLiveDiagnostics, onLanguageError, fileName = 'model.firmament', dirty, disabled = false }, ref) {
+export const SourcePanel = forwardRef<SourcePanelHandle, Props>(function SourcePanel({ source, diagnostics, runtime, model, selectedSelector, theme = 'bronze-age', onSourceChange, onRebuild, onDiagnosticClick, onCursorChange, onInsert, onLiveDiagnostics, onLanguageError, onHistoryState, onHistoryApplied, fileName = 'model.firmament', dirty, disabled = false }, ref) {
   const [tab, setTab] = useState<'source' | 'diagnostics'>('source');
   const [wordWrap, setWordWrap] = useState(() => localStorage.getItem('helios-word-wrap') === 'on');
   useEffect(() => { localStorage.setItem('helios-word-wrap', wordWrap ? 'on' : 'off'); }, [wordWrap]);
@@ -108,6 +110,9 @@ export const SourcePanel = forwardRef<SourcePanelHandle, Props>(function SourceP
   const onRebuildRef = useRef(onRebuild);
   const onLiveDiagnosticsRef = useRef(onLiveDiagnostics);
   const onLanguageErrorRef = useRef(onLanguageError);
+  const historyCallbacks = useRef({ onHistoryState, onHistoryApplied }); historyCallbacks.current = { onHistoryState, onHistoryApplied };
+  const reportHistory = () => { const document = editor.current?.getModel(); historyCallbacks.current.onHistoryState?.({ undo: document?.canUndo() ?? false, redo: document?.canRedo() ?? false }); };
+  useEffect(() => { queueMicrotask(reportHistory); }, [source, fileName]);
   sourceRef.current = source;
   onCursorChangeRef.current = onCursorChange;
   onRebuildRef.current = onRebuild;
@@ -136,6 +141,13 @@ export const SourcePanel = forwardRef<SourcePanelHandle, Props>(function SourceP
     });
   };
   useImperativeHandle(ref, () => ({ focusAt, cursor: () => lastCursor.current,
+    history: async direction => {
+      const document = editor.current?.getModel(); if (!document || disabled) return;
+      editor.current?.pushUndoStop();
+      if (direction === 'undo' && document.canUndo()) await document.undo();
+      if (direction === 'redo' && document.canRedo()) await document.redo();
+      reportHistory();
+    },
     formatDocument: async () => {
       const instance = editor.current, document = instance?.getModel();
       if (!instance || !document || !client.current) return;
@@ -168,9 +180,19 @@ export const SourcePanel = forwardRef<SourcePanelHandle, Props>(function SourceP
       if (document && instance) { const position = document.getPositionAt(at); instance.executeEdits('helios', [{ range: new monaco.Range(position.lineNumber, position.column, position.lineNumber, position.column), text: value }]); focusAt(); }
       else onInsert?.(value, at);
     }
-  }), [onInsert]);
+  }), [onInsert, disabled]);
   const onMount: OnMount = instance => {
     editor.current = instance;
+    instance.onDidChangeModel(reportHistory);
+    instance.onDidChangeModelContent(event => {
+      const document = instance.getModel(), value = document?.getValue();
+      queueMicrotask(() => {
+        reportHistory();
+        if ((event.isUndoing || event.isRedoing) && document === instance.getModel() && value === document?.getValue())
+          historyCallbacks.current.onHistoryApplied?.(value!);
+      });
+    });
+    reportHistory();
     instance.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, () => onRebuildRef.current());
     instance.addCommand(monaco.KeyMod.Alt | monaco.KeyCode.KeyZ, () => setWordWrap(value => !value));
     // A self-hosted proportional font can arrive after Monaco's first measurement.

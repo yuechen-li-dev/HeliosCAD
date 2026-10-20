@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { PaletteItem } from '@aetheris/cad';
+import type { GraphAction } from './GraphPanel';
 
 interface Props {
   items: readonly PaletteItem[];
+  actions?: readonly GraphAction[];
   /** Pane coordinates of the popover's top-left corner. */
   at: { x: number; y: number };
   /** Where features land (a body name), or why they cannot be added now. */
@@ -14,14 +16,16 @@ interface Props {
 }
 
 /** Search-first palette: type to filter, arrows to move, Enter to add. */
-export function PalettePopover({ items, at, featureTarget, unavailable, onPick, onClose }: Props) {
+export function PalettePopover({ items, actions = [], at, featureTarget, unavailable, onPick, onClose }: Props) {
   const [query, setQuery] = useState('');
   const [active, setActive] = useState(0);
   const root = useRef<HTMLDivElement>(null);
   const shown = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return items.filter(item => !q || `${item.label} ${item.category} ${item.description}`.toLowerCase().includes(q));
-  }, [items, query]);
+    return items.filter(item => !q || `${item.label} ${item.category} ${item.description}`.toLowerCase().includes(q))
+      .sort((a, b) => Number(!!unavailable(a)) - Number(!!unavailable(b)));
+  }, [items, query, unavailable]);
+  const shownActions = actions.filter(a => `${a.label} ${a.description}`.toLowerCase().includes(query.trim().toLowerCase()));
   const usable = (item: PaletteItem) => unavailable(item) === null;
   useEffect(() => setActive(index => Math.min(index, Math.max(0, shown.length - 1))), [shown.length]);
   useEffect(() => {
@@ -38,7 +42,7 @@ export function PalettePopover({ items, at, featureTarget, unavailable, onPick, 
       onKeyDown={event => {
         if (event.key === 'ArrowDown') { event.preventDefault(); setActive(i => Math.min(i + 1, shown.length - 1)); }
         else if (event.key === 'ArrowUp') { event.preventDefault(); setActive(i => Math.max(i - 1, 0)); }
-        else if (event.key === 'Enter') { event.preventDefault(); pick(shown[active]); }
+        else if (event.key === 'Enter') { event.preventDefault(); if (shown.length) pick(shown[active]); else if (shownActions[0] && !shownActions[0].reason) { onClose(); shownActions[0].run(); } }
         else if (event.key === 'Escape') onClose();
       }} />
     <div className="graph-palette-target">{'body' in featureTarget ? <>Features go on <b>{featureTarget.body}</b></> : featureTarget.reason}</div>
@@ -54,7 +58,10 @@ export function PalettePopover({ items, at, featureTarget, unavailable, onPick, 
           </button>;
         })}
       </div>)}
-      {shown.length === 0 && <p>Nothing matches “{query}”.</p>}
+      {shownActions.length > 0 && <div role="group" aria-label="Construction actions"><span>Construction</span>{shownActions.map(action =>
+        <button key={action.id} role="option" aria-selected={false} disabled={!!action.reason} title={action.reason ?? action.description}
+          onClick={() => { onClose(); action.run(); }}><b>{action.label}</b><small>{action.reason ?? action.description}</small></button>)}</div>}
+      {shown.length === 0 && shownActions.length === 0 && <p>Nothing matches “{query}”.</p>}
     </div>
   </div>;
 }

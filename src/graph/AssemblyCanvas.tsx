@@ -7,6 +7,7 @@ export interface AssemblyAuthoring {
   /** Joint kinds the language offers (`Fixed`, `Revolute`, …). */
   kinds: readonly string[];
   onJoin(kind: string, a: AssemblyEnd, b: AssemblyEnd): void;
+  onCreateMate?(): void;
 }
 
 interface Props {

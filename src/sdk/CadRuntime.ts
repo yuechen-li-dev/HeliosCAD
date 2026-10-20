@@ -7,6 +7,7 @@ export interface CadRuntime {
   readonly info: RuntimeInfo | null;
   initialize(): Promise<RuntimeInfo>;
   open(source: string, sourceName: string, sourceRevision?: number, projectDocuments?: Readonly<Record<string,string>>): Promise<OpenResult>;
+  preview(source: string, sourceName: string, sourceRevision?: number, projectDocuments?: Readonly<Record<string,string>>): Promise<OpenResult>;
   setSource(source: string, sourceName: string, sourceRevision?: number, projectDocuments?: Readonly<Record<string,string>>): ReturnType<ModelSession['setSource']>;
   setProperty(id: string, value: UnitValue): ReturnType<ModelSession['setProperty']>;
   rebuild(): ReturnType<ModelSession['rebuild']>;
@@ -31,6 +32,7 @@ export interface CadRuntime {
 
 export class WebSdkCadRuntime implements CadRuntime {
   private disposed = false;
+  private generation = 0;
   private projectRoot: string | undefined;
   private projectDocuments: Readonly<Record<string,string>> | undefined;
   setProjectContext(root: string | null, documents: Readonly<Record<string,string>>) {
@@ -44,8 +46,9 @@ export class WebSdkCadRuntime implements CadRuntime {
   info: RuntimeInfo | null = null;
 
   async initialize() {
+    const generation = this.generation;
     const cad = this.cad ?? await (this.initializing ??= Aetheris.create({ worker: true }));
-    if (this.disposed) { cad.terminate(); throw new Error('This workspace has closed.'); }
+    if (this.disposed || generation !== this.generation) { cad.terminate(); throw new Error('This workspace has closed.'); }
     this.cad = cad;
     this.info = await this.cad.info();
     return this.info;
@@ -60,6 +63,12 @@ export class WebSdkCadRuntime implements CadRuntime {
       if (previous) await previous.dispose();
     }
     return result;
+  }
+
+  /** A separate model handle on the existing worker; never replaces the live session. Caller disposes it. */
+  async preview(source: string, sourceName: string, sourceRevision?: number, projectDocuments?: Readonly<Record<string,string>>) {
+    await this.initialize();
+    return this.cad!.compile(source, { sourceName, sourceRevision: sourceRevision?.toString(), projectDocuments });
   }
 
   setSource(source: string, sourceName: string, sourceRevision?: number, projectDocuments?: Readonly<Record<string,string>>) { return this.requireModel().setSource(source, { sourceName, sourceRevision: sourceRevision?.toString(), projectDocuments }); }
@@ -120,32 +129,33 @@ export class WebSdkCadRuntime implements CadRuntime {
     const cad = await this.initializeLanguage();
     return cad.language.schema();
   }
-  describeConstruct(semanticId: string) { return this.requireModel().describeConstruct(semanticId); }
+  async describeConstruct(semanticId: string) { return this.requireModel().describeConstruct(semanticId); }
   rewriteField(source: string, projection: ConstructProjection, fieldId: string, value: ProjectedValue) {
     return this.requireModel().rewriteField(source, projection, fieldId, value);
   }
 
   async dispose() {
+    this.generation++;
     this.disposed = true;
     void this.initializing?.then(cad => cad.terminate()).catch(() => undefined);
+    void this.languageInitializing?.then(cad => cad.terminate()).catch(() => undefined);
     this.cad?.terminate(); this.languageCad?.terminate();
     this.cad = null; this.languageCad = null; this.model = null;
     this.initializing = null; this.languageInitializing = null; this.info = null;
   }
 
   async restart() {
+    const generation = this.generation + 1;
+    await this.dispose();
+    if (this.generation !== generation) throw new Error('This workspace has closed.');
     this.disposed = false;
-    this.cad?.terminate();
-    this.cad = null;
-    this.initializing = null;
-    this.model = null;
-    this.info = null;
     return this.initialize();
   }
 
   private async initializeLanguage() {
+    const generation = this.generation;
     const cad = this.languageCad ?? await (this.languageInitializing ??= Aetheris.create());
-    if (this.disposed) { cad.terminate(); throw new Error('This workspace has closed.'); }
+    if (this.disposed || generation !== this.generation) { cad.terminate(); throw new Error('This workspace has closed.'); }
     this.languageCad = cad;
     return this.languageCad;
   }

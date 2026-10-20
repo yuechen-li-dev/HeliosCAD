@@ -13,6 +13,7 @@ export interface GraphSelection { readonly unitId: string; readonly rowId: strin
 
 /** Editing gestures the canvas offers; absent while the source cannot be edited. */
 export interface GraphAuthoring {
+  actions?: readonly GraphAction[];
   palette: readonly PaletteItem[];
   featureTarget: { body: string } | { reason: string };
   unavailable(item: PaletteItem): string | null;
@@ -21,8 +22,10 @@ export interface GraphAuthoring {
   onWire(provider: string, consumer: OutlineNode, choice: WireChoice): void;
   onReorder(operation: LanguageEditOperation, label: string): void;
 }
+export interface GraphAction { id: string; label: string; description: string; reason?: string; run(): void }
 
 interface Props {
+  pending?: boolean;
   outline: LanguageOutline | null;
   error: string | null;
   diagnostics: readonly Diagnostic[];
@@ -204,7 +207,7 @@ function Canvas({ outline, error, diagnostics, selection, theme, onSelect, onOpe
       <Background variant={BackgroundVariant.Dots} gap={18} size={1} />
       <Controls showInteractive={false} position="bottom-right" />
     </ReactFlow> : <div className="graph-empty"><strong>Nothing to show.</strong><p>This document has no declarations yet. {authoring ? 'Add a body to start.' : 'Switch to Source to start writing, or open an example.'}</p></div>}
-    {authoring && paletteAt && <PalettePopover items={authoring.palette} at={paletteAt} featureTarget={authoring.featureTarget} unavailable={authoring.unavailable}
+    {authoring && paletteAt && <PalettePopover items={authoring.palette} actions={authoring.actions} at={paletteAt} featureTarget={authoring.featureTarget} unavailable={authoring.unavailable}
       onClose={() => setPaletteAt(null)} onPick={item => { setPaletteAt(null); authoring.onInsert(item); }} />}
     {authoring && wire && consumerNode && <div className="graph-wire-menu" role="menu" aria-label="Connect" style={{ left: wire.x, top: wire.y }}
       onKeyDown={event => { if (event.key === 'Escape') setWire(null); }}>
@@ -264,15 +267,16 @@ export function GraphPanel(props: Props) {
             ? 'Double-click the canvas to add; drag from a card’s right edge to connect.' : 'Select a part to see its values; double-click to open its source.'}</small></> : <span>Model graph</span>}
       </div>}
       {props.authoring && !showAssembly && <button className="graph-add" aria-label="Add a body or feature" onClick={() => setPaletteAt(at => at ? null : { x: 12, y: 8 })}>+ Add</button>}
+      {showAssembly && asm?.authoring?.onCreateMate && <button className="graph-add" onClick={asm.authoring.onCreateMate}>+ Mate</button>}
     </div>
-    <div className={`graph-body${body.stacked ? ' stacked' : ''}`} ref={body.ref}>
-      <div className="graph-canvas" ref={canvas} style={body.canvas}>
+    <div className={`graph-body${body.stacked ? ' stacked' : ''}${props.pending ? ' authoring-open' : ''}`} ref={body.ref}>
+      <div className="graph-canvas" inert={props.pending} ref={canvas} style={{ ...body.canvas, visibility: props.pending ? 'hidden' : undefined }}>
         <ReactFlowProvider>{showAssembly && asm?.graph && props.outline
           ? <AssemblyCanvas key={asm.graph.assembly.id} outline={props.outline} graph={asm.graph} theme={props.theme} selectedId={asm.selectedId}
               onSelect={asm.onSelect} onOpenSource={asm.onOpenSource} authoring={asm.authoring} host={canvas} direction={direction} />
           : <Canvas {...props} direction={direction} paletteAt={paletteAt} setPaletteAt={setPaletteAt} host={canvas} />}</ReactFlowProvider>
       </div>
-      {props.inspector && <div className="graph-inspector-slot" style={body.inspector}>{props.inspector}</div>}
+      {props.inspector && <div className="graph-inspector-slot" style={props.pending ? { position: 'absolute', inset: 0 } : body.inspector}>{props.inspector}</div>}
     </div>
   </section>;
 }

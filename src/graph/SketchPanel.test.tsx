@@ -14,6 +14,15 @@ const projection = (): SketchProjection => ({ version: 'firmament-sketch/1', doc
 const callbacks = (): SketchCallbacks => ({ project: vi.fn().mockResolvedValue(projection()), preview: vi.fn().mockResolvedValue(projection()), apply: vi.fn().mockResolvedValue(null), source: vi.fn(), close: vi.fn() });
 
 describe('compiler-owned sketch workspace', () => {
+  it('offers the host new-part action when an existing solid has no editable profile', async () => {
+    const api = { ...callbacks(), createPart: vi.fn() };
+    vi.mocked(api.project).mockResolvedValue({ ...projection(), profiles: [], shapes: [], loops: [], frame: null, node: null });
+    render(<SketchPanel revision={1} node={null} callbacks={api} />);
+    fireEvent.click(await screen.findByRole('button', { name: 'New sketch part' }));
+    expect(api.createPart).toHaveBeenCalledOnce();
+    expect(api.apply).not.toHaveBeenCalled();
+  });
+
   it('shows the real frame, follows a parameter and commits Enter followed by blur only once', async () => {
     const api = callbacks(); render(<SketchPanel revision={1} node={null} callbacks={api} />);
     const width = await screen.findByRole('spinbutton', { name: 'Width' });

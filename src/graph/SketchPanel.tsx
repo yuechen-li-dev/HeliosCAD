@@ -10,6 +10,7 @@ export function SketchPanel({ revision, node, callbacks }: { revision: number; n
     const panel = new SketchWorkspace(host.current!, {
       project: id => current.current.project(id), preview: edit => current.current.preview(edit),
       apply: edit => current.current.apply(edit), source: span => current.current.source(span), close: () => current.current.close(),
+      createPart: callbacks.createPart ? () => current.current.createPart?.() : undefined,
     });
     workspace.current = panel;
     return () => { panel.dispose(); workspace.current = null; };

@@ -38,7 +38,13 @@ describe('field edits', () => {
     const mixed = editorFor(field('Size', '[50mm, 40mm, Thickness]', 'sequence'));
     expect(mixed.kind === 'vector' && mixed.parts[2]).toEqual({ kind: 'name', name: 'Thickness' });
     if (mixed.kind === 'vector') expect(vectorText(mixed.parts)).toBe('[50mm, 40mm, Thickness]');
-    expect(editorFor(field('Center', 'Point2(0mm, 0mm)', 'call')).kind).toBe('text');
+    const point = editorFor(field('Center', 'Point2(0mm, Offset)', 'call'));
+    expect(point.kind).toBe('vector');
+    if (point.kind === 'vector') expect(vectorText(point.parts, point.pointType)).toBe('Point2(0mm, Offset)');
+    expect(editorFor(field('Center', 'Point3(0mm, 1mm, 2mm)', 'call'))).toMatchObject({ kind: 'vector', pointType: 'Point3' });
+    expect(editorFor(field('Center', 'Point2(Width / 2, 0mm)', 'call')).kind).toBe('text');
+    expect(editorFor(field('Center', 'Point2(0mm, 1mm, 2mm)', 'call')).kind).toBe('text');
+    expect(editorFor(field('Center', 'Other(0mm, 0mm)', 'call')).kind).toBe('text');
     expect(editorFor(field('Size', '[Width * 2, 40mm]', 'sequence')).kind).toBe('text');
     expect(editorFor(field('Size', '[Width, Depth]', 'sequence')).kind).toBe('text');
   });

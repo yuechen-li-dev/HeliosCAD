@@ -31,7 +31,7 @@ import { editorFor, formatQuantity, parameterSource, vectorText, type Quantity }
 import { startingValue } from '../graph/NodeInspector';
 import { parameterNodes, ParametersSheet } from '../graph/ParametersSheet';
 import { buildPartGraph, nodeAtSpan, unitAtSpan, type GraphRow, type PartGraph } from '../graph/outlineGraph';
-import { assembliesOf, buildAssemblyGraph, jointOperation, type AssemblyEnd } from '../graph/assemblyGraph';
+import { assembliesOf, buildAssemblyGraph, type AssemblyEnd } from '../graph/assemblyGraph';
 import type { AssemblyView } from '../graph/GraphPanel';
 import { MotionStrip } from '../viewport/MotionStrip';
 import { poseCoverage } from '../viewport/pose';
@@ -39,13 +39,14 @@ import type { ExportFormat } from '@aetheris/cad';
 import { ExportPicker } from './ExportPicker';
 import { importedProject, isStep, packProject, sourceFiles, unpackProject } from './localProject';
 import { PmiAuthor } from '../inspector/PmiAuthor';
+import { AuthoringPanel, type AuthoringAction, type PendingAuthoring } from '../graph/AuthoringPanel';
 
 type UtilityTab = { kind: 'files' } | { kind: 'inspector' } | { kind: 'examples' } | { kind: 'llm' } | { kind: 'version-control' };
 
-export function HeliosApp({ project, initialWorkspace, onShowcase, onSave, onPublish, onBack, onSignOut }: { project?: Project; initialWorkspace?: WorkspaceProject; onShowcase?: () => void; onSave?: (source: string) => Promise<void>; onPublish?: (payload: { expectedRevisionId: string; title: string; description: string; category: string; tags: string[]; previewPngBase64: string }) => Promise<void>; onBack?: () => void; onSignOut?: () => void } = {}) {
+export function HeliosApp({ project, initialWorkspace, chooseBase = false, onShowcase, onSave, onPublish, onBack, onSignOut }: { project?: Project; initialWorkspace?: WorkspaceProject; chooseBase?: boolean; onShowcase?: () => void; onSave?: (source: string) => Promise<void>; onPublish?: (payload: { expectedRevisionId: string; title: string; description: string; category: string; tags: string[]; previewPngBase64: string }) => Promise<void>; onBack?: () => void; onSignOut?: () => void } = {}) {
   const [runtime] = useState(() => new WebSdkCadRuntime());
   const [buildClient] = useState(() => new AetherisWorkerClient(runtime));
-  const [editorMode, setEditorMode] = useState<'graph' | 'source'>(() => readEditorMode());
+  const [editorMode, setEditorMode] = useState<'graph' | 'source'>(() => chooseBase ? 'graph' : readEditorMode());
   const [sketch, setSketch] = useState<{ node: string | null } | null>(null);
   const shellLayout = useShellLayout(editorMode);
   const [model, setModel] = useState<ModelSession | null>(null);
@@ -93,6 +94,9 @@ export function HeliosApp({ project, initialWorkspace, onShowcase, onSave, onPub
   const [projectFileNames, setProjectFileNames] = useState<string[]>(Object.keys(initialWorkspace?.documents ?? {}));
   runtime.setProjectContext?.(projectRoot.current, projectDocuments.current);
   const sourcePanel = useRef<SourcePanelHandle>(null);
+  const [historyState, setHistoryState] = useState({ undo: false, redo: false });
+  const [pendingAuthoring, setPendingAuthoring] = useState<PendingAuthoring | null>(chooseBase ? { action: { kind: 'base' }, node: null, revision: 0 } : null);
+  const [previewModel, setPreviewModel] = useState<ModelSession | null>(null);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [publishOpen, setPublishOpen] = useState(false);
   const [publishState, setPublishState] = useState('');
@@ -125,6 +129,17 @@ export function HeliosApp({ project, initialWorkspace, onShowcase, onSave, onPub
     setDirtyFiles(files => { const next = new Set(files); if (value === savedSources.current[name]) next.delete(name); else next.add(name); return next; });
     setDiagnostics([]);
     setLiveDiagnostics([]);
+  };
+  useEffect(() => { if (pendingAuthoring && pendingAuthoring.revision !== sourceRevision) setPendingAuthoring(null); }, [sourceRevision, pendingAuthoring]);
+  function beginAuthoring(action: AuthoringAction, mate?: PendingAuthoring['mate']) {
+    if (busy || buildStarted !== null) { pushOutput('Wait for the current operation to finish.'); return; }
+    setEditorMode('graph'); setSideTab('selection');
+    setPendingAuthoring({ action, node: inspectedId, revision: sourceRevisionRef.current, mate });
+  }
+  const runHistory = async (direction: 'undo' | 'redo') => {
+    if (busy || buildStarted !== null || pendingAuthoring) return;
+    try { await sourcePanel.current?.history(direction); }
+    catch (error) { pushOutput(`History refused · ${error instanceof Error ? error.message : String(error)}`); }
   };
 
   const acceptBuild = (result: BuildResult) => {
@@ -183,16 +198,27 @@ export function HeliosApp({ project, initialWorkspace, onShowcase, onSave, onPub
     await submitBuild(nextSource, nextName, sourceRevisionRef.current);
   }, [source, sourceName]);
 
-  useEffect(() => { void submitBuild(initialSource, initialName, 0); void runtime.schema().then(setSemanticSchema).catch(error => setDiagnostics([toDiagnostic(error, 'HELIOS-LANGUAGE')])); return () => { void runtime.dispose(); }; }, []);
+  useEffect(() => {
+    let current = true;
+    void runtime.restart().then(async () => {
+      if (!current) return;
+      await submitBuild(source, sourceName, sourceRevisionRef.current);
+      const schema = await runtime.schema(); if (current) setSemanticSchema(schema);
+    }).catch(error => { if (current) { setDiagnostics([toDiagnostic(error, 'HELIOS-WORKER')]); setBusy(null); } });
+    return () => { current = false; void runtime.dispose(); };
+  }, []);
   useEffect(() => { if (buildStarted === null) return; const timer = setInterval(() => setElapsedSeconds((performance.now() - buildStarted) / 1000), 250); return () => clearInterval(timer); }, [buildStarted]);
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's') { event.preventDefault(); if (onSave) void save(); else downloadSource(); }
       if (((event.ctrlKey || event.metaKey) && event.shiftKey && event.key.toLowerCase() === 'p') || event.key === 'F1') { event.preventDefault(); setPaletteOpen(true); }
       if (event.key.toLowerCase() === 'f' && !isTyping(event.target)) setViewCommand(`fit-${Date.now()}`);
+      if ((event.ctrlKey || event.metaKey) && !isTyping(event.target) && ['z', 'y'].includes(event.key.toLowerCase())) {
+        event.preventDefault(); void runHistory(event.key.toLowerCase() === 'y' || event.shiftKey ? 'redo' : 'undo');
+      }
     };
     addEventListener('keydown', onKey); return () => removeEventListener('keydown', onKey);
-  }, [source, sourceName, onSave]);
+  }, [source, sourceName, onSave, busy, buildStarted, pendingAuthoring]);
 
   const save = async () => {
     if (!onSave) return;
@@ -293,7 +319,9 @@ export function HeliosApp({ project, initialWorkspace, onShowcase, onSave, onPub
     if (!unitId || !partGraph) return;
     setGraphSelection({ unitId, rowId: id === unitId ? null : id });
     const node = partGraph.nodes.get(id);
-    const entity = node ? entityForSpan(node.span.start, node.span.length) : undefined;
+    const part = assemblyGraph?.parts.find(p => p.id === id);
+    const occurrence = part && model?.mesh.occurrences.find(o => o.path === (part.kind === 'ground' ? assemblyGraph!.root.name : `${assemblyGraph!.root.name}.${part.name}`));
+    const entity = occurrence ? model?.entity(occurrence.semanticEntityId) : node ? entityForSpan(node.span.start, node.span.length) : undefined;
     graphPickedEntity.current = entity?.id ?? null;
     if (entity) select(entity.id);
   };
@@ -376,7 +404,7 @@ export function HeliosApp({ project, initialWorkspace, onShowcase, onSave, onPub
       const value = axis === null ? field.text : editor.kind === 'vector' && editor.parts[axis]?.kind === 'quantity' ? formatQuantity((editor.parts[axis] as { value: Quantity }).value) : null;
       const declaration = value ? parameterSource(name, value) : null;
       if (!value || !declaration) return 'Only a number with a unit can become a parameter.';
-      const next = axis === null || editor.kind !== 'vector' ? name : vectorText(editor.parts.map((part, i) => i === axis ? { kind: 'name' as const, name } : part));
+      const next = axis === null || editor.kind !== 'vector' ? name : vectorText(editor.parts.map((part, i) => i === axis ? { kind: 'name' as const, name } : part), editor.pointType);
       const parent = bodyParent(outline, node.id);
       if (!parent) return 'There is no Model to hold the parameter.';
       return structuralEdit([{ kind: 'insertDeclaration', parent, first: true, source: declaration }, { kind: 'setField', node: node.id, field: field.name, value: next }],
@@ -438,15 +466,11 @@ export function HeliosApp({ project, initialWorkspace, onShowcase, onSave, onPub
   }, [semanticSchema]);
   const assemblyView = (): AssemblyView | null => !assemblyGraph ? null : {
     assemblies, graph: assemblyGraph, selectedAssembly: assemblyGraph.assembly.id, selectedId: inspectedId,
-    authoring: busy === 'Worker failed' ? null : {
+    authoring: busy || buildStarted !== null || pendingAuthoring ? null : {
       kinds: jointKinds,
+      onCreateMate: () => beginAuthoring({ kind: 'mate' }),
       onJoin: (kind: string, a: AssemblyEnd, b: AssemblyEnd) => {
-        if (!outline) return;
-        const operation = jointOperation(assemblyGraph, kind, a, b, outline);
-        if ('reason' in operation) { pushOutput(operation.reason); return; }
-        const name = (id: string) => assemblyGraph.parts.find(p => p.id === id)?.name ?? id;
-        void structuralEdit([operation], { nodeId: assemblyGraph.assembly.id, label: `Joined ${name(a.part)}.${a.port} to ${name(b.part)}.${b.port} (${kind})` })
-          .then(refused => { if (refused) pushOutput(`Joint refused · ${refused}`); });
+        beginAuthoring({ kind: 'mate' }, { kind, a, b });
       },
     },
     onPickAssembly: setPickedAssembly,
@@ -454,13 +478,16 @@ export function HeliosApp({ project, initialWorkspace, onShowcase, onSave, onPub
     onOpenSource: id => { const node = outline?.nodes.find(n => n.id === id); if (node) { setEditorMode('source'); navigateSource({ source: sourceName, start: node.span.start, length: node.span.length, line: 1, column: 1 }); } },
   };
   const graphAuthoring = () => {
-    if (busy === 'Worker failed' || !outline) return null;
+    if (busy || buildStarted !== null || pendingAuthoring || !outline) return null;
     const target = featureTarget(outline, inspectedId);
     return {
+      actions: constructionActions(),
       palette: [...documentFeatures(), ...palette],
       featureTarget: 'body' in target ? { body: target.body.name ?? target.body.id } : target,
-      unavailable: (item: PaletteItem) => paletteUnavailable(item, outline, inspectedId),
+      unavailable: (item: PaletteItem) => item.requiresEmptyModel ? null : paletteUnavailable(item, outline, inspectedId),
       onInsert: (item: PaletteItem) => {
+        if (item.placement === 'feature') { beginAuthoring({ kind: 'feature', item }); return; }
+        if (item.requiresEmptyModel) { beginAuthoring({ kind: 'base', baseId: item.id }); return; }
         const operation = paletteOperation(item, outline, inspectedId);
         if ('reason' in operation) { pushOutput(operation.reason); return; }
         const where = operation.kind === 'insertFeature' && 'body' in target ? ` on ${target.body.name}` : '';
@@ -480,11 +507,38 @@ export function HeliosApp({ project, initialWorkspace, onShowcase, onSave, onPub
       },
     };
   };
+  function constructionActions(): import('../graph/GraphPanel').GraphAction[] {
+    return [
+      { id: 'base', label: 'Replace base…', description: 'Choose a different base and preview existing features.', run: () => beginAuthoring({ kind: 'base' }) },
+      { id: 'pocket', label: 'Pocket…', description: 'Cut a finite recess from a circle, rectangle or authored Profile.', run: () => beginAuthoring({ kind: 'pocket' }) },
+      { id: 'pattern', label: 'Pattern…', description: 'Repeat a seed hole in a keyed rectangular grid.', run: () => beginAuthoring({ kind: 'pattern' }),
+        reason: outline?.nodes.some(n => n.kind === 'Hole') ? undefined : 'Add a hole first.' },
+      { id: 'extrude', label: 'Extrude…', description: 'Turn a Profile into a body, or edit its extrusion.', run: () => beginAuthoring({ kind: 'extrude' }),
+        reason: outline?.nodes.some(n => n.kind === 'Profile') ? undefined : 'Start a sketch-based part first.' },
+      { id: 'sketch', label: 'New sketch-based part…', description: 'Start from an editable 2D profile and extrusion.', run: () => newSketch('Rect2') },
+      { id: 'placement', label: 'Place component…', description: 'Edit translation and rotation relative to the parent.', run: () => beginAuthoring({ kind: 'placement' }), reason: assemblyGraph ? undefined : 'Open an assembly first.' },
+      { id: 'mate', label: 'Edit mate…', description: 'Edit frame endpoints while retaining the mate name, contract and options.', run: () => {
+        const joint = assemblyGraph?.joints.find(j => j.id === inspectedId);
+        if (joint?.a && joint.b) beginAuthoring({ kind: 'mate' }, { kind: joint.kind, a: joint.a, b: joint.b, existing: joint.id });
+      }, reason: assemblyGraph?.joints.some(j => j.id === inspectedId) ? undefined : 'Select a mate first.' },
+    ];
+  }
+  const contextActions = () => {
+    const node = outlineNode(outline, inspectedId);
+    const ids = node?.occurrence && ['Part', 'Assembly', 'Subassembly'].includes(node.kind) ? ['placement']
+      : node?.kind === 'Mate' || node?.kind === 'Interface' && node.parentId ? ['mate']
+      : node?.kind === 'Profile' ? ['extrude', 'pocket'] : node?.kind === 'Hole' ? ['pattern']
+      : node && ['Box', 'Cylinder', 'Extrude', 'Compose'].includes(node.kind) ? ['base', 'pocket'] : [];
+    return <div className="node-construction-actions">{constructionActions().filter(a => ids.includes(a.id)).map(a =>
+      <button key={a.id} disabled={!!a.reason || !!busy || buildStarted !== null} title={a.reason ?? a.description} onClick={a.run}>{a.label}</button>)}</div>;
+  };
   const revertGraphEdit = () => {
     if (!graphEdit) return;
     const base = graphEdit.base;
     setGraphEdit(null);
-    editSource(base);
+    const before = sourceRevisionRef.current;
+    if (!sourcePanel.current?.replace({ source: sourceName, start: 0, length: source.length, line: 1, column: 1 }, source, base)
+        || before === sourceRevisionRef.current) editSource(base);
     pushOutput('Reverted the draft');
     // Back to exactly what the displayed model was built from: nothing to rebuild.
     if ((projectRoot.current ?? sourceName) === sourceName && model?.source === base) setDisplayRevision(sourceRevisionRef.current);
@@ -500,7 +554,7 @@ export function HeliosApp({ project, initialWorkspace, onShowcase, onSave, onPub
       && item.source.start >= node.span.start && item.source.start <= node.span.start + node.span.length) : [];
     const edit = graphEdit && graphEdit.revision === sourceRevision ? graphEdit : null;
     return {
-      node, nodes: partGraph?.nodes ?? new Map<string, OutlineNode>(), focusField, problems, edit,
+      node, nodes: partGraph?.nodes ?? new Map<string, OutlineNode>(), focusField, problems, buildProblems: shownDiagnostics, edit,
       completion: completion && node && completion.nodeId === node.id ? completion.fields : [],
       external: unit?.category === 'external' ? { title: unit.title, document: unit.document } : null,
       schema: semanticSchema?.constructs.find(item => item.id === node?.schemaId) ?? null,
@@ -633,6 +687,7 @@ export function HeliosApp({ project, initialWorkspace, onShowcase, onSave, onPub
   };
   const newSketch = (shape: string) => {
       if (busy || buildStarted !== null) { pushOutput('Wait for the current build before starting a sketch part.'); return; }
+      if (dirtyFiles.size && !confirm('Start a separate sketch part and replace this working document? Save source or create a Version control checkpoint first to keep unsaved edits.')) return;
       void (async () => {
         try {
           const edit = await runtime.sketchEdit('Model SketchPart {\n    units: mm\n}\n', { kind: 'create', node: 'SketchPart', shape }, 'sketch.firmament', '0');
@@ -668,7 +723,7 @@ export function HeliosApp({ project, initialWorkspace, onShowcase, onSave, onPub
     <header className="topbar">
       <button className="brand" onClick={() => project ? location.assign('/') : onShowcase ? onShowcase() : setExamplesOpen(true)} aria-label="Helios home"><span className="helios-symbol">H</span><div><strong>HELIOS</strong><small>by Aetheris</small></div></button>
       <div className="workspace-identity"><strong>{workspaceTitle}</strong><small>{project ? 'Saved project' : 'Local workspace'} · Firmament</small></div>
-      <nav className="workspace-tabs" aria-label="Workspace"><button onClick={() => setExamplesOpen(true)}>Examples</button><button onClick={() => fileInput.current?.click()}>Open file</button><button onClick={() => fileInput.current?.click()} title="Import a supported canonical STEP part as immutable geometry">Import STEP</button><button title="Download source, or a portable workspace with all imported assets · Ctrl+S" onClick={() => onSave ? void save() : downloadSource()}>{!onSave && Object.keys(projectDocuments.current).length > 1 ? 'Save workspace' : 'Save source'}</button><button className="build-action" disabled={buildStarted !== null || !!busy} title="Build project · Ctrl+Enter" onClick={() => void rebuildSource()}>{buildStarted !== null ? `Building · ${elapsedSeconds.toFixed(1)} s` : 'Build'}</button><ExportPicker formats={model?.exportFormats ?? []} disabled={!model || !!busy || buildStarted !== null} open={exportOpen} onOpen={setExportOpen} onExport={exportSelected} /></nav>
+      <nav className="workspace-tabs" aria-label="Workspace"><button aria-label="Undo" title="Undo · Ctrl+Z" disabled={!historyState.undo || !!busy || !!pendingAuthoring} onClick={() => void runHistory('undo')}>↶</button><button aria-label="Redo" title="Redo · Ctrl+Shift+Z" disabled={!historyState.redo || !!busy || !!pendingAuthoring} onClick={() => void runHistory('redo')}>↷</button><button onClick={() => setExamplesOpen(true)}>Examples</button><button onClick={() => fileInput.current?.click()}>Open file</button><button onClick={() => fileInput.current?.click()} title="Import a supported canonical STEP part as immutable geometry">Import STEP</button><button title="Download source, or a portable workspace with all imported assets · Ctrl+S" onClick={() => onSave ? void save() : downloadSource()}>{!onSave && Object.keys(projectDocuments.current).length > 1 ? 'Save workspace' : 'Save source'}</button><button className="build-action" disabled={buildStarted !== null || !!busy || !!pendingAuthoring} title="Build project · Ctrl+Enter" onClick={() => void rebuildSource()}>{buildStarted !== null ? `Building · ${elapsedSeconds.toFixed(1)} s` : 'Build'}</button><ExportPicker formats={model?.exportFormats ?? []} disabled={!model || !!busy || buildStarted !== null || !!pendingAuthoring} open={exportOpen} onOpen={setExportOpen} onExport={exportSelected} /></nav>
       <div className="toolbar">
         <button className="palette-trigger" onClick={() => setPaletteOpen(true)}>⌕ <span>Command palette</span><kbd>Ctrl+Shift+P</kbd></button>
       </div>
@@ -702,30 +757,44 @@ export function HeliosApp({ project, initialWorkspace, onShowcase, onSave, onPub
         <div className="editor-pane" inert={!!sketch}>
         <div className="editor-mode"><div className="segmented" role="tablist" aria-label="Editing view">
           <button role="tab" aria-selected={editorMode === 'graph'} className={editorMode === 'graph' ? 'active' : ''} onClick={() => setEditorMode('graph')}>Graph</button>
-          <button role="tab" aria-selected={editorMode === 'source'} className={editorMode === 'source' ? 'active' : ''} onClick={() => setEditorMode('source')}>Source</button>
+          <button role="tab" disabled={!!pendingAuthoring} aria-selected={editorMode === 'source'} className={editorMode === 'source' ? 'active' : ''} onClick={() => setEditorMode('source')}>Source</button>
         </div></div>
-        {editorMode === 'graph' && <GraphPanel outline={outline} error={outlineError} diagnostics={shownDiagnostics} selection={graphSelection} theme={theme}
+        {editorMode === 'graph' && <GraphPanel pending={!!pendingAuthoring} outline={outline} error={outlineError} diagnostics={shownDiagnostics} selection={graphSelection} theme={theme}
           onSelect={(unitId, row, graph) => selectFromGraph(unitId, row, graph)} onOpenSource={(unitId, row, graph) => openFromGraph(unitId, row, graph)}
           authoring={graphAuthoring()} assembly={assemblyView()}
           inspector={<div className="graph-side">
+            {pendingAuthoring && outline ? <AuthoringPanel pending={pendingAuthoring} source={source} sourceName={sourceName} outline={outline} palette={palette}
+              runtime={runtime} assembly={assemblyGraph} jointKinds={jointKinds} selection={previewModel ? null : selectedSelection}
+              documents={projectDocuments.current} root={projectRoot.current ?? sourceName} onCancel={() => setPendingAuthoring(null)}
+              onPreview={setPreviewModel} onSketch={() => { setPendingAuthoring(null); newSketch('Rect2'); }}
+              onInspect={id => { setPendingAuthoring(null); selectGraphNode(id); }}
+              onApply={(result, label) => {
+                if (pendingAuthoring.revision !== sourceRevisionRef.current) { pushOutput('Source changed; prepare the edit again.'); setPendingAuthoring(null); return; }
+                setPendingAuthoring(null); setPreviewModel(null);
+                if (!result.changed) return;
+                pendingGraphSelection.current = result.nodes.at(-1) ?? pendingAuthoring.node;
+                applyGraphChange({ ...result.edit, before: source.slice(result.edit.start, result.edit.start + result.edit.length), next: result.text },
+                  { nodeId: result.nodes.at(-1) ?? pendingAuthoring.node ?? '', field: null, label, warnings: result.warnings });
+              }} /> : <>
             <div className="graph-side-tabs" role="tablist" aria-label="Side panel">
               <button role="tab" aria-selected={sideTab === 'selection'} className={sideTab === 'selection' ? 'active' : ''} onClick={() => setSideTab('selection')}>Selection</button>
               <button role="tab" aria-selected={sideTab === 'parameters'} className={sideTab === 'parameters' ? 'active' : ''} onClick={() => setSideTab('parameters')}>
                 Parameters{parameterNodes(outline).length > 0 && <small>{parameterNodes(outline).length}</small>}</button>
             </div>
             {sideTab === 'selection'
-              ? <NodeInspector {...inspectorProps()} {...graphActions} onCommit={commitGraphField} onRevert={revertGraphEdit} onSelectNode={selectGraphNode}
+              ? <NodeInspector {...inspectorProps()} {...graphActions} actions={contextActions()} onCommit={commitGraphField} onRevert={revertGraphEdit} onSelectNode={selectGraphNode}
                   onOpenSource={span => { setEditorMode('source'); navigateSource({ source: sourceName, start: span.start, length: span.length, line: 1, column: 1 }); }} />
               : <ParametersSheet outline={outline} edit={graphEdit && graphEdit.revision === sourceRevision ? graphEdit : null}
                   readOnly={inspectorProps().readOnly} onCommit={commitGraphField} onRename={graphActions.onRename} onDelete={graphActions.onDelete}
-                  onAdd={parameterActions.onAdd} onSelect={selectGraphNode} />}
+                  onAdd={parameterActions.onAdd} onSelect={selectGraphNode} />}</>}
           </div>} />}
         <div className="source-host" hidden={editorMode !== 'source'}>
-        <SourcePanel ref={sourcePanel} disabled={!!busy} fileName={sourceName} dirty={dirtyFiles.has(sourceName)} source={source} diagnostics={shownDiagnostics.filter(item => !item.source || item.source.source === sourceName)} runtime={runtime} model={model} selectedSelector={selectedSelection?.selector} theme={theme} onSourceChange={value => editSource(value)} onCursorChange={onSourceCursor} onRebuild={() => void rebuildSource()} onLiveDiagnostics={setLiveDiagnostics} onLanguageError={error => { setDiagnostics([toDiagnostic(error, 'FIRMAMENT-FORMAT')]); pushOutput(`Format refused · ${error instanceof Error ? error.message : String(error)}`); }} onDiagnosticClick={diagnostic => { if (diagnostic.source) setSelectedEntityId(null); }} />
+        <SourcePanel ref={sourcePanel} onHistoryState={setHistoryState} onHistoryApplied={value => { setGraphEdit(null); void submitBuild(value, sourceName, sourceRevisionRef.current); }} disabled={!!busy} fileName={sourceName} dirty={dirtyFiles.has(sourceName)} source={source} diagnostics={shownDiagnostics.filter(item => !item.source || item.source.source === sourceName)} runtime={runtime} model={model} selectedSelector={selectedSelection?.selector} theme={theme} onSourceChange={value => editSource(value)} onCursorChange={onSourceCursor} onRebuild={() => void rebuildSource()} onLiveDiagnostics={setLiveDiagnostics} onLanguageError={error => { setDiagnostics([toDiagnostic(error, 'FIRMAMENT-FORMAT')]); pushOutput(`Format refused · ${error instanceof Error ? error.message : String(error)}`); }} onDiagnosticClick={diagnostic => { if (diagnostic.source) setSelectedEntityId(null); }} />
         </div>
         </div>
         <ResizeHandle axis="horizontal" label="Resize source and viewport" value={shellLayout.editorPercent} onResize={shellLayout.resizeEditor} />
         <div className={`viewport-pane${ghosted ? ' ghosted' : ''}`}>
+        {previewModel && <div className="authoring-preview-banner" role="status">Preview · source unchanged · Apply or Cancel</div>}
         <div className="viewport-toolbar" inert={!!sketch}>
           <button title="Edit a Profile with source-owned dimensions" disabled={!!busy || buildStarted !== null} onClick={() => setSketch({ node: null })}>Sketch</button>
           <button title="Show retained geometric Concept Structs as gold wireframes; disabled when none are available" aria-pressed={showConcepts}
@@ -733,7 +802,7 @@ export function HeliosApp({ project, initialWorkspace, onShowcase, onSave, onPub
           <div><button title="Front view" onClick={() => namedView('front')}>Front</button><button title="Top view" onClick={() => namedView('top')}>Top</button><button title="Right view" onClick={() => namedView('right')}>Right</button><button title="Isometric view" onClick={() => namedView('iso')}>Iso</button><button title="Fit model · F" onClick={() => setViewCommand(`fit-${Date.now()}`)}>Fit</button><button title="Fit selection" disabled={!selectedEntityId} onClick={() => setViewCommand(`fitselection-${Date.now()}`)}>Fit selection</button></div>
           <div><select aria-label="Display mode" value={displayMode} onChange={event => setDisplayMode(event.target.value as DisplayMode)}><option value="shaded">Shaded</option><option value="edges">Shaded with edges</option><option value="wireframe">Wireframe</option></select><button aria-label="Selection mode" title="Switch face or edge selection" onClick={() => { setSelectionMode(value => value === 'face' ? 'edge' : 'face'); setDisplayMode('edges'); }}>{selectionMode === 'face' ? 'Faces' : 'Edges'}</button><button title="Toggle camera projection" onClick={() => setViewMode(value => value === 'perspective' ? 'orthographic' : 'perspective')}>{viewMode === 'perspective' ? 'Perspective' : 'Orthographic'}</button></div>
         </div>
-        <Viewport measurementDisabledReason={sketch ? 'Close the sketch workspace before measuring the built solid.' : busy || displayRevision !== sourceRevision ? "Build the current source successfully before measuring." : undefined} showConcepts={showConcepts} pose={pose} busyMessage={busy === 'Worker failed' ? null : busy} errorMessage={shownDiagnostics.some(item => item.severity === 'error') ? (model ? 'Build failed. The last valid model remains visible; see Problems for details.' : 'Build needs attention. See Problems for the compiler diagnostic.') : null} model={model} selectedEntityId={selectedEntityId} selectedTopologyId={selectedFaceId} theme={theme} displayMode={displayMode} viewMode={viewMode} viewCommand={viewCommand} selectionMode={selectionMode} onSelect={select} captureRef={capturePreview} />
+        <Viewport measurementDisabledReason={previewModel ? 'Apply or cancel the preview before measuring.' : sketch ? 'Close the sketch workspace before measuring the built solid.' : busy || displayRevision !== sourceRevision ? "Build the current source successfully before measuring." : undefined} showConcepts={showConcepts} pose={previewModel ? null : pose} busyMessage={busy === 'Worker failed' ? null : busy} errorMessage={shownDiagnostics.some(item => item.severity === 'error') ? (model ? 'Build failed. The last valid model remains visible; see Problems for details.' : 'Build needs attention. See Problems for the compiler diagnostic.') : null} model={previewModel ?? model} selectedEntityId={previewModel ? null : selectedEntityId} selectedTopologyId={previewModel ? null : selectedFaceId} theme={theme} displayMode={displayMode} viewMode={viewMode} viewCommand={previewModel ? `fit-preview-${previewModel.id}` : viewCommand} selectionMode={selectionMode} onSelect={previewModel ? () => {} : select} captureRef={capturePreview} />
         {sketch && <SketchPanel revision={sourceRevision} node={sketch.node} callbacks={{
           project: node => runtime.sketch(source, node, sourceName, String(sourceRevision)),
           preview: async request => {
@@ -756,10 +825,11 @@ export function HeliosApp({ project, initialWorkspace, onShowcase, onSave, onPub
           },
           source: span => { setSketch(null); setEditorMode('source'); navigateSource({ source: sourceName, ...span, line: 1, column: 1 }); },
           close: () => setSketch(null),
+          createPart: () => newSketch('Rect2'),
         }} />}
         {model?.motions?.length ? <MotionStrip clips={model.motions} revision={model.revision} onPose={setPose}
           sample={(motion, t) => runtime.sampleMotion(motion, t)} coverage={next => poseCoverage(model.mesh, next)} /> : null}
-        <div className="viewport-caption"><span>{model?.name ?? workspaceTitle}</span><span>{ghosted ? 'Last good model · the current draft does not build' : displayRevision !== sourceRevision && model ? 'Last valid model · source changed' : model ? 'Compiled geometry' : 'Waiting for geometry'}</span></div>
+        <div className="viewport-caption"><span>{model?.name ?? workspaceTitle}</span><span>{previewModel ? 'Preview · source unchanged' : ghosted ? 'Last good model · the current draft does not build' : displayRevision !== sourceRevision && model ? 'Last valid model · source changed' : model ? 'Compiled geometry' : 'Waiting for geometry'}</span></div>
         {welcomeHint && <div className="workflow-hint"><span><b>Source → Build → Geometry</b> Edit on the left. Ctrl+Enter builds. Drag to orbit; scroll to zoom.</span><button aria-label="Dismiss workflow hint" onClick={() => { setWelcomeHint(false); localStorage.setItem('helios-workflow-understood', '1'); }}>×</button></div>}
         </div>
       </div>

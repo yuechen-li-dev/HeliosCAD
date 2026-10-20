@@ -20,6 +20,7 @@ export interface FieldSuggestion { readonly name: string; readonly hint: string;
 type Structural = Promise<string | null>;
 
 interface Props {
+  actions?: React.ReactNode;
   node: OutlineNode | null;
   nodes: ReadonlyMap<string, OutlineNode>;
   external: { title: string; document: string } | null;
@@ -28,6 +29,8 @@ interface Props {
   focusField: string | null;
   edit: GraphEditState | null;
   problems: readonly Diagnostic[];
+  /** Document-level build failures when the producer cannot locate them on this node. */
+  buildProblems?: readonly Diagnostic[];
   readOnly: string | null;
   onCommit(node: OutlineNode, field: OutlineField, text: string): string | null;
   onAddField(node: OutlineNode, name: string, value: string): Structural;
@@ -99,7 +102,7 @@ export function argumentSuggestions(node: OutlineNode, signature: readonly Outli
 }
 
 export function NodeInspector(props: Props) {
-  const { node, nodes, external, schema, completion, focusField, edit, problems, readOnly, onCommit, onAddField, onRemoveField, onRevert, onSelectNode, onOpenSource, onPromote, onExtract } = props;
+  const { node, nodes, external, schema, completion, focusField, edit, problems, buildProblems = [], readOnly, onCommit, onAddField, onRemoveField, onRevert, onSelectNode, onOpenSource, onPromote, onExtract } = props;
   if (external) return <aside className="node-inspector" aria-label="Node inspector">
     <header className="node-head category-external"><strong>{external.title}</strong><small>Defined in {external.document}</small></header>
     <p className="node-note">This part comes from another file. Double-click it in the graph to open that file and edit it there.</p>
@@ -120,6 +123,7 @@ export function NodeInspector(props: Props) {
 
   return <aside className="node-inspector" aria-label="Node inspector">
     <NodeHead {...props} node={node} />
+    {props.actions}
     {parent && parent.kind !== 'Model' && parent.kind !== 'model' && <button className="node-parent" onClick={() => onSelectNode(parent.id)}>↑ {parent.name ?? parent.kind}</button>}
     {readOnly && <p className="node-note">{readOnly}</p>}
     {mine?.status === 'failed' && <div className="node-draft" role="alert">
@@ -127,7 +131,9 @@ export function NodeInspector(props: Props) {
       <p>{mine.label}. The viewport still shows the last good model.</p>
       {problems.some(item => item.severity === 'error')
         ? problems.filter(item => item.severity === 'error').slice(0, 2).map((item, index) => <p key={index} className="node-draft-message">{item.message}</p>)
-        : <p>The compiler's diagnostic is in Problems.</p>}
+        : buildProblems.some(item => item.severity === 'error')
+          ? <><p>Build error · not located on this declaration</p>{buildProblems.filter(item => item.severity === 'error').slice(0, 2).map((item, index) => <p key={index} className="node-draft-message">{item.message}</p>)}</>
+          : <p>The compiler's diagnostic is in Problems.</p>}
       <button onClick={onRevert}>Revert to last good</button>
     </div>}
     {mine && mine.warnings.length > 0 && <div className="node-warnings" role="status">{mine.warnings.map((w, i) => <p key={i}>{w}</p>)}</div>}
@@ -238,7 +244,7 @@ export function FieldRow({ field, label: shown, description, focus, disabled, st
   const [error, setError] = useState<string | null>(null);
   const [promoting, setPromoting] = useState(false);
   // Only a literal dimension can become a parameter: a whole quantity, or a numeric component of a list.
-  const promotable = !!onPromote && (editor.kind === 'quantity' || (editor.kind === 'vector' && editor.parts.some(p => p.kind === 'quantity')));
+  const promotable = !!onPromote && (editor.kind === 'quantity' || (editor.kind === 'vector' && !editor.pointType && editor.parts.some(p => p.kind === 'quantity')));
   const first = useRef<HTMLInputElement>(null);
   // Enter commits and the blur that follows must not commit the same text again
   // before the outline catches up with the new source.
@@ -259,7 +265,7 @@ export function FieldRow({ field, label: shown, description, focus, disabled, st
     {!disabled && onRemove && <button className="node-field-remove" aria-label={`Remove ${field.name}`} title={`Remove ${field.name}`}
       onClick={() => void onRemove().then(setError)}>×</button>}
   </span>;
-  const promote = promoting && editor.kind !== 'text' ? <PromoteForm editor={editor} defaultName={defaultParameter}
+  const promote = promoting && promotable ? <PromoteForm editor={editor} defaultName={defaultParameter}
     onCancel={() => setPromoting(false)} onPromote={async (axis, name) => { const refused = await onPromote!(axis, name); if (!refused) setPromoting(false); return refused; }} /> : null;
   const state = error ? <small className="node-field-state error" role="alert">{error}</small>
     : status === 'building' ? <small className="node-field-state">Building…</small>
@@ -273,13 +279,13 @@ export function FieldRow({ field, label: shown, description, focus, disabled, st
     const unit = sharedUnit(editor.parts);
     const firstQuantity = editor.parts.findIndex(p => p.kind === 'quantity');
     return <div className={rowClass}>{label}
-      <div className="node-vector">{editor.parts.map((part, index) => part.kind === 'name'
+      <div className="node-vector" role="group" aria-label={field.name}>{editor.parts.map((part, index) => part.kind === 'name'
         ? <button key={index} className="node-parameter-chip" title={`${axes[index]} comes from the parameter ${part.name}`} onClick={() => onParameter(part.name)}>
             <i>{axes[index]}</i>{part.name}</button>
         : <QuantityInput key={index} id={index === firstQuantity ? `field-${field.span.start}` : undefined}
             inputRef={index === firstQuantity ? first : undefined} axis={axes[index]} value={part.value} disabled={disabled} hideUnit={unit !== null}
             onCommit={text => { const next = parseQuantity(text); if (!next) { setError(`${axes[index]} is a number with a unit.`); return; }
-              commit(vectorText(editor.parts.map((item, i) => i === index ? { kind: 'quantity', value: next } : item))); }} />)}
+              commit(vectorText(editor.parts.map((item, i) => i === index ? { kind: 'quantity', value: next } : item), editor.pointType)); }} />)}
         {unit && <span className="node-unit node-vector-unit">{unit}</span>}</div>{state}{promote}</div>;
   }
   return <div className={rowClass}>{label}
