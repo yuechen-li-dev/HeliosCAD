@@ -88,6 +88,14 @@ export class WebSdkCadRuntime implements CadRuntime {
     const cad = await this.initializeLanguage();
     return cad.language.palette();
   }
+  async sketch(source: string, node: string | null, sourceName: string, revision: string) {
+    const cad = await this.initializeLanguage();
+    return cad.language.sketch(source, node, { sourceName, sourceRevision: revision });
+  }
+  async sketchEdit(source: string, edit: import('@aetheris/cad').SketchEditRequest, sourceName: string, revision: string) {
+    const cad = await this.initializeLanguage();
+    return cad.language.sketchEdit(source, edit, { sourceName, sourceRevision: revision });
+  }
   async edit(source: string, operations: readonly LanguageEditOperation[], sourceName: string, revision: string) {
     const cad = await this.initializeLanguage();
     return cad.language.edit(source, operations, { sourceName, sourceRevision: revision });

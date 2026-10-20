@@ -452,6 +452,8 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 
 /* G6: motion playback along the bottom of the viewport. */
 .viewport-pane { position: relative; }
+.workbench.sketch-open { position: relative; }
+.workbench.sketch-open > .viewport-pane { position: static; }
 .motion-strip { position: absolute; left: 12px; right: 12px; bottom: 34px; z-index: 6; display: grid; gap: 6px; padding: 8px 10px; border: 1px solid var(--border); border-radius: var(--radius-card);
   background: color-mix(in srgb, var(--panel-bg) 92%, transparent); box-shadow: 0 6px 20px var(--shadow); backdrop-filter: blur(6px); }
 .motion-controls { display: flex; align-items: center; gap: 10px; min-width: 0; }
