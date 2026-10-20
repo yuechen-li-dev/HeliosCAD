@@ -75,7 +75,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 button { border: 0; }
 button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 1px solid var(--accent); outline-offset: -1px; }
 .helios-app { height: 100%; display: grid; grid-template-rows: 54px minmax(0,1fr) 26px; background: var(--app-bg); color: var(--text-primary); font-size: var(--type-ui); }
-.topbar { display: flex; align-items: stretch; background: var(--topbar); border-bottom: 1px solid var(--border); box-shadow: 0 2px 12px var(--shadow); z-index: 5; }
+.topbar { display: flex; align-items: stretch; background: var(--topbar); border-bottom: 1px solid var(--border); box-shadow: 0 2px 12px var(--shadow); z-index: 40; }
 .brand { width: 205px; display: flex; align-items: center; gap: 10px; padding: 0 14px; border-right: 1px solid var(--border); letter-spacing: .13em; }
 .brand-mark { display: grid; place-items: center; width: 29px; height: 29px; border: 1px solid var(--accent); color: var(--accent); font: 600 17px var(--font-family); transform: rotate(45deg); }
 .brand-mark::first-letter { transform: rotate(-45deg); }

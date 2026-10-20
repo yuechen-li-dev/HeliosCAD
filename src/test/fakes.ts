@@ -10,6 +10,11 @@ export function fakeModel(overrides: Partial<ModelSession> = {}): ModelSession {
   const properties = [width];
   const model = {
     id: 'session:1', name: 'WebBracket', revision: 1, source: '', sourceName: 'bracket.firmament',
+    exportFormats: [
+      { format: 'step', label: 'STEP AP242', description: 'Exact geometry', available: true },
+      { format: 'glb', label: 'glTF / GLB', description: 'Static scene', available: true },
+      { format: 'pdf', label: 'PDF drawing', description: 'Dimensioned part', available: true },
+    ],
     tree: { rootId: root.id, nodes }, properties,
     mesh: { schema: 'aetheris/display-mesh/1', name: 'WebBracket', units: 'mm', definitions: [{ id: 'def:plate', identity: 'plate', positions: new Float64Array(), normals: new Float64Array(), indices: new Uint32Array(), ranges: [{ startTriangle: 0, triangleCount: 12, faceId: 'face:top', semanticEntityId: plate.id }] }], occurrences: [{ id: 'occ:plate', path: '/Plate', definitionId: 'def:plate', semanticEntityId: plate.id, transform: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1] }] },
     diagnostics: [] as readonly Diagnostic[], changes: { changedEntityIds: [], addedEntityIds: [], removedEntityIds: [], meshChanged: false, diagnosticsChanged: false },

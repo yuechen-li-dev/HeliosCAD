@@ -1,6 +1,10 @@
 # HeliosCAD
 
-Helios is a human-facing 3D design studio using the public `@aetheris/cad` browser runtime. Leviathan owns sign-in, accounts, project ownership, revision metadata, and object storage. Firmament source is the saved project truth; the editor rebuilds geometry and exports STEP from that source.
+Helios is a human-facing 3D design studio using the public `@aetheris/cad` browser runtime. Leviathan owns sign-in, accounts, project ownership, revision metadata, and object storage. Firmament source is the saved project truth; the editor rebuilds geometry and exports engineering and presentation artifacts from that source.
+
+The **Export** picker offers STEP, GLB, USDA, STL, OBJ and PDF/SVG/PPTX drawings.
+Choose one format for a direct download or several for a ZIP. Availability follows
+the compiled product kind; see [export formats and limits](docs/public/exports.md).
 
 ## Concept Struct visualization
 

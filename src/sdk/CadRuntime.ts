@@ -11,6 +11,7 @@ export interface CadRuntime {
   setProperty(id: string, value: UnitValue): ReturnType<ModelSession['setProperty']>;
   rebuild(): ReturnType<ModelSession['rebuild']>;
   exportSTEP(): Promise<Uint8Array>;
+  exportArtifacts(formats: Parameters<ModelSession['exportArtifacts']>[0]): ReturnType<ModelSession['exportArtifacts']>;
   dispose(): Promise<void>;
   restart(): Promise<RuntimeInfo>;
   session(): ModelSession | null;
@@ -65,6 +66,7 @@ export class WebSdkCadRuntime implements CadRuntime {
   setProperty(id: string, value: UnitValue) { return this.requireModel().setProperty(id, value); }
   rebuild() { return this.requireModel().rebuild(); }
   exportSTEP() { return this.requireModel().exportSTEP(); }
+  exportArtifacts(formats: Parameters<ModelSession['exportArtifacts']>[0]) { return this.requireModel().exportArtifacts(formats); }
   session() { return this.model; }
   async complete(source: string, offset: number, sourceName: string, revision: string) {
     const cad = await this.initializeLanguage();

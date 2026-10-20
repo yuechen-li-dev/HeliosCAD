@@ -34,6 +34,8 @@ import { assembliesOf, buildAssemblyGraph, jointOperation, type AssemblyEnd } fr
 import type { AssemblyView } from '../graph/GraphPanel';
 import { MotionStrip } from '../viewport/MotionStrip';
 import { poseCoverage } from '../viewport/pose';
+import type { ExportFormat } from '@aetheris/cad';
+import { ExportPicker } from './ExportPicker';
 
 type UtilityTab = { kind: 'files' } | { kind: 'inspector' } | { kind: 'examples' } | { kind: 'llm' };
 
@@ -44,6 +46,7 @@ export function HeliosApp({ project, initialWorkspace, onShowcase, onSave, onPub
   const shellLayout = useShellLayout(editorMode);
   const [model, setModel] = useState<ModelSession | null>(null);
   const [showConcepts, setShowConcepts] = useState(false);
+  const [exportOpen, setExportOpen] = useState(false);
   const [semanticSchema, setSemanticSchema] = useState<SemanticSchema | null>(null);
   const [fieldProjection, setFieldProjection] = useState<ConstructProjection | null>(null);
   const initialName = initialWorkspace?.root ?? (project ? `${project.name}.firmament` : 'editable-bracket.firmament');
@@ -518,7 +521,8 @@ export function HeliosApp({ project, initialWorkspace, onShowcase, onSave, onPub
     } catch (error) { setDiagnostics([toDiagnostic(error, 'HELIOS-FIELD-REWRITE')]); if (isWorkerFailure(error)) setBusy('Worker failed'); return false; }
     finally { setBusy(value => value === 'Rewriting source' ? null : value); }
   };
-  const exportStep = async () => {
+  const exportSelected = async (formats: readonly ExportFormat[]) => {
+    if (busy || buildStarted !== null) return;
     const started = performance.now();
     const revision = sourceRevisionRef.current;
     if (displayRevision !== revision || buildStarted !== null) {
@@ -526,9 +530,18 @@ export function HeliosApp({ project, initialWorkspace, onShowcase, onSave, onPub
     }
     if (revision !== sourceRevisionRef.current) return;
     setBusy('Exporting');
-    pushOutput(`STEP export started · ${sourceName}`);
-    try { const bytes = await runtime.exportSTEP(); if (revision !== sourceRevisionRef.current) return; downloadBlob(new Blob([Uint8Array.from(bytes).buffer], { type: 'model/step' }), `${stripExtension(sourceName)}.step`); setLastTiming({ label: 'STEP prepared in', milliseconds: performance.now() - started }); pushOutput(`STEP download started · ${bytes.length} bytes · ${(performance.now() - started).toFixed(0)} ms`); }
-    catch (error) { setDiagnostics([toDiagnostic(error, 'HELIOS-EXPORT')]); pushOutput(`STEP export failed · ${error instanceof Error ? error.message : String(error)}`); if (isWorkerFailure(error)) setBusy('Worker failed'); }
+    pushOutput(`Export started · ${formats.join(', ')} · ${projectRoot.current ?? sourceName}`);
+    try {
+      const files = await runtime.exportArtifacts(formats);
+      if (revision !== sourceRevisionRef.current) { pushOutput('Export discarded · source changed while preparing files.'); return; }
+      for (const file of files) {
+        downloadBlob(new Blob([Uint8Array.from(file.bytes).buffer], { type: file.mediaType }), file.fileName);
+        pushOutput(`Download started · ${file.fileName} · ${file.bytes.length} bytes`);
+      }
+      setExportOpen(false);
+      setLastTiming({ label: 'Export prepared in', milliseconds: performance.now() - started });
+    }
+    catch (error) { setDiagnostics([toDiagnostic(error, 'HELIOS-EXPORT')]); pushOutput(`Export failed · ${error instanceof Error ? error.message : String(error)}`); if (isWorkerFailure(error)) setBusy('Worker failed'); }
     finally { setBusy(value => value === 'Exporting' ? null : value); }
   };
   const newDocument = (value: string, name: string) => {
@@ -605,7 +618,7 @@ export function HeliosApp({ project, initialWorkspace, onShowcase, onSave, onPub
     { id: 'insert-hole', label: 'Insert Hole', detail: 'Append a centered through hole', run: addHole },
     { id: 'rebuild', label: 'Rebuild model', detail: 'Ctrl+Enter', run: () => void rebuildSource() },
     { id: 'format', label: 'Format document', detail: 'Aetheris canonical formatter', run: () => void sourcePanel.current?.formatDocument() },
-    ...(model?.mesh.schema !== 'aetheris/scene-display-mesh/1' ? [{ id: 'export', label: 'Export STEP', run: () => void exportStep() }] : []),
+    ...(model ? [{ id: 'export', label: 'Export model…', run: () => setExportOpen(true) }] : []),
     { id: 'save', label: 'Save', detail: onSave ? 'Save project source' : 'Download Firmament source', run: () => onSave ? void save() : downloadSource() },
     { id: 'open', label: 'Open file', run: () => fileInput.current?.click() },
     { id: 'new', label: 'New Firmament file', detail: 'Start a new single-file model', run: () => loadSample('new') },
@@ -618,7 +631,7 @@ export function HeliosApp({ project, initialWorkspace, onShowcase, onSave, onPub
     <header className="topbar">
       <button className="brand" onClick={() => project ? location.assign('/') : onShowcase ? onShowcase() : setExamplesOpen(true)} aria-label="Helios home"><span className="helios-symbol">H</span><div><strong>HELIOS</strong><small>by Aetheris</small></div></button>
       <div className="workspace-identity"><strong>{workspaceTitle}</strong><small>{project ? 'Saved project' : 'Local workspace'} · Firmament</small></div>
-      <nav className="workspace-tabs" aria-label="Workspace"><button onClick={() => setExamplesOpen(true)}>Examples</button><button onClick={() => fileInput.current?.click()}>Open file</button><button title="Download the active Firmament document · Ctrl+S" onClick={() => onSave ? void save() : downloadSource()}>Save source</button><button className="build-action" disabled={buildStarted !== null || !!busy} title="Build project · Ctrl+Enter" onClick={() => void rebuildSource()}>{buildStarted !== null ? `Building · ${elapsedSeconds.toFixed(1)} s` : 'Build'}</button>{model?.mesh.schema !== 'aetheris/scene-display-mesh/1' && <button disabled={!model || !!busy} onClick={() => void exportStep()}>Export STEP</button>}</nav>
+      <nav className="workspace-tabs" aria-label="Workspace"><button onClick={() => setExamplesOpen(true)}>Examples</button><button onClick={() => fileInput.current?.click()}>Open file</button><button title="Download the active Firmament document · Ctrl+S" onClick={() => onSave ? void save() : downloadSource()}>Save source</button><button className="build-action" disabled={buildStarted !== null || !!busy} title="Build project · Ctrl+Enter" onClick={() => void rebuildSource()}>{buildStarted !== null ? `Building · ${elapsedSeconds.toFixed(1)} s` : 'Build'}</button><ExportPicker formats={model?.exportFormats ?? []} disabled={!model || !!busy || buildStarted !== null} open={exportOpen} onOpen={setExportOpen} onExport={exportSelected} /></nav>
       <div className="toolbar">
         <button className="palette-trigger" onClick={() => setPaletteOpen(true)}>⌕ <span>Command palette</span><kbd>Ctrl+Shift+P</kbd></button>
       </div>
@@ -702,7 +715,7 @@ function readEditorMode(): 'graph' | 'source' {
 function stripExtension(name: string) { return name.replace(/\.[^.]+$/, ''); }
 function snapshotSession(session: ModelSession | null) { return session ? Object.assign(Object.create(Object.getPrototypeOf(session)), session) as ModelSession : null; }
 function isTyping(target: EventTarget | null) { return target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement || target instanceof Node && !!(target as Element).parentElement?.closest('.monaco-editor'); }
-function toDiagnostic(error: unknown, code: string): Diagnostic { return { severity: 'error', code, message: error instanceof Error ? error.message : String(error), details: error instanceof Error && 'details' in error && typeof error.details === 'string' ? error.details : undefined }; }
+function toDiagnostic(error: unknown, code: string): Diagnostic { return { severity: 'error', code: error && typeof error === 'object' && 'code' in error && typeof error.code === 'string' ? error.code : code, message: error instanceof Error ? error.message : String(error), details: error instanceof Error && 'details' in error && typeof error.details === 'string' ? error.details : undefined }; }
 function isWorkerFailure(error: unknown) { return !!error && typeof error === 'object' && 'code' in error && ['worker-error', 'worker-message-error', 'worker-terminated', 'worker-protocol', 'worker-revision'].includes(String(error.code)); }
 function downloadText(value: string, name: string) { downloadBlob(new Blob([value], { type: 'text/plain' }), name); }
 function downloadBlob(blob: Blob, name: string) { const url = URL.createObjectURL(blob); const anchor = document.createElement('a'); anchor.href = url; anchor.download = name; anchor.click(); setTimeout(() => URL.revokeObjectURL(url), 0); }
