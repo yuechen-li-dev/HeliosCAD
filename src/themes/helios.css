@@ -484,3 +484,15 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .viewport-toolbar { flex-wrap: wrap; justify-content: flex-start; gap: 3px; padding-block: 3px; }
 .viewport-toolbar > div { flex-wrap: wrap; }
 .viewport-pane { grid-template-rows: auto minmax(0, 1fr) auto; }
+
+/* Pattern coordinates are compiler-projected local layout values. */
+.pattern-editor h3 { margin: 18px 0 8px; font-size: 12px; text-transform: uppercase; letter-spacing: .07em; }
+.pattern-editor fieldset { min-width: 0; border: 1px solid var(--border, #ddd); margin: 8px 0; padding: 10px; }
+.pattern-editor legend { font-size: 11px; }
+.pattern-editor input, .pattern-editor select, .pattern-editor textarea { width: 100%; min-width: 0; box-sizing: border-box; }
+.pattern-editor textarea { font: 11px/1.5 monospace; resize: vertical; }
+.pattern-editor .pattern-table { overflow: auto; max-height: 260px; }
+.pattern-editor table { width: 100%; border-collapse: collapse; font-size: 10px; }
+.pattern-editor td, .pattern-editor th { text-align: left; border-bottom: 1px solid var(--border, #ddd); padding: 6px; overflow-wrap: anywhere; }
+.pattern-point-preview { width: 100%; height: 140px; background: #b5871510; border: 1px solid #b5871544; }
+.pattern-point-preview circle { fill: #b58715; stroke: #ffdf7d; stroke-width: .4px; vector-effect: non-scaling-stroke; }

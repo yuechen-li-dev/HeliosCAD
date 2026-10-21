@@ -3,10 +3,11 @@ import type { Diagnostic, LanguageEdit, LanguageEditOperation, LanguageOutline, 
 import type { CadRuntime } from '../sdk/CadRuntime';
 import { FieldRow } from './NodeInspector';
 import { parseQuantity, spliceField } from './fieldEdit';
+import { PatternEditor } from './PatternEditor';
 import { bodyParent, featureTarget, paletteOperation, uniqueName } from './graphAuthoring';
 import { jointOperations, type AssemblyGraph, type AssemblyEnd } from './assemblyGraph';
 
-export type AuthoringAction = { kind: 'base' | 'pattern' | 'extrude' | 'pocket' | 'placement' | 'mate'; item?: never; baseId?: string }
+export type AuthoringAction = { kind: 'base' | 'patternEditor' | 'pattern' | 'extrude' | 'pocket' | 'placement' | 'mate'; item?: never; baseId?: string }
   | { kind: 'feature'; item: PaletteItem };
 export interface PendingAuthoring { action: AuthoringAction; node: string | null; revision: number; mate?: { kind: string; a: AssemblyEnd; b: AssemblyEnd; existing?: string } }
 
@@ -18,7 +19,7 @@ interface Props {
   onInspect?(node: string): void;
 }
 
-const titles = { base: 'Choose base shape', feature: 'Place feature', pattern: 'Pattern a hole', extrude: 'Extrude a profile', pocket: 'Create pocket', placement: 'Place component', mate: 'Add mate' };
+const titles = { base: 'Choose base shape', feature: 'Place feature', pattern: 'Grid a seed hole', patternEditor: 'Edit Patterns', extrude: 'Extrude a profile', pocket: 'Create pocket', placement: 'Place component', mate: 'Add mate' };
 
 /** A pending transaction. Only Preview compiles; only Apply changes the source.
  * The compiler owns every structural operation and geometry admission. */
@@ -68,6 +69,7 @@ export function AuthoringPanel(props: Props) {
   const [state, setState] = useState<'editing' | 'preparing' | 'previewed' | 'failed'>('editing');
   const [diagnostics, setDiagnostics] = useState<readonly Diagnostic[]>([]);
   const [error, setError] = useState('');
+  const [patternOperations, setPatternOperations] = useState<readonly LanguageEditOperation[]>([]);
   const [prepared, setPrepared] = useState<LanguageEdit | null>(null);
   const generation = useRef(0), preview = useRef<ModelSession | null>(null);
   const show = useRef(props.onPreview); show.current = props.onPreview;
@@ -106,6 +108,7 @@ export function AuthoringPanel(props: Props) {
         if ('reason' in operation) throw new Error(operation.reason);
         return [{ ...operation, name } as LanguageEditOperation];
       }
+      case 'patternEditor': { if (!patternOperations.length) throw new Error('Change a layout or recipe, or choose New Pattern.'); return patternOperations; }
       case 'pattern': return [{ kind: 'patternFeature', node: seed, name, grid: { columns: numeric('columns'), rows: numeric('rows'), pitchXmm: numeric('pitchX'), pitchYmm: numeric('pitchY') } }];
       case 'extrude': return [{ kind: 'extrudeProfile', node: profile, value: extrusionEnd, name }];
       case 'pocket': return [{ kind: 'pocketProfile', parent: body, name, value: `${numeric('depth')}mm`,
@@ -167,6 +170,7 @@ export function AuthoringPanel(props: Props) {
       {draftNode?.fields.map(field => <FieldRow key={field.name} field={field} description={null} focus={false} disabled={state === 'preparing'} status={null}
         onCommit={value => { const result = spliceField(draft, field, value); if ('error' in result) return result.error; invalidate(); setDraft(result.source); return null; }} />)}
     </>}
+    {pending.action.kind === 'patternEditor' && <PatternEditor source={source} candidate={prepared?.text ?? null} sourceName={sourceName} revision={pending.revision} node={pending.node} outline={outline} runtime={runtime} disabled={state === 'preparing'} onChange={operations => { invalidate(); setPatternOperations(operations); }} />}
     {pending.action.kind === 'pattern' && <>
       {choose('Seed hole', seed, seeds.map(n => ({ value: n.id, label: n.name ?? n.kind })), setSeed)}
       {dimension('Columns', 'columns', '')}{dimension('Rows', 'rows', '')}{dimension('Column pitch', 'pitchX')}{dimension('Row pitch', 'pitchY')}

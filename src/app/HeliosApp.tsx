@@ -511,7 +511,8 @@ export function HeliosApp({ project, initialWorkspace, chooseBase = false, onSho
     return [
       { id: 'base', label: 'Replace base…', description: 'Choose a different base and preview existing features.', run: () => beginAuthoring({ kind: 'base' }) },
       { id: 'pocket', label: 'Pocket…', description: 'Cut a finite recess from a circle, rectangle or authored Profile.', run: () => beginAuthoring({ kind: 'pocket' }) },
-      { id: 'pattern', label: 'Pattern…', description: 'Repeat a seed hole in a keyed rectangular grid.', run: () => beginAuthoring({ kind: 'pattern' }),
+      { id: 'pattern-editor', label: 'Patterns…', description: 'Edit keyed layouts, equation laws and mapped recipes.', run: () => beginAuthoring({ kind: 'patternEditor' }) },
+      { id: 'pattern', label: 'Grid seed hole…', description: 'Repeat a seed hole in a keyed rectangular grid.', run: () => beginAuthoring({ kind: 'pattern' }),
         reason: outline?.nodes.some(n => n.kind === 'Hole') ? undefined : 'Add a hole first.' },
       { id: 'extrude', label: 'Extrude…', description: 'Turn a Profile into a body, or edit its extrusion.', run: () => beginAuthoring({ kind: 'extrude' }),
         reason: outline?.nodes.some(n => n.kind === 'Profile') ? undefined : 'Start a sketch-based part first.' },
@@ -527,6 +528,7 @@ export function HeliosApp({ project, initialWorkspace, chooseBase = false, onSho
     const node = outlineNode(outline, inspectedId);
     const ids = node?.occurrence && ['Part', 'Assembly', 'Subassembly'].includes(node.kind) ? ['placement']
       : node?.kind === 'Mate' || node?.kind === 'Interface' && node.parentId ? ['mate']
+      : node && ['Pattern', 'Points', 'Series', 'Linear', 'Stations', 'Function'].includes(node.kind) ? ['pattern-editor']
       : node?.kind === 'Profile' ? ['extrude', 'pocket'] : node?.kind === 'Hole' ? ['pattern']
       : node && ['Box', 'Cylinder', 'Extrude', 'Compose'].includes(node.kind) ? ['base', 'pocket'] : [];
     return <div className="node-construction-actions">{constructionActions().filter(a => ids.includes(a.id)).map(a =>

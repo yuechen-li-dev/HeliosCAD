@@ -19,6 +19,7 @@ export interface CadRuntime {
   complete(source: string, offset: number, sourceName: string, revision: string): Promise<LanguageCompletion>;
   analyze(source: string, sourceName: string, revision: string): Promise<LanguageAnalysis>;
   outline(source: string, sourceName: string, revision: string): Promise<LanguageOutline>;
+  patterns(source: string, sourceName: string, revision: string): Promise<import('@aetheris/cad').PatternProjection>;
   edit(source: string, operations: readonly LanguageEditOperation[], sourceName: string, revision: string): Promise<LanguageEdit>;
   palette(): Promise<LanguagePalette>;
   sampleMotion(motion: string, timeSeconds: number): ReturnType<ModelSession['sampleMotion']>;
@@ -96,6 +97,10 @@ export class WebSdkCadRuntime implements CadRuntime {
   async palette() {
     const cad = await this.initializeLanguage();
     return cad.language.palette();
+  }
+  async patterns(source: string, sourceName: string, revision: string) {
+    const cad = await this.initializeLanguage();
+    return cad.language.patterns(source, { sourceName, sourceRevision: revision, projectRoot: this.projectRoot, projectDocuments: this.projectDocuments });
   }
   async sketch(source: string, node: string | null, sourceName: string, revision: string) {
     const cad = await this.initializeLanguage();

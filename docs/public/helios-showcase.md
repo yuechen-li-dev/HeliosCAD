@@ -61,6 +61,19 @@ original seed; row/column keys identify additional occurrences. Select a Profile
 for **Extrude…**: this edits the extrusion end while retaining its authored start.
 The compiler remains the authority on which combinations can build.
 
+The grid creation action is one Pattern workflow. Existing Function-driven
+patterns retain their authored layout and recipe. Navigate **Concept Struct →
+Points → Series** to edit literal bounds or the position expression; select a
+**Function** card to edit its **Value** expression. These rebuild normally.
+Generated features remain read-only projections. There is not yet one inspector
+joining the Pattern, layout, law inputs and generated keys.
+
+A current compiler binding gap affects checked Static count/spacing inputs in
+part Series, even though assembly Series admits them. **Make count a parameter**
+can therefore create a rejected draft there; **Revert to last good** or Undo
+recovers it. This is a defect being tracked, not a requirement to freeze design
+parameters into literal coordinates.
+
 **New assembly** publishes Bottom/Top frames on its two components. Use **+ Mate**
 or drag between published frame ports, then choose fixed and moving frames and
 preview the relationship. Apply replaces the moving component's absolute
@@ -100,3 +113,24 @@ Inter is bundled locally and used throughout the workspace, source editor and te
 for AI authoring; ordinary graph editing, builds, checkpoints and local exports do
 not require an AI provider. Spatial examples demonstrate static authoring and
 interchange, not factory automation or manufacturing simulation.
+
+
+A separate Function parameter-shadowing defect can admit incorrect equation
+results when a module Static has the same name as a Function parameter. This
+needs compiler binding repair before broader equation-pattern editing is exposed;
+successful validation alone does not rule out this known counterexample.
+
+
+### Source-preserving Patterns
+
+Use **Patterns…** in the graph construction menu to reopen a finite Pattern,
+its layout, shared law inputs and recipe. New applications can use an existing
+keyed collection, equation Series or named stations. Preview builds the complete
+candidate project; Apply commits one undoable transaction. Evaluated keys and
+expansion associations are read-only. The gold Point2 plot is explicitly local
+layout space; it does not guess the recipe's support frame.
+
+Use **Grid seed hole…** for the separate rectangular Hole helper (counts include
+the seed). Legacy radial/linear forms remain supported by their domain compiler;
+the finite-layout panel explains when it has no visual adapter. Imported laws
+remain in their source file; open that file to edit them.

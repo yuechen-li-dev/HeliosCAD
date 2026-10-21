@@ -73,7 +73,9 @@ export function startingValue(type: string, defaultValue?: string | null, choice
 }
 
 /** Completion and schema both know fields; one list, completion first, without the authored ones. */
-export function fieldSuggestions(node: OutlineNode, completion: readonly LanguageField[], schema: SemanticConstructSchema | null): FieldSuggestion[] {
+export function fieldSuggestions(node: OutlineNode, completion: readonly LanguageField[], schema: SemanticConstructSchema | null, nodes?: ReadonlyMap<string, OutlineNode>): FieldSuggestion[] {
+  const recipe = node.children.map(id => nodes?.get(id)).find(n => n?.kind === 'Series' || n?.kind === 'Linear');
+  if (node.kind === 'Points' && (recipe?.kind === 'Series' || recipe?.children.some(id => nodes?.get(id)?.kind === 'Stations'))) return [];
   const authored = new Set(node.fields.map(field => field.name.toLowerCase()));
   const out = new Map<string, FieldSuggestion>();
   for (const field of completion) if (!authored.has(field.name.toLowerCase()) && !out.has(field.name.toLowerCase()))
@@ -116,7 +118,7 @@ export function NodeInspector(props: Props) {
   const mine = edit?.nodeId === node.id ? edit : null;
   const schemaField = (name: string) => schema?.fields.find(field => field.name.toLowerCase() === name.toLowerCase());
   const callee = calleeOf(node, nodes);
-  const suggestions = node.call ? argumentSuggestions(node, callee?.signature ?? []) : fieldSuggestions(node, completion, schema);
+  const suggestions = node.call ? argumentSuggestions(node, callee?.signature ?? []) : fieldSuggestions(node, completion, schema, nodes);
   const parameterId = (name: string) => [...nodes.values()].find(n => n.name === name && n.kind === 'Static')?.id;
   // A feature written as fields inside a Modify can become a reusable Feature.
   const reusable = !readOnly && !node.call && isModify(parent) && node.children.length === 0 && node.fields.some(parameterizable);
