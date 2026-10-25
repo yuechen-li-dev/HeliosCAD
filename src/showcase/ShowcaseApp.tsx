@@ -32,6 +32,6 @@ export function ShowcaseApp() {
     <header className="welcome-header"><a className="welcome-brand" href="/">Helios<span className="welcome-cad">CAD</span></a><nav><a href="/discover">Explore</a><a href="/projects">My projects</a><button className="theme-toggle" aria-label={theme === 'bronze-age' ? 'Use light theme' : 'Use dark theme'} onClick={() => setTheme(theme === 'bronze-age' ? 'apollonia' : 'bronze-age')}>{theme === 'bronze-age' ? 'Light' : 'Dark'}</button><LocalHostControl /></nav></header>
     <main className="welcome-main"><section className="welcome-hero" aria-label="Create a model"><h1 className="welcome-wordmark">Helios<span className="welcome-cad">CAD</span></h1><HeroStatements /><div className="hero-actions"><button className="primary-button" disabled={!!opening} onClick={() => create('part')}>New part <span aria-hidden="true">↗</span></button><button className="primary-button secondary-button" disabled={!!opening} onClick={() => create('assembly')}>New assembly <span aria-hidden="true">↗</span></button></div></section>
       {error && <p className="showcase-error" role="alert">{error}</p>}<ExampleGallery onOpen={id => void open(id)} opening={opening} />
-    </main><footer className="welcome-footer"><span>By Aetheris</span><span>Preview 4</span></footer>
+    </main><footer className="welcome-footer"><span>By Aetheris</span><span>Preview</span></footer>
   </div>;
 }

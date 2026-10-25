@@ -28,6 +28,7 @@ Use **Version Control** for browser-local checkpoints. Download working source
 before quitting. Closing a browser tab does not stop the host: choose **Quit
 Helios**, close the launcher window, or press Ctrl+C in its terminal. Opening
 the launcher again reconnects to the existing host instead of starting another.
+Quit the old host before switching to an updated bundle.
 
 Local projects, host logs and identity keys live under:
 

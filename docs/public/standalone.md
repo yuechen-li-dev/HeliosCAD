@@ -17,6 +17,8 @@ Chromium runtime. No developer tools or cloud account are needed to model parts.
 5. Save your work, then choose **Quit Helios**, close the launcher window, or
    press Ctrl+C. Closing a browser tab alone leaves the host running. Starting
    the launcher again opens the existing local host instead of duplicating it.
+   Quit the old host before starting an updated bundle; otherwise you reconnect
+   to the version that is already running.
 
 The host uses `http://127.0.0.1:4180` and is loopback-only. A launch capability
 opens your local identity; there is no registration step. Keep this port stable:

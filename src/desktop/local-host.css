@@ -1,3 +1,4 @@
 .local-host-control { display: inline-flex; align-items: center; flex-shrink: 0; gap: 8px; }
 .local-host-control button { font: inherit; font-size: 12px; white-space: nowrap; }
+.toolbar .local-host-control button { height: 30px; padding: 0 9px; font-size: var(--type-ui); border: 1px solid var(--border); }
 .local-host-control [role=alert] { max-width: 220px; font-size: 12px; }

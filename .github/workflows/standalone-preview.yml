@@ -81,7 +81,7 @@ jobs:
         shell: pwsh
         run: |
           $PSNativeCommandUseErrorActionPreference = $true
-          npm install --ignore-scripts --force
+          npm install ../Aetheris/artifacts/local/helios-sdk/aetheris-cad-2.0.0.tgz --ignore-scripts --force
           # The lock contains a local generated tarball digest. Source revisions
           # own this SDK build; retain the committed locator for source provenance.
           git restore -- package-lock.json
@@ -154,7 +154,7 @@ jobs:
           $PSNativeCommandUseErrorActionPreference = $true
           New-Item -ItemType Directory -Force ../Aetheris/artifacts/local/helios-sdk | Out-Null
           Copy-Item artifacts/local/qualified-frontend/aetheris-cad-2.0.0.tgz ../Aetheris/artifacts/local/helios-sdk/
-          npm install --ignore-scripts --force
+          npm install ../Aetheris/artifacts/local/helios-sdk/aetheris-cad-2.0.0.tgz --ignore-scripts --force
           git restore -- package-lock.json
           Copy-Item artifacts/local/qualified-frontend/dist dist -Recurse
           $env:HELIOS_FRONTEND_NOTICES = Join-Path $PWD 'artifacts/local/qualified-frontend/notices'

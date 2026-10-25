@@ -4,6 +4,7 @@ import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
 import { resolve, join, basename } from 'node:path';
 import { createHash } from 'node:crypto';
 import { setTimeout as delay } from 'node:timers/promises';
+import { createInterface } from 'node:readline';
 import { unzipSync } from 'fflate';
 import { chromium, expect } from '@playwright/test';
 
@@ -104,7 +105,7 @@ try {
   const downloadEvent = page.waitForEvent('download'); await page.getByRole('button', { name: 'Download selected format', exact: true }).click();
   const download = await downloadEvent; const stepPath = join(working, 'box.step'); await download.saveAs(stepPath);
   const step = await readFile(stepPath, 'utf8');
-  const points = [...step.matchAll(/CARTESIAN_POINT\([^,]*,\(([-+\d.E]+),([-+\d.E]+),([-+\d.E]+)\)\)/gi)].map(match => match.slice(1).map(Number));
+  const points = [...step.matchAll(/CARTESIAN_POINT\([^,]*,\(([-+\d.E]+),([-+\d.E]+),([-+\d.E]+)\)\)/gi)].map(match => match.slice(1).map(value => Number(value) || 0));
   assert.deepEqual([0, 1, 2].map(axis => [Math.min(...points.map(point => point[axis])), Math.max(...points.map(point => point[axis]))]), [[-10, 10], [-7.5, 7.5], [0, 8]]);
   assert.equal((step.match(/ADVANCED_FACE\(/g) ?? []).length, 6);
   console.log('STEP export matches independent nominal bounds and topology.');
@@ -132,10 +133,43 @@ try {
   const apiCsrf = await context.request.get(address + '/api/auth/csrf'); const csrfToken = (await apiCsrf.json()).token;
   const pairing = await context.request.post(address + '/api/helios/author/local/pair', { headers: { 'X-CSRF-TOKEN': csrfToken }, data: { provider: 'claude-desktop' } });
   assert.equal(pairing.status(), 200); const pair = await pairing.json();
+  const config = pair.configuration.mcpServers.helios;
+  assert.equal(resolve(config.command), resolve(executable));
+  const bridge = spawn(config.command, config.args, { cwd: working, windowsHide: true, env: {
+    ...process.env, ...config.env, DOTNET_ROOT: join(working, 'no-dotnet-install'), DOTNET_MULTILEVEL_LOOKUP: '0'
+  } });
+  const pending = new Map(); let sequence = 0;
+  bridge.stderr.resume();
+  const lines = createInterface({ input: bridge.stdout });
+  lines.on('line', line => {
+    const message = JSON.parse(line); const resolve = pending.get(message.id);
+    if (resolve) { pending.delete(message.id); resolve(message); }
+  });
+  async function bridgeCall(method, params = {}) {
+    const id = ++sequence;
+    let timer;
+    const response = new Promise((resolve, reject) => {
+      pending.set(id, resolve);
+      timer = setTimeout(() => { pending.delete(id); reject(Error('Packaged stdio bridge timed out')); }, 20_000);
+    });
+    bridge.stdin.write(JSON.stringify({ jsonrpc: '2.0', id, method, params }) + '\n');
+    try { const message = await response; assert.equal(message.error, undefined); return message.result; }
+    finally { clearTimeout(timer); }
+  }
+  try {
+    const initialized = await bridgeCall('initialize', { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'packaged-stdio', version: '1' } });
+    assert.ok(initialized.capabilities.tools);
+    bridge.stdin.write(JSON.stringify({ jsonrpc: '2.0', method: 'notifications/initialized' }) + '\n');
+    assert.ok((await bridgeCall('tools/list')).tools.some(tool => tool.name === 'task_context'));
+  } finally {
+    bridge.stdin.end();
+    try { assert.equal(await exited(bridge), 0); }
+    finally { lines.close(); if (bridge.exitCode === null) bridge.kill(); }
+  }
   const mcp = async (method, params = {}) => fetch(address + '/api/helios/author/local/mcp', { method: 'POST', headers: {
-    Authorization: 'Bearer ' + pair.token, 'Content-Type': 'application/json', Accept: 'application/json, text/event-stream'
+    Authorization: 'Bearer ' + pair.token, 'Content-Type': 'application/json', Accept: 'application/json, text/event-stream', 'MCP-Protocol-Version': '2025-06-18'
   }, body: JSON.stringify({ jsonrpc: '2.0', id: method === 'initialize' ? 1 : 2, method, params }) });
-  const initialize = await mcp('initialize', { protocolVersion: '2025-11-25', capabilities: {}, clientInfo: { name: 'standalone-smoke', version: '1' } });
+  const initialize = await mcp('initialize', { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'standalone-smoke', version: '1' } });
   assert.equal(initialize.status, 200); await initialize.text();
   const tools = await mcp('tools/list'); assert.equal(tools.status, 200); assert.match(await tools.text(), /task_context/);
   const revoked = await context.request.post(address + '/api/helios/author/local/unpair', { headers: { 'X-CSRF-TOKEN': csrfToken }, data: { token: pair.token } });
