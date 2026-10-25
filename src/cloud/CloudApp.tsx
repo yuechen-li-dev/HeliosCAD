@@ -3,6 +3,7 @@ import { emptyModelSource } from '../sdk/samples';
 import { galleryModels, searchGallery, type GalleryModel } from '../discovery/catalog';
 import { ApiError, createProject, currentUser, deleteProject, forkPublication, getPublication, listProjects, listPublications, openProject, publishProject, register, saveProject, signIn, signOut, type Project, type ProjectSummary, type PublicModel, type User } from './api';
 import './cloud.css';
+import { LocalHostControl, useLocalHost } from '../desktop/LocalHostControl';
 
 const HeliosApp = lazy(() => import('../app/HeliosApp').then(module => ({ default: module.HeliosApp })));
 type Page = { kind: 'discover' } | { kind: 'detail'; id: string } | { kind: 'projects' };
@@ -12,6 +13,7 @@ function pageFromPath(): Page {
 }
 
 export function CloudApp() {
+  const localHost = useLocalHost();
   const [page, setPage] = useState<Page>(pageFromPath);
   const [user, setUser] = useState<User | null>(null);
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
@@ -142,14 +144,14 @@ export function CloudApp() {
     catch (err) { setError(message(err)); }
   }
 
-  if (project) return <Suspense fallback={<div className="discovery-page">Opening editor…</div>}><HeliosApp key={project.id} project={project} onSave={save} onPublish={publish} onBack={() => void leave()} onSignOut={() => void logout()} /></Suspense>;
+  if (project) return <Suspense fallback={<div className="discovery-page">Opening editor…</div>}><HeliosApp key={project.id} project={project} onSave={save} onPublish={localHost ? undefined : publish} onBack={() => void leave()} onSignOut={localHost ? undefined : () => void logout()} /></Suspense>;
   if (authIntent) return <AuthScreen busy={busy} error={error} onCancel={() => setAuthIntent(null)} onRegister={(e, p, n) => authenticated(() => register(e, p, n))} onSignIn={(e, p) => authenticated(() => signIn(e, p))} />;
   const model = page.kind === 'detail' ? (detailPublication?.id === page.id ? detailPublication : [...publicModels, ...galleryModels].find(item => item.id === page.id)) : undefined;
   const visible = searchGallery([...publicModels, ...galleryModels], query, category);
   return <div className="discovery-page">
     <header className="discovery-header"><button className="discovery-brand" onClick={() => navigate('/discover')} aria-label="Helios Discover"><strong>H</strong><span>HELIOS<small>by Aetheris</small></span></button>
-      <nav aria-label="Main"><button className={page.kind === 'discover' ? 'selected' : ''} onClick={() => navigate('/discover')}>Discover</button><button className={page.kind === 'projects' ? 'selected' : ''} onClick={() => user ? navigate('/projects') : setAuthIntent('projects')}>My Projects</button></nav>
-      <div className="discovery-account"><select aria-label="Theme" value={theme} onChange={event => setTheme(event.target.value)}><option value="bronze-age">Bronze Age</option><option value="apollonia">Apollonia</option></select>{user ? <><span>{user.displayName}</span><button onClick={() => void logout()}>Sign out</button></> : <button onClick={() => setAuthIntent('projects')}>Sign in</button>}</div>
+      <nav aria-label="Main"><button className={page.kind === 'discover' ? 'selected' : ''} onClick={() => navigate('/discover')}>Discover</button><button className={page.kind === 'projects' ? 'selected' : ''} onClick={() => user ? navigate('/projects') : setAuthIntent('projects')}>My Projects</button><LocalHostControl /></nav>
+      <div className="discovery-account"><select aria-label="Theme" value={theme} onChange={event => setTheme(event.target.value)}><option value="bronze-age">Bronze Age</option><option value="apollonia">Apollonia</option></select>{user ? <><span>{localHost ? 'On this computer' : user.displayName}</span>{!localHost && <button onClick={() => void logout()}>Sign out</button>}</> : <button onClick={() => setAuthIntent('projects')}>Sign in</button>}</div>
     </header>
     {error && <p className="discovery-error" role="alert">{error}</p>}
     {page.kind === 'discover' && <main className="discover-main"><div className="discover-intro"><div><span className="cloud-eyebrow">DISCOVER</span><h1>Explore models. Make one yours.</h1></div><p>Open a model, see its Firmament source, and make a copy in Helios.</p></div>
@@ -160,7 +162,7 @@ export function CloudApp() {
     </main>}
     {page.kind === 'detail' && (model ? <main className="model-detail"><button className="detail-back" onClick={() => navigate('/discover')}>← Discover</button><div className="detail-layout"><div className="detail-visual"><div className="detail-image"><img src={model.preview} alt={`${model.title} preview`} style={{ transform: `scale(${zoom / 100})` }} /></div><label>Preview zoom <input type="range" min="75" max="175" value={zoom} onChange={event => setZoom(Number(event.target.value))} /></label><p>Precomputed view · Open an editable model in Helios to inspect geometry.</p></div><div className="detail-copy"><span className="cloud-eyebrow">{model.category}</span><h1>{model.title}</h1><p>by {model.creator}</p><p>{model.description}</p><div className="detail-actions">{model.editablePartId ? <><button className="primary" onClick={() => navigate(`/m/${model.editablePartId}`)}>Explore editable shade</button><a href={model.downloadStep} download>Download STEP</a></> : <><button className="primary" disabled={busy} onClick={() => void fork(model.id)}>Open in Helios</button><button disabled={busy} onClick={() => void fork(model.id)}>Fork</button></>}<button onClick={() => setShowSource(value => !value)}>{showSource ? 'Hide Source' : 'View Source'}</button></div><div className="detail-tags">{model.tags.map(tag => <span key={tag}>{tag}</span>)}</div></div></div>{showSource && <section className="detail-source"><h2>Firmament source</h2><pre>{model.source || 'Loading source…'}</pre>{model.supportingSource && <><h3>{model.supportingSource.name}</h3><pre>{model.supportingSource.source}</pre></>}</section>}</main> : page.id.startsWith('pub_') && !error ? <main className="discover-main"><p>Loading model…</p></main> : <main className="discover-main"><h1>Model not found</h1><button onClick={() => navigate('/discover')}>Back to Discover</button></main>)}
     {page.kind === 'projects' && <main className="projects-main"><div className="projects-heading"><div><span className="cloud-eyebrow">WORKSPACE</span><h1>Your projects</h1></div><p>Saved Firmament projects for {user?.displayName ?? 'your account'}.</p></div><form onSubmit={event => { event.preventDefault(); const name = new FormData(event.currentTarget).get('name')?.toString().trim(); if (name) void create(name); }} className="create-row"><input name="name" aria-label="Project name" placeholder="Name a new project" maxLength={160} required /><button disabled={busy}>Create project</button></form><div className="project-list">{projects.length ? projects.map(item => <div className="project-row" key={item.id}><button onClick={() => void open(item.id)} disabled={busy}><strong>{item.name}</strong><span>Edited {new Date(item.updatedAt).toLocaleString()}</span></button><button className="cloud-text-button" onClick={() => void remove(item.id)} disabled={busy} aria-label={`Delete ${item.name}`}>Delete</button></div>) : <p className="empty-projects">No projects yet. <button onClick={() => navigate('/discover')}>Explore models to make a copy.</button></p>}</div></main>}
-    <footer className="discovery-footer">Public samples are versioned with Helios. Sign in when you make a copy or save a project.</footer>
+    <footer className="discovery-footer">{localHost ? 'Projects are saved on this computer. Download source for a portable backup.' : 'Public samples are versioned with Helios. Sign in when you make a copy or save a project.'}</footer>
   </div>;
 }
 

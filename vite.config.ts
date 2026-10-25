@@ -6,6 +6,25 @@ import { aetherisCad } from '@aetheris/cad/vite';
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import type { Plugin, WebSocketClient } from 'vite';
 
+/** Monaco also vendors an older sanitizer internally. Resolve that one import
+ * to the patched dependency; changing only npm's dependency tree leaves it live. */
+function patchedMonacoSanitizer(): Plugin {
+  const sanitizer = fileURLToPath(new URL('./node_modules/dompurify/dist/purify.es.mjs', import.meta.url));
+  return {
+    name: 'helios-monaco-sanitizer', enforce: 'pre',
+    resolveId(source, importer) {
+      if (source === './dompurify/dompurify.js' && importer?.replaceAll('\\', '/').endsWith('/monaco-editor/esm/vs/base/browser/domSanitize.js')) return sanitizer;
+    },
+    generateBundle() {
+      const modules = [...this.getModuleIds()].map(id => id.replaceAll('\\', '/'));
+      if (modules.some(id => id.endsWith('/monaco-editor/esm/vs/base/browser/dompurify/dompurify.js')))
+        this.error('The browser bundle still contains Monaco\'s obsolete vendored sanitizer.');
+      if (!modules.some(id => id.endsWith('/dompurify/dist/purify.es.mjs')))
+        this.error('The patched editor sanitizer was not included in the browser bundle.');
+    },
+  };
+}
+
 /** A developer-only shell. Vite's HMR socket is used so production has no command endpoint. */
 function localTerminal(): Plugin {
   return {
@@ -52,7 +71,7 @@ function telosRoot() {
 }
 
 export default defineConfig({
-  plugins: [aetherisCad(), react(), localTerminal()],
+  plugins: [aetherisCad(), patchedMonacoSanitizer(), react(), localTerminal()],
   server: { port: 4173, watch: { ignored: ['**/artifacts/**', '**/test-results/**'] }, fs: { allow: [fileURLToPath(new URL('.', import.meta.url)), telosRoot()] }, proxy: { '/api': { target: process.env.HELIOS_API_URL ?? 'http://127.0.0.1:5189', ws: true } } },
   test: { include: ['src/**/*.test.ts', 'src/**/*.test.tsx'], environment: 'jsdom', setupFiles: './src/test/setup.ts', css: true }
 });
