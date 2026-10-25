@@ -7,6 +7,42 @@ import { authorStatus } from '../test/authorStatus';
 
 vi.mock('../cloud/api', async () => ({ request: vi.fn().mockResolvedValue((await import('../test/authorStatus')).authorStatus()) }));
 describe('AI author presentation', () => {
+  it('prepares native desktop access without claiming a provider login or selecting its model', async () => {
+    vi.mocked(request).mockResolvedValueOnce({ ...authorStatus(), local: { configPath: '/local/helios.toml', defaultProvider: 'antigravity', error: null } });
+    render(<AuthorPanel workspace={{ id: 'native', snapshot: vi.fn(), apply: vi.fn() }} requirements="Keep interfaces" onRequirementsChange={vi.fn()} onCheckpoint={vi.fn()} restoredRevision={0} onBusyChange={vi.fn()} />);
+    await screen.findByLabelText('AI connection'); expect(screen.getByLabelText('AI connection')).toHaveValue('antigravity');
+    expect(screen.queryByLabelText('AI model')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByText('AI connection settings'));
+    vi.mocked(request).mockResolvedValueOnce({ token: 'fixture-pairing', expiresAt: new Date(Date.now() + 3600000).toISOString(), configuration: { mcpServers: { helios: { serverUrl: 'http://localhost/mcp' } } }, message: 'Pairing ready; account stays in the client.' });
+    fireEvent.click(screen.getByRole('button', { name: 'Prepare desktop connection' }));
+    await screen.findByRole('button', { name: 'Copy MCP configuration' });
+    fireEvent.change(screen.getByLabelText('Engineering intent'), { target: { value: 'Revise width' } });
+    expect(screen.getByRole('button', { name: 'Start desktop task' })).toBeEnabled();
+    vi.mocked(request).mockResolvedValueOnce(undefined);
+    fireEvent.click(screen.getByRole('button', { name: 'Disconnect desktop' }));
+    await screen.findByText('Desktop connection revoked.');
+    expect(screen.getByRole('button', { name: 'Start desktop task' })).toBeDisabled();
+  });
+  it('offers explicit subscription mode and reloadable local configuration without collecting keys', async () => {
+    vi.mocked(request).mockResolvedValueOnce({ ...authorStatus(), local: { configPath: '/local/helios.toml', defaultProvider: 'codex', error: null } });
+    render(<AuthorPanel workspace={{ id: 'local', snapshot: vi.fn(), apply: vi.fn() }} requirements="Keep interfaces" onRequirementsChange={vi.fn()} onCheckpoint={vi.fn()} restoredRevision={0} onBusyChange={vi.fn()} />);
+    await screen.findByLabelText('AI connection');
+    expect(screen.getByLabelText('AI connection')).toHaveValue('codex');
+    expect(screen.getByRole('button', { name: 'Run agent' })).toBeDisabled();
+    fireEvent.click(screen.getByText('AI connection settings'));
+    expect(screen.getByText('/local/helios.toml')).toBeVisible();
+    vi.mocked(request).mockResolvedValueOnce({ connected: true, message: 'Codex · ChatGPT subscription', models: [{ id: 'installed-model', label: 'Installed model' }] });
+    fireEvent.click(screen.getByRole('button', { name: 'Test connection' }));
+    await screen.findByRole('option', { name: 'Installed model' });
+    fireEvent.change(screen.getByLabelText('Engineering intent'), { target: { value: 'Inspect' } });
+    expect(screen.getByRole('button', { name: 'Run agent' })).toBeEnabled();
+    expect(screen.queryByLabelText(/API key/i)).not.toBeInTheDocument();
+    vi.mocked(request).mockResolvedValueOnce({ ...authorStatus(), local: { configPath: '/local/helios.toml', defaultProvider: 'codex', error: 'Invalid TOML' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Reload connections' }));
+    await screen.findByRole('alert');
+    expect(screen.getByRole('button', { name: 'Run agent' })).toBeDisabled();
+    expect(screen.getByLabelText('Engineering intent')).toHaveValue('Inspect');
+  });
   it('enables only configured providers and retains user intent when switching', async () => {
     const status = authorStatus(); status.providers[1].configured = true;
     vi.mocked(request).mockResolvedValueOnce(status);

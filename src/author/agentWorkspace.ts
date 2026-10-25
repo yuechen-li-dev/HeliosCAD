@@ -115,15 +115,25 @@ export async function runAgent(gateway: AgentGateway, workspace: AgentWorkspace,
       signal.throwIfAborted(); activity(call.name);
       let output: unknown;
       try {
-        const args = JSON.parse(call.arguments);
-        const result = call.name.startsWith('engineering__') && gateway.invoke
-          ? await gateway.invoke(call.name, args, workspace.project, requirements, signal) : await workspace.execute(call.name, args);
-        if (call.name === 'engineering__prepare_review') workspace.reviewManifest = result as ReviewManifest;
-        output = { ok: true, result };
+        output = await executeAgentTool(gateway, workspace, requirements, call.name, JSON.parse(call.arguments), signal);
       }
       catch (error) { output = { ok: false, error: error instanceof Error ? error.message : String(error) }; }
       signal.throwIfAborted();
       transcript.push({ type: 'function_call_output', call_id: call.callId, output: JSON.stringify(output) });
     }
+  }
+}
+
+/** Both provider conversations and installed agents use exactly these candidate effects. */
+export async function executeAgentTool(gateway: AgentGateway, workspace: AgentWorkspace, requirements: string,
+  name: string, args: Record<string, unknown>, signal: AbortSignal) {
+  signal.throwIfAborted();
+  try {
+    const result = name.startsWith('engineering__') && gateway.invoke
+      ? await gateway.invoke(name, args, workspace.project, requirements, signal) : await workspace.execute(name, args);
+    if (name === 'engineering__prepare_review') workspace.reviewManifest = result as ReviewManifest;
+    signal.throwIfAborted(); return { ok: true, result };
+  } catch (error) {
+    signal.throwIfAborted(); return { ok: false, error: error instanceof Error ? error.message : String(error) };
   }
 }

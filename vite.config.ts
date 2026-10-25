@@ -53,6 +53,6 @@ function telosRoot() {
 
 export default defineConfig({
   plugins: [aetherisCad(), react(), localTerminal()],
-  server: { port: 4173, fs: { allow: [fileURLToPath(new URL('.', import.meta.url)), telosRoot()] }, proxy: { '/api': 'http://127.0.0.1:5189' } },
+  server: { port: 4173, watch: { ignored: ['**/artifacts/**', '**/test-results/**'] }, fs: { allow: [fileURLToPath(new URL('.', import.meta.url)), telosRoot()] }, proxy: { '/api': { target: process.env.HELIOS_API_URL ?? 'http://127.0.0.1:5189', ws: true } } },
   test: { include: ['src/**/*.test.ts', 'src/**/*.test.tsx'], environment: 'jsdom', setupFiles: './src/test/setup.ts', css: true }
 });

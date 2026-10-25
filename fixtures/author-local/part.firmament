@@ -1,0 +1,4 @@
+Model AgentWitness {
+  units: mm
+  Box Base { size: [20mm, 15mm, 8mm] }
+}

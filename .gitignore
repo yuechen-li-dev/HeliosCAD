@@ -154,3 +154,4 @@ scripts/wireframes/obj/
 
 # A symlinked node_modules (shared install) is not matched by a directory-only pattern.
 /node_modules
+helios.toml

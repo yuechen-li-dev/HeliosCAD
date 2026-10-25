@@ -14,11 +14,12 @@ const fitted = () => {
 const direction = (camera: TelosCamera) => camera.position.clone().sub(camera.target).normalize().toArray().map(v => Math.round(v * 1e6) / 1e6 + 0);
 
 describe('named views', () => {
-  it('frames Z-up: the model rests on XY and fit looks down at it from the front right', () => {
+  it('frames Z-up while preserving the incoming viewing direction', () => {
+    const original = new TelosCamera();
     const camera = fitted();
     expect(camera.up.toArray()).toEqual([0, 0, 1]);
-    const [x, y, z] = direction(camera);
-    expect(x).toBeGreaterThan(0); expect(y).toBeLessThan(0); expect(z).toBeGreaterThan(0);
+    // Telos fit changes framing, not orientation; named-view commands choose an octant.
+    expect(direction(camera)).toEqual(direction(original));
   });
 
   it.each(Object.entries(VIEW_DIRECTIONS))('%s looks along its axis and keeps the distance', (view, axis) => {
