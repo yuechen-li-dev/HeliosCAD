@@ -1,0 +1,162 @@
+name: Qualify standalone preview
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/standalone-preview.yml'
+      - 'scripts/*standalone*'
+      - 'standalone-sources.json'
+      - 'src/**'
+      - 'package*.json'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  MSBUILDDISABLENODEREUSE: '1'
+
+jobs:
+  frontend:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: HeliosCAD
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Read source pins
+        id: sources
+        shell: pwsh
+        run: |
+          $pins = Get-Content HeliosCAD/standalone-sources.json | ConvertFrom-Json
+          "aetheris=$($pins.aetheris)" >> $env:GITHUB_OUTPUT
+          "leviathan=$($pins.leviathan)" >> $env:GITHUB_OUTPUT
+          "dominatus=$($pins.dominatus)" >> $env:GITHUB_OUTPUT
+      - uses: actions/checkout@v4
+        with:
+          repository: yuechen-li-dev/Aetheris
+          ref: ${{ steps.sources.outputs.aetheris }}
+          path: Aetheris
+      - uses: actions/checkout@v4
+        with:
+          repository: yuechen-li-dev/Leviathan
+          ref: ${{ steps.sources.outputs.leviathan }}
+          path: Leviathan
+      - uses: actions/checkout@v4
+        with:
+          repository: yuechen-li-dev/Dominatus
+          ref: ${{ steps.sources.outputs.dominatus }}
+          path: Dominatus
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 26
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.401
+      - name: Build production browser SDK
+        shell: pwsh
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          dotnet workload install wasm-tools --skip-manifest-update
+          node Aetheris/Aetheris.Web.Runtime/sdk/scripts/build.mjs --production
+          New-Item -ItemType Directory -Force Aetheris/artifacts/local/helios-sdk | Out-Null
+          npm pack ./Aetheris/Aetheris.Web.Runtime/sdk --pack-destination Aetheris/artifacts/local/helios-sdk
+      - name: Install the pinned source-built SDK and qualify application
+        working-directory: HeliosCAD
+        shell: pwsh
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          npm install --ignore-scripts --force
+          # The lock contains a local generated tarball digest. Source revisions
+          # own this SDK build; retain the committed locator for source provenance.
+          git restore -- package-lock.json
+          npm test -- --maxWorkers=2
+          dotnet test ../Leviathan/Leviathan.slnx -c Release -m:1 -nr:false -p:UseSharedCompilation=false
+          npm run build
+          node scripts/prepare-standalone-frontend.mjs
+      - uses: actions/upload-artifact@v4
+        with:
+          name: qualified-frontend
+          path: HeliosCAD/artifacts/local/qualified-frontend
+          compression-level: 0
+          if-no-files-found: error
+
+  native:
+    needs: frontend
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            rid: win-x64
+          - os: ubuntu-24.04
+            rid: linux-x64
+          - os: macos-15
+            rid: osx-arm64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: HeliosCAD
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Read source pins
+        id: sources
+        shell: pwsh
+        run: |
+          $pins = Get-Content HeliosCAD/standalone-sources.json | ConvertFrom-Json
+          "aetheris=$($pins.aetheris)" >> $env:GITHUB_OUTPUT
+          "leviathan=$($pins.leviathan)" >> $env:GITHUB_OUTPUT
+          "dominatus=$($pins.dominatus)" >> $env:GITHUB_OUTPUT
+      - uses: actions/checkout@v4
+        with:
+          repository: yuechen-li-dev/Aetheris
+          ref: ${{ steps.sources.outputs.aetheris }}
+          path: Aetheris
+      - uses: actions/checkout@v4
+        with:
+          repository: yuechen-li-dev/Leviathan
+          ref: ${{ steps.sources.outputs.leviathan }}
+          path: Leviathan
+      - uses: actions/checkout@v4
+        with:
+          repository: yuechen-li-dev/Dominatus
+          ref: ${{ steps.sources.outputs.dominatus }}
+          path: Dominatus
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 26
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.401
+      - uses: actions/download-artifact@v4
+        with:
+          name: qualified-frontend
+          path: HeliosCAD/artifacts/local/qualified-frontend
+      - name: Package native host and qualified browser assets
+        working-directory: HeliosCAD
+        shell: pwsh
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          New-Item -ItemType Directory -Force ../Aetheris/artifacts/local/helios-sdk | Out-Null
+          Copy-Item artifacts/local/qualified-frontend/aetheris-cad-2.0.0.tgz ../Aetheris/artifacts/local/helios-sdk/
+          npm install --ignore-scripts --force
+          git restore -- package-lock.json
+          Copy-Item artifacts/local/qualified-frontend/dist dist -Recurse
+          $env:HELIOS_FRONTEND_NOTICES = Join-Path $PWD 'artifacts/local/qualified-frontend/notices'
+          node scripts/package-standalone.mjs '${{ matrix.rid }}'
+          npx playwright install --with-deps chromium
+          node scripts/qualify-standalone.mjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: helios-${{ matrix.rid }}
+          path: |
+            HeliosCAD/artifacts/local/standalone/**/Helios-*.zip
+            HeliosCAD/artifacts/local/standalone/**/Helios-*.tar.gz
+            HeliosCAD/artifacts/local/standalone/**/SHA256SUMS
+            HeliosCAD/artifacts/local/standalone/**/QUALIFICATION.json
+            HeliosCAD/artifacts/local/standalone/**/last-page.png
+            HeliosCAD/artifacts/local/standalone/**/last-page.txt
+            HeliosCAD/artifacts/local/standalone/**/host-output.log
+          if-no-files-found: error
+          compression-level: 0

@@ -4,6 +4,7 @@ import { loadShowcase, type WorkspaceProject } from './catalog';
 import { useTheme } from '../themes/useTheme';
 import { assemblySource, emptyModelSource } from '../sdk/samples';
 import { HeroStatements } from './HeroStatements';
+import { LocalHostControl } from '../desktop/LocalHostControl';
 
 const Editor = lazy(() => import('../app/HeliosApp').then(module => ({ default: module.HeliosApp })));
 export function ShowcaseApp() {
@@ -28,7 +29,7 @@ export function ShowcaseApp() {
   useEffect(() => { const example = new URLSearchParams(location.search).get('example'); if (example) void open(example); }, []);
   if (workspace) return <Suspense fallback={<div className="app-loading"><span className="spinner" />Opening your engineering workspace…</div>}><Editor initialWorkspace={workspace} chooseBase={chooseBase} onShowcase={() => setWorkspace(null)} /></Suspense>;
   return <div className="welcome-shell">
-    <header className="welcome-header"><a className="welcome-brand" href="/">Helios<span className="welcome-cad">CAD</span></a><nav><a href="/discover">Explore</a><a href="/projects">My projects</a><button className="theme-toggle" aria-label={theme === 'bronze-age' ? 'Use light theme' : 'Use dark theme'} onClick={() => setTheme(theme === 'bronze-age' ? 'apollonia' : 'bronze-age')}>{theme === 'bronze-age' ? 'Light' : 'Dark'}</button></nav></header>
+    <header className="welcome-header"><a className="welcome-brand" href="/">Helios<span className="welcome-cad">CAD</span></a><nav><a href="/discover">Explore</a><a href="/projects">My projects</a><button className="theme-toggle" aria-label={theme === 'bronze-age' ? 'Use light theme' : 'Use dark theme'} onClick={() => setTheme(theme === 'bronze-age' ? 'apollonia' : 'bronze-age')}>{theme === 'bronze-age' ? 'Light' : 'Dark'}</button><LocalHostControl /></nav></header>
     <main className="welcome-main"><section className="welcome-hero" aria-label="Create a model"><h1 className="welcome-wordmark">Helios<span className="welcome-cad">CAD</span></h1><HeroStatements /><div className="hero-actions"><button className="primary-button" disabled={!!opening} onClick={() => create('part')}>New part <span aria-hidden="true">↗</span></button><button className="primary-button secondary-button" disabled={!!opening} onClick={() => create('assembly')}>New assembly <span aria-hidden="true">↗</span></button></div></section>
       {error && <p className="showcase-error" role="alert">{error}</p>}<ExampleGallery onOpen={id => void open(id)} opening={opening} />
     </main><footer className="welcome-footer"><span>By Aetheris</span><span>Preview 4</span></footer>

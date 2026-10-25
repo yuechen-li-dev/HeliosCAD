@@ -1,21 +1,23 @@
 {
   "name": "@helios/cad",
-  "version": "0.1.0",
+  "version": "0.1.0-preview.1",
   "private": true,
   "type": "module",
   "scripts": {
     "sdk:install": "node scripts/install-local-sdk.mjs",
     "sdk:install:production": "node scripts/install-local-sdk.mjs --production",
     "dev": "vite --config vite.config.ts",
-    "build": "tsc -b && vite build --config vite.config.ts",
+    "build": "tsc -b && vite build --config vite.config.ts && node scripts/stamp-standalone.mjs",
     "build:fast": "tsc -b && vite build --config vite.config.ts --mode development",
     "test": "vitest run",
     "test:e2e": "playwright test",
     "test:watch": "vitest",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "package:standalone": "node scripts/package-standalone.mjs",
+    "test:standalone": "node scripts/qualify-standalone.mjs"
   },
   "dependencies": {
-    "@aetheris/cad": "file:../Aetheris/artifacts/local/helios-sdk/aetheris-cad-2.0.0-preview.3.tgz",
+    "@aetheris/cad": "file:../Aetheris/artifacts/local/helios-sdk/aetheris-cad-2.0.0.tgz",
     "@aetheris/three-telos": "file:../Aetheris/Aetheris.Web.Runtime/telos",
     "@dagrejs/dagre": "^1.1.8",
     "@fontsource-variable/inter": "5.3.0",

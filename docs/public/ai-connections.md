@@ -5,7 +5,7 @@ AI Author can use your installed Codex client, connect Claude Code or Antigravit
 ## Use your Codex subscription
 
 1. Install the native Codex CLI and sign in with ChatGPT using `codex login`.
-2. Open Helios connected to its local AI host, and sign in to that host.
+2. Run the [standalone Helios launcher](standalone.md). It opens your browser with a local authenticated session. Source-workspace development hosts use their normal sign-in flow instead.
 3. In **AI Author**, select **Installed Codex · ChatGPT subscription**.
 4. Expand **AI connection settings**, then select **Test connection**. Choose a model from the installed client's catalog.
 5. Describe your change and select **Run agent**. Progress streams into the conversation. **Stop agent** cancels the candidate task.
