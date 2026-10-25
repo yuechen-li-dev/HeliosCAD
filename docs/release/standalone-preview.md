@@ -48,6 +48,8 @@ the preview does not install or sign into those clients for you.
   origin. There is no silent port change.
 - Clearing browser storage removes checkpoints. Local projects do not sync
   with a hosted Helios account.
+- Saved projects currently support one source document. Use **Save workspace**
+  for multi-file projects and imported STEP assets.
 - Live provider/subscription access depends on your native client and account;
   offline protocol tests do not certify a vendor account.
 - Automated qualification drives the extracted executable with a test browser.

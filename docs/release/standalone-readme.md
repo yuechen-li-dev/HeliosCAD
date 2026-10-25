@@ -17,6 +17,8 @@ part**, **New assembly**, or an example. **Open file** loads Firmament projects
 and supported STEP parts. **Build** compiles source; a rejected edit keeps the
 last valid model visible. **Save source** downloads your source or workspace.
 **My projects** stores projects in this computer's local Helios database.
+Saved projects currently support one source document. Use **Save workspace** to
+retain projects containing includes or imported STEP assets.
 
 **Export** offers STEP AP242, GLB, USDA, STL, OBJ, and PDF/SVG/PPTX drawings when
 the compiled product supports them. Inspect dimensions and tolerances before

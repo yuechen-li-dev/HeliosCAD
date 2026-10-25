@@ -100,6 +100,7 @@ try {
   await expect(page.locator('.viewport-canvas canvas')).toBeVisible();
   console.log('Production gallery, editor, CAD runtime and viewport loaded.');
   await page.getByRole('banner').locator('input[type=file]').setInputFiles(join(root, 'fixtures/author-local/part.firmament'));
+  await expect(page.locator('.workspace-identity strong')).toHaveText('part');
   await expect(page.locator('.status-ready')).toContainText('Ready', { timeout: 120_000 });
   await page.getByRole('button', { name: 'Export ▾', exact: true }).click();
   const downloadEvent = page.waitForEvent('download'); await page.getByRole('button', { name: 'Download selected format', exact: true }).click();
@@ -120,8 +121,10 @@ try {
   const glb = Object.entries(exports).find(([name]) => name.endsWith('.glb'));
   assert.ok(pdf && glb); assert.equal(Buffer.from(pdf[1]).subarray(0, 4).toString(), '%PDF'); assert.equal(Buffer.from(glb[1]).subarray(0, 4).toString(), 'glTF');
   await page.getByRole('banner').locator('input[type=file]').setInputFiles(stepPath);
+  await expect(page.locator('.workspace-identity strong')).toHaveText('box');
   await expect(page.locator('.status-ready')).toContainText('Ready', { timeout: 120_000 });
   await page.getByRole('banner').locator('input[type=file]').setInputFiles(join(root, 'fixtures/author-local/part.firmament'));
+  await expect(page.locator('.workspace-identity strong')).toHaveText('part');
   await expect(page.locator('.status-ready')).toContainText('Ready', { timeout: 120_000 });
   console.log('GLB/PDF export and STEP reopening passed.');
   await page.getByRole('tab', { name: 'AI Author', exact: true }).click();

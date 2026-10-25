@@ -13,7 +13,8 @@ Chromium runtime. No developer tools or cloud account are needed to model parts.
    STEP parts with **Open file**.
 4. Use **Export** for the formats available on that model. **Save source**
    downloads source or a portable workspace. **My projects** stores projects in
-   this computer's local database.
+   this computer's local database. Saved projects currently support one source
+   document; use **Save workspace** for projects with includes or STEP assets.
 5. Save your work, then choose **Quit Helios**, close the launcher window, or
    press Ctrl+C. Closing a browser tab alone leaves the host running. Starting
    the launcher again opens the existing local host instead of duplicating it.
