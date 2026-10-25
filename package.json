@@ -24,14 +24,15 @@
     "@monaco-editor/react": "^4.7.0",
     "@vitejs/plugin-react": "latest",
     "@xyflow/react": "^12.12.0",
-    "fflate": "^0.8.2",
+    "dompurify": "3.4.17",
+    "fflate": "^0.8.3",
     "machinalayout": "^0.7.0",
     "monaco-editor": "^0.56.0",
     "react": "latest",
     "react-dom": "latest",
     "three": "0.183.2",
     "typescript": "latest",
-    "vite": "latest"
+    "vite": "8.3.5"
   },
   "devDependencies": {
     "@playwright/test": "^1.63.0",
@@ -43,6 +44,9 @@
     "@types/three": "0.183.1",
     "fake-indexeddb": "^6.2.6",
     "jsdom": "latest",
-    "vitest": "latest"
+    "vitest": "5.0.5"
+  },
+  "overrides": {
+    "dompurify": "3.4.17"
   }
 }

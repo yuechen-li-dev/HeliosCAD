@@ -57,7 +57,7 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: 10.0.401
-      - uses: actions/cache@v4
+      - uses: actions/cache/restore@v4
         id: sdk
         with:
           path: |
@@ -76,6 +76,13 @@ jobs:
           } else {
             dotnet restore Aetheris/Aetheris.Web.Runtime/Aetheris.Web.Runtime.csproj
           }
+      - uses: actions/cache/save@v4
+        if: steps.sdk.outputs.cache-hit != 'true'
+        with:
+          path: |
+            Aetheris/Aetheris.Web.Runtime/sdk/dist
+            Aetheris/artifacts/local/helios-sdk/aetheris-cad-2.0.0.tgz
+          key: ${{ steps.sdk.outputs.cache-primary-key }}
       - name: Install the pinned source-built SDK and qualify application
         working-directory: HeliosCAD
         shell: pwsh
@@ -85,6 +92,9 @@ jobs:
           # The lock contains a local generated tarball digest. Source revisions
           # own this SDK build; retain the committed locator for source provenance.
           git restore -- package-lock.json
+          npm ci --prefix ../Aetheris/Aetheris.Web.Runtime/telos --ignore-scripts
+          npm run build --prefix ../Aetheris/Aetheris.Web.Runtime/telos
+          npm audit --omit=dev
           npm test -- --maxWorkers=2
           dotnet test ../Leviathan/Leviathan.slnx -c Release -m:1 -nr:false -p:UseSharedCompilation=false
           npm run build
@@ -94,6 +104,7 @@ jobs:
           name: qualified-frontend
           path: HeliosCAD/artifacts/local/qualified-frontend
           compression-level: 0
+          retention-days: 7
           if-no-files-found: error
 
   native:
@@ -175,3 +186,4 @@ jobs:
             HeliosCAD/artifacts/local/standalone/**/host-output.log
           if-no-files-found: error
           compression-level: 0
+          retention-days: 7
