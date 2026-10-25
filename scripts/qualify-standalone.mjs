@@ -130,6 +130,17 @@ try {
   await expect(page.getByRole('button', { name: 'Restore Manual checkpoint', exact: true })).toBeVisible();
   await page.screenshot({ path: join(working, 'workspace.png') });
   const apiCsrf = await context.request.get(address + '/api/auth/csrf'); const csrfToken = (await apiCsrf.json()).token;
+  const pairing = await context.request.post(address + '/api/helios/author/local/pair', { headers: { 'X-CSRF-TOKEN': csrfToken }, data: { provider: 'claude-desktop' } });
+  assert.equal(pairing.status(), 200); const pair = await pairing.json();
+  const mcp = async (method, params = {}) => fetch(address + '/api/helios/author/local/mcp', { method: 'POST', headers: {
+    Authorization: 'Bearer ' + pair.token, 'Content-Type': 'application/json', Accept: 'application/json, text/event-stream'
+  }, body: JSON.stringify({ jsonrpc: '2.0', id: method === 'initialize' ? 1 : 2, method, params }) });
+  const initialize = await mcp('initialize', { protocolVersion: '2025-11-25', capabilities: {}, clientInfo: { name: 'standalone-smoke', version: '1' } });
+  assert.equal(initialize.status, 200); await initialize.text();
+  const tools = await mcp('tools/list'); assert.equal(tools.status, 200); assert.match(await tools.text(), /task_context/);
+  const revoked = await context.request.post(address + '/api/helios/author/local/unpair', { headers: { 'X-CSRF-TOKEN': csrfToken }, data: { token: pair.token } });
+  assert.equal(revoked.status(), 204); assert.equal((await mcp('tools/list')).status, 401);
+  console.log('Packaged MCP bridge accepts scoped native credentials and rejects revoked pairings.');
   const project = await context.request.post(address + '/api/projects', { headers: { 'X-CSRF-TOKEN': csrfToken }, data: { appId: 'helios', name: 'Packaged restart witness', source: await readFile(join(root, 'fixtures/author-local/part.firmament'), 'utf8') } });
   assert.equal(project.status(), 201);
   const projectId = (await project.json()).id;

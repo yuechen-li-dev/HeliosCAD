@@ -13,6 +13,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: standalone-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 env:
   MSBUILDDISABLENODEREUSE: '1'
 
@@ -53,14 +57,25 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: 10.0.401
+      - uses: actions/cache@v4
+        id: sdk
+        with:
+          path: |
+            Aetheris/Aetheris.Web.Runtime/sdk/dist
+            Aetheris/artifacts/local/helios-sdk/aetheris-cad-2.0.0.tgz
+          key: helios-sdk-${{ steps.sources.outputs.aetheris }}-net10.0.401-win
       - name: Build production browser SDK
         shell: pwsh
         run: |
           $PSNativeCommandUseErrorActionPreference = $true
           dotnet workload install wasm-tools --skip-manifest-update
-          node Aetheris/Aetheris.Web.Runtime/sdk/scripts/build.mjs --production
-          New-Item -ItemType Directory -Force Aetheris/artifacts/local/helios-sdk | Out-Null
-          npm pack ./Aetheris/Aetheris.Web.Runtime/sdk --pack-destination Aetheris/artifacts/local/helios-sdk
+          if ('${{ steps.sdk.outputs.cache-hit }}' -ne 'true') {
+            node Aetheris/Aetheris.Web.Runtime/sdk/scripts/build.mjs --production
+            New-Item -ItemType Directory -Force Aetheris/artifacts/local/helios-sdk | Out-Null
+            npm pack ./Aetheris/Aetheris.Web.Runtime/sdk --pack-destination Aetheris/artifacts/local/helios-sdk
+          } else {
+            dotnet restore Aetheris/Aetheris.Web.Runtime/Aetheris.Web.Runtime.csproj
+          }
       - name: Install the pinned source-built SDK and qualify application
         working-directory: HeliosCAD
         shell: pwsh
