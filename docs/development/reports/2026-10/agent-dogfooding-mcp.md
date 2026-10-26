@@ -19,8 +19,8 @@ again from a fresh pairing.
 | `edit_file` said only "candidate-edited"; a missing brace surfaced one build later. | `edit_file` returns the file's problems at once (syntax and admission). |
 | `build` returned 10 KB of triangle ranges, `bounds: {}`, and nothing that said which features exist. | A summary: diagnostics with lines, bounds (computed from the mesh when not reported), bodies with features and hole diameters, faces by surface with diameters and readable feature names, parameters. 3.8 KB for the finished plate. |
 | `outline` returned raw nodes with spans. | One row per declaration: id, kind, line, field text. |
-| **An Extrude with a `Modify` hole built "successfully" with the hole silently missing.** The tree showed no holes and a ray through the hole centre hit the top face. | Aetheris now rejects it, naming the hole and the Compose form that cuts it (`firmament-v2-extrude-modify-feature-unsupported`). |
-| Rounding vertical edges: `EdgeFinish` only finishes a face boundary, and Compose rejects fillets. | Not a tool fix: the schema now says to round corners in the Profile (RoundedRect2), which is what the finished task does. |
+| **An Extrude with a `Modify` hole built "successfully" with the hole silently missing.** The tree showed no holes and a ray through the hole centre hit the top face. | A single Extrude with Modify features now builds as `Compose { Base }`, so its holes, slots and patterns are cut. `Perforation`, which Profile bodies never cut, rejects at its declaration on both Extrude and Compose. |
+| Rounding vertical edges: `EdgeFinish` only finishes the edges around one face, and Compose rejects fillets. | Kept as a language decision: the vertical edges of a prism are the Profile's corners, so the exact spelling is RoundedRect2. The schema and reference say so. An `EdgeFinish` target for vertical edges would have to rebuild a Box as a Compose and lose the Box's side holes, so it was not added. |
 | No way to see whether the native client had connected. | The pairing line reads **connected ✓ · last call N s ago** from the server's last authenticated MCP request. |
 | Auto-apply had no quick way back. | **After a successful build**: *Apply right away* (default, checkpoint first, **Undo AI changes** in one click while nothing else changed) or *Review the diff first*. |
 
@@ -31,13 +31,20 @@ two edits (Compose on a RoundedRect2 profile; four `Hole<Shaft>`), one build sho
 and four Ø6 corner faces, three rays confirming open holes and the rounded corner, `finish_task`.
 Helios applied it; **Undo AI changes** restored the Box.
 
+## Fixed in the follow-up pass
+
+- Diagnostics whose code names a declaration (`code:Kind:Name`, `host=Name`) are located at that
+  declaration, and their message is the explanation rather than the raw code. A bare code repeated
+  beside its explained form is dropped.
+- The runtime tree names a Profile-built body after its declaration (`Extrude Plate`, `Compose Plate`)
+  with that declaration's line, instead of the Model or Profile name.
+- Tree hole nodes carry their support face, center in that face's frame, and world point when
+  resolved; `build` reports them, so an agent checks placement without rays.
+
 ## Left open
 
-- Diagnostics from the CLI/web admission path for this rejection anchor at line 1; the parser
-  attaches the feature's span, but the string-code path drops it.
-- The runtime tree names a Compose body after the Model (`WebBracket`) and a plain Extrude after
-  its Profile; `build` reports the tree as given.
-- `measure` is ray-only. Hole positions are checkable, but there is no "measure this feature".
+- A top-rim fillet on a Profile body with arcs (`EdgeFinish` on RoundedRect2 stock) is still
+  rejected; that is kernel fillet work, not a tool fix.
 
 ## Evidence
 
@@ -46,3 +53,5 @@ Helios applied it; **Undo AI changes** restored the Box.
   presence, structured context, build summary, cancel reason and chat-only tasks.
 - Aetheris `FirmamentSemanticSchemaTests`: every new entry builds as written; Extrude + Modify hole
   rejects with the Compose hint.
+- Follow-up: the original Extrude spelling builds with all five holes reported at their centres
+  (`Plate`, line 4); IntelliDraft (18), graph authoring (7) and author (6) e2e pass on the new SDK.

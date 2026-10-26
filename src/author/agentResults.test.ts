@@ -11,7 +11,7 @@ const model = (minimumMm?: number[]) => ({
   tree: { rootId: 'm', nodes: [
     { id: 'm', kind: 'Model', name: 'Bracket', children: ['Plate'], visible: true },
     { id: 'Plate', kind: 'Compose', name: 'Plate', children: ['Plate.CornerA'], visible: true, source: { source: 'p', line: 3, column: 1, start: 0, length: 1 } },
-    { id: 'Plate.CornerA', kind: 'Hole', semanticConstruct: 'Hole<Shaft>', name: 'CornerA', children: [], visible: true, holeDiameterMm: 5.5 },
+    { id: 'Plate.CornerA', kind: 'Hole', semanticConstruct: 'Hole<Shaft>', name: 'CornerA', children: [], visible: true, holeDiameterMm: 5.5, holePlacement: { face: '+Z', u: 19, v: 14, pointMm: null } },
   ] },
   properties: [{ id: 'x', ownerEntityId: 'm', name: 'Thickness', type: 'Length', unit: 'mm', value: 8, writable: true, source: { source: 'p', line: 4, column: 1, start: 0, length: 1 } }],
   mesh: { definitions: [cube(0)], occurrences: [{ id: 'Plate:occurrence', definitionId: 'def', semanticEntityId: 'Plate', path: 'p', transform: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 10, 0, 0, 1] }], ...(minimumMm ? { minimumMm, maximumMm: [1, 1, 1] } : {}) },
@@ -24,7 +24,7 @@ describe('agent tool results', () => {
     expect(summary).toMatchObject({
       accepted: true, diagnostics: [{ code: 'w', line: 2, column: 5 }],
       bounds: { minimumMm: [-15, -20, -4], maximumMm: [35, 20, 4], sizeMm: [50, 40, 8] },
-      bodies: [{ name: 'Plate', line: 3, features: [{ name: 'CornerA', kind: 'Hole<Shaft>', diameterMm: 5.5 }] }],
+      bodies: [{ name: 'Plate', line: 3, features: [{ name: 'CornerA', kind: 'Hole<Shaft>', diameterMm: 5.5, on: '+Z', centerMm: [19, 14] }] }],
       occurrences: [{ id: 'Plate:occurrence', body: 'Plate' }],
       parameters: [{ name: 'Thickness', value: 8, unit: 'mm', line: 4 }],
     });

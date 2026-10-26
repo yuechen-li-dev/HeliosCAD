@@ -51,7 +51,10 @@ export function buildSummary(result: CompileResult) {
   const nodes = new Map(model.tree.nodes.map(n => [n.id, n]));
   const featureOf = (id: string) => {
     const n = nodes.get(id)!;
-    return { name: n.name, kind: n.semanticConstruct ?? n.kind, ...(n.holeDiameterMm ? { diameterMm: n.holeDiameterMm } : {}), ...(n.source ? { line: n.source.line } : {}) };
+    const at = n.holePlacement;
+    return { name: n.name, kind: n.semanticConstruct ?? n.kind, ...(n.holeDiameterMm ? { diameterMm: n.holeDiameterMm } : {}),
+      ...(at ? { on: at.face, centerMm: [round(at.u), round(at.v)], ...(at.pointMm ? { pointMm: at.pointMm.map(round) } : {}) } : {}),
+      ...(n.source ? { line: n.source.line } : {}) };
   };
   const root = nodes.get(model.tree.rootId);
   const bodies = (root?.children ?? []).map(id => nodes.get(id)).filter(n => !!n).map(n => ({
