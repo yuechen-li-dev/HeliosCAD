@@ -32,10 +32,10 @@ const rectangle = (a: Point, b: Point): DrawnRectangle => ({ x: clean((a[0] + b[
 
 /** Pointer interaction over compiler-projected construction. Drag previews are disposable SVG
  * transforms. Only pointer-up submits dimensions to the existing compiler edit transaction. */
-export function ConstructionCanvas({ bounds, shapes, selected, drawing, movable, disabled, children, onSelect, onDraw, onMove, onPoint, hint, revision }: {
+export function ConstructionCanvas({ bounds, shapes, selected, drawing, movable, disabled, children, onSelect, onDraw, onMove, onPoint, hint, revision, drawKind = 'Rect2' }: {
   bounds: CanvasBounds; shapes: CanvasShape[]; selected: string; drawing: boolean; movable: boolean; disabled: boolean;
   children: ReactNode; onSelect(id: string): void; onDraw(rectangle: DrawnRectangle): void;
-  onMove(shape: SketchShape, center: Point): void; onPoint?(point: Point): void; hint: string; revision: number;
+  onMove(shape: SketchShape, center: Point): void; onPoint?(point: Point): void; hint: string; revision: number; drawKind?: string;
 }) {
   const svg = useRef<SVGSVGElement>(null), gesture = useRef<Gesture | null>(null), fitted = useRef(false);
   const [camera, setCamera] = useState<CanvasBounds>(bounds), [active, setActive] = useState<Gesture | null>(null);
@@ -90,7 +90,7 @@ export function ConstructionCanvas({ bounds, shapes, selected, drawing, movable,
     } else {
       const rect = rectangle([grid(final.start[0]), grid(final.start[1])], final.current);
       if (rect.width >= .1 && rect.height >= .1) onDraw(rect);
-      else setNotice('Drag between two corners to draw a rectangle, or enter its dimensions in the inspector.');
+      else setNotice('Drag between two corners to draw a shape, or enter its dimensions in the inspector.');
     }
   };
   const zoom = (factor: number) => setCamera(c => ({ x: c.x + c.width * (1 - factor) / 2, y: c.y + c.height * (1 - factor) / 2, width: c.width * factor, height: c.height * factor }));
@@ -112,7 +112,13 @@ export function ConstructionCanvas({ bounds, shapes, selected, drawing, movable,
         <title>Drag {item.shape.name}. Soft alignment only; hold Alt to bypass snapping.</title>
       </g>)}
       {moving && <g pointerEvents="none" transform={`translate(${active!.current[0] - moving.shape.center[0]},${-(active!.current[1] - moving.shape.center[1])})`}><rect x={moving.bounds.x} y={-moving.bounds.y - moving.bounds.height} width={moving.bounds.width} height={moving.bounds.height} className="draft-gesture-preview" vectorEffect="non-scaling-stroke" /></g>}
-      {preview && <rect x={preview.x - preview.width / 2} y={-preview.y - preview.height / 2} width={preview.width} height={preview.height} className="draft-gesture-preview" pointerEvents="none" vectorEffect="non-scaling-stroke" />}
+      {preview && (drawKind === 'Circle2' || drawKind === 'Ellipse2' ? <ellipse cx={preview.x} cy={-preview.y}
+        rx={drawKind === 'Circle2' ? Math.min(preview.width, preview.height) / 2 : preview.width / 2}
+        ry={drawKind === 'Circle2' ? Math.min(preview.width, preview.height) / 2 : preview.height / 2}
+        className="draft-gesture-preview" pointerEvents="none" vectorEffect="non-scaling-stroke" /> :
+        <rect x={preview.x - preview.width / 2} y={-preview.y - preview.height / 2} width={preview.width} height={preview.height}
+          rx={drawKind === 'Slot2' ? Math.min(preview.width, preview.height) / 2 : drawKind === 'RoundedRect2' ? Math.min(preview.width, preview.height) / 8 : 0}
+          className="draft-gesture-preview" pointerEvents="none" vectorEffect="non-scaling-stroke" />)}
       {active?.guides.map(guide => <g key={guide.axis} pointerEvents="none" className="draft-alignment-guide">
         {guide.axis === 'x' ? <line x1={guide.value} x2={guide.value} y1={camera.y} y2={camera.y + camera.height} vectorEffect="non-scaling-stroke" /> : <line x1={camera.x} x2={camera.x + camera.width} y1={-guide.value} y2={-guide.value} vectorEffect="non-scaling-stroke" />}
         <text x={guide.axis === 'x' ? guide.value + scale : camera.x + scale} y={guide.axis === 'x' ? camera.y + 8 * scale : -guide.value - scale} fontSize={scale * 1.7}>{guide.label}</text>

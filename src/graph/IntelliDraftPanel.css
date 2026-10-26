@@ -43,6 +43,19 @@
 .shape-cards { display:grid; grid-template-columns:1fr 1fr; gap:6px }
 .shape-cards button { display:flex; flex-direction:column; align-items:flex-start; gap:3px; border-color:#b4934f }
 .shape-cards span { font-size:11px; color:#75684b }
+.construction-list { margin:12px 0; display:flex; flex-direction:column; gap:6px }
+.construction-list-title { display:flex; align-items:center; justify-content:space-between }
+.construction-list-rows { max-height:210px; overflow-y:auto; border:1px solid #c9bea5; border-radius:4px; scrollbar-gutter:stable }
+.construction-list-rows [role=listitem] { display:flex; align-items:center; gap:7px; padding:3px 5px; border-bottom:1px solid #e5dfd1 }
+.construction-list-rows input { width:17px; min-height:17px; flex:none; accent-color:#a9791b }
+.construction-list-rows button { flex:1; min-width:0; display:flex; flex-direction:column; align-items:flex-start; text-align:left; overflow-wrap:anywhere }
+.construction-list small { color:#776b57; font-size:11px }
+.construction-list .shape-hidden b { opacity:.5 }
+.shape-tools { margin:8px 0; gap:4px }
+@media (max-height:800px) {
+  .construction-list-rows { max-height:120px }
+  .shape-tools button { min-height:26px; padding:3px 6px }
+}
 .construction-shapes small,.intellidraft form small { color:#686351; overflow-wrap:anywhere }
 .construction-advanced { margin-top:12px }
 .span-choices { display:flex; flex-direction:column; gap:5px; padding:6px 0 }

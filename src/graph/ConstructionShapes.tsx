@@ -3,9 +3,9 @@ import type { DraftConstruction, SketchShape } from '@aetheris/cad';
 
 /** Shape types and writable controls come from the compiler. This panel edits independent
  * dimensions; it never reconstructs rectangle corners or evaluates driven expressions. */
-export function ConstructionShapes({ construction, selected, onSelect, onCreate, onRelated, onDimensions, onParameter, onPending, busy, revision }: {
-  construction: DraftConstruction; selected: string; onSelect(id: string): void;
-  onCreate(): void; onRelated(reference: string): void;
+export function ConstructionShapes({ construction, selected, onRelated, onDimensions, onParameter, onPending, busy, revision }: {
+  construction: DraftConstruction; selected: string;
+  onRelated(reference: string): void;
   onDimensions(changes: { control: string; value: number }[]): void;
   onParameter(id: string, value: number): void; onPending(pending: boolean): void; busy: boolean; revision: number;
 }) {
@@ -21,8 +21,7 @@ export function ConstructionShapes({ construction, selected, onSelect, onCreate,
   return <div className="construction-shapes">
     <h3>Construction shapes</h3>
     <p>Drag shapes on the canvas to position them. Alignment guides help placement without linking shapes.</p>
-    <div className="shape-cards">{shapes.map(s => <button key={s.id} type="button" disabled={busy || pending !== null} aria-pressed={shape?.id === s.id} onClick={() => onSelect(s.id)} aria-label={`Select ${s.name}`}><b>{s.name}</b><span>{s.kind}</span></button>)}</div>
-    <button type="button" disabled={busy || pending !== null} onClick={onCreate}>Draw rectangle</button>
+
     {shape?.kind === 'Rect2' && <><small>Rect2 retains four right angles and equal, parallel opposite sides.</small><details><summary>Advanced: explicit expression relationship</summary><p>This intentionally links dimensions. Ordinary dragging and snapping never do this.</p><button type="button" disabled={busy || pending !== null} onClick={() => onRelated(shape.id)}>Add related rectangle</button></details></>}
     {shape && <ShapeDimensions key={shape.id + ':' + revision} shape={shape} busy={busy || pending !== null && pending !== 'shape'} onApply={onDimensions} onDirty={dirty => setPending(dirty ? 'shape' : null)} />}
     {!!relationshipParameters.length && <div className="relationship-parameters"><h3>Relationship dimensions</h3><p>Changing these inputs updates the construction that depends on them.</p>

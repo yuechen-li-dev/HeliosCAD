@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { DraftOperation, DraftSpan, DraftTrace, SketchEditRequest, SketchProjection } from '@aetheris/cad';
 import { sketchCurvePoints } from '@aetheris/three-telos';
 import type { WebSdkCadRuntime } from '../sdk/CadRuntime';
+import { ConstructionShapeList } from './ConstructionShapeList';
 import { ConstructionShapes } from './ConstructionShapes';
 import { ConstructionCanvas, type CanvasShape } from './ConstructionCanvas';
 import './IntelliDraftPanel.css';
@@ -24,6 +25,8 @@ export function IntelliDraftPanel({ runtime, initialSource = blank, onCommit, on
   const [tool, setTool] = useState<Tool>('Layout'), [name, setName] = useState('layout');
   const [owner, setOwner] = useState(''), [plane, setPlane] = useState('XY');
   const [x, setX] = useState(0), [y, setY] = useState(0);
+  const [drawKind, setDrawKind] = useState('Rect2');
+  const [hidden, setHidden] = useState<Set<string>>(new Set());
   const [width, setWidth] = useState(60), [rectHeight, setRectHeight] = useState(40);
   const [reference, setReference] = useState(''), [selectedShape, setSelectedShape] = useState('');
   const [insetX, setInsetX] = useState(8), [insetY, setInsetY] = useState(8), [sharedInset, setSharedInset] = useState(true);
@@ -54,13 +57,18 @@ export function IntelliDraftPanel({ runtime, initialSource = blank, onCommit, on
   const construction = view?.construction, elements = construction?.elements ?? [];
   const layouts = elements.filter(e => e.kind === 'Struct'), paths = elements.filter(e => e.kind === 'Path');
   const selectedOwner = elements.find(e => e.id === owner) ?? layouts[0] ?? paths[0];
-  const shapes = construction?.shapes ?? [], rectangles = shapes.filter(s => s.kind === 'Rect2');
-  const points = construction?.points ?? [], spans = construction?.spans ?? [];
-  const sourceOrder = (value: string) => elements.findIndex(e => e.name === value || ['Rect2', 'Path'].includes(e.kind) && value.startsWith(e.name + '.'));
-  const guides = [...(construction?.guides ?? [])].sort((a, b) => sourceOrder(a.name) - sourceOrder(b.name));
+  const shapes = construction?.shapes ?? [];
+  const shownShapes = shapes.filter(shape => !hidden.has(shape.id));
+  const rectangles = shownShapes.filter(shape => shape.kind === 'Rect2');
+  const traceShapes = shownShapes;
+  const shownGuide = (value: string) => !elements.some(e => hidden.has(e.id) && (value === e.name || value.startsWith(e.name + '.')));
+  const points = (construction?.points ?? []).filter(p => shownGuide(p.name)), spans = construction?.spans ?? [];
+  const sourceOrder = (value: string) => elements.findIndex(e => e.name === value || (e.kind === 'Path' || shapes.some(shape => shape.id === e.id)) && value.startsWith(e.name + '.'));
+  const guides = [...(construction?.guides ?? [])].filter(g => shownGuide(g.name)).sort((a, b) => sourceOrder(a.name) - sourceOrder(b.name));
   const selectedGuide = guides.find(g => g.name === guide) ?? guides[0];
-  const traceRectangle = rectangles.find(s => s.id === traceShape) ?? rectangles[0];
-  const selectable = spans.filter(s => s.owner === traceRectangle?.id);
+  const traceConstructionShape = traceShapes.find(s => s.id === traceShape) ?? traceShapes[0];
+  const selectable = spans.filter(s => s.owner === traceConstructionShape?.id);
+  const selectTraceShape = (id: string) => { setTraceShape(id); const parent = elements.find(e => e.id === id)?.parent; if (parent) setOwner(parent); };
   const pickedSpans = spans.filter(span => trace.some(t => t.reference === span.reference && t.from === span.from && t.to === span.to));
   const firstPoint = from || points[0]?.name || '', secondPoint = to || points[1]?.name || points[0]?.name || '';
   const profile = elements.find(e => e.kind === 'Profile'), body = elements.find(e => e.kind === 'Extrude');
@@ -89,7 +97,7 @@ export function IntelliDraftPanel({ runtime, initialSource = blank, onCommit, on
   const apply = async (operation: DraftOperation) => {
     const edit = await transact({ kind: 'construction', construction: operation }); if (!edit) return;
     if (operation.action === 'layout') { setTool('Rectangle'); setName(fresh('outer')); }
-    if (operation.action === 'rectangle') { setTool('Shapes'); setSelectedShape(edit.nodes.at(-1) ?? ''); setReference(''); }
+    if (operation.action === 'rectangle' || operation.action === 'shape') { const created = edit.nodes.at(-1) ?? ''; setTool('Shapes'); setSelectedShape(created); setHidden(previous => { const next = new Set(previous); next.delete(created); return next; }); setReference(''); }
     if (operation.action === 'path') { setTool('Line step'); setName('bottom'); setTurn(0); }
     if (['point', 'line', 'step'].includes(operation.action)) setName(nextName(name));
     if (operation.action === 'line') { setFrom(operation.to ?? ''); setTo(points[points.findIndex(p => p.name === operation.to) + 1]?.name ?? operation.to ?? ''); }
@@ -113,7 +121,7 @@ export function IntelliDraftPanel({ runtime, initialSource = blank, onCommit, on
   const submit = () => {
     const common = { parent: selectedOwner?.id, name };
     if (tool === 'Layout') void apply({ action: 'layout', name, plane });
-    if (tool === 'Rectangle') void apply({ action: 'rectangle', ...common, x, y, width, height: rectHeight, reference: reference || undefined, insetX, insetY, sharedInset });
+    if (tool === 'Rectangle') void apply(drawKind === 'Rect2' ? { action: 'rectangle', ...common, x, y, width, height: rectHeight, reference: reference || undefined, insetX, insetY, sharedInset } : { action: 'shape', kind: drawKind, ...common, x, y, width, height: rectHeight, radius });
     if (tool === 'Point') void apply(editingPoint ? { action: 'movePoint', parent: editingPoint, x, y } : { action: 'point', ...common, x, y });
     if (tool === 'Line') void apply({ action: 'line', ...common, from: firstPoint, to: secondPoint });
     if (tool === 'Circle') void apply({ action: 'circle', ...common, from: firstPoint, radius });
@@ -126,7 +134,7 @@ export function IntelliDraftPanel({ runtime, initialSource = blank, onCommit, on
   const minX = all.length ? Math.min(...all.map(p => p[0])) : -50, maxX = all.length ? Math.max(...all.map(p => p[0])) : 50;
   const minY = all.length ? Math.min(...all.map(p => p[1])) : -40, maxY = all.length ? Math.max(...all.map(p => p[1])) : 40;
   const scale = Math.max(10, maxX - minX, maxY - minY) / 80, margin = scale * 10;
-  const canvasShapes: CanvasShape[] = shapes.flatMap(shape => {
+  const canvasShapes: CanvasShape[] = shownShapes.flatMap(shape => {
     const vertices = polylines.filter(p => p.construction && (p.curve.name === shape.name || p.curve.name.startsWith(shape.name + '.'))).flatMap(p => p.points);
     if (!vertices.length) return [];
     const xs = vertices.map(p => p[0]), ys = vertices.map(p => p[1]);
@@ -147,23 +155,30 @@ export function IntelliDraftPanel({ runtime, initialSource = blank, onCommit, on
       {construction?.frames?.map(({ owner: id, frame }) => <span key={id}> · {frame.name}: local X ({frame.x.join(', ')}), Y ({frame.y.join(', ')}), normal ({frame.normal.join(', ')})</span>)}</p>
     <div className="draft-body"><aside ref={inspector}>
       <nav aria-label="Construction workflow">{(['Shapes', 'Trace', 'Extrude'] as const).map(t => <button key={t} aria-pressed={tool === t || t === 'Shapes' && tool === 'Rectangle'} disabled={busy || pendingDimensions || t === 'Shapes' && !layouts.length || t === 'Extrude' && !profile} onClick={() => choose(t)}>{t}</button>)}</nav>
-      {tool === 'Shapes' && construction && <ConstructionShapes construction={construction} selected={selectedShape} onSelect={setSelectedShape} busy={busy} revision={index}
-        onCreate={() => { choose('Rectangle'); setReference(''); }} onRelated={id => { choose('Rectangle'); setReference(id); setName(fresh('notch')); }}
+      {!!layouts.length && <nav className="shape-tools" aria-label="Draw construction shapes">{[['Rect2', 'Rectangle'], ['Circle2', 'Circle'], ['Ellipse2', 'Ellipse'], ['Slot2', 'Slot'], ['RoundedRect2', 'Rounded rectangle']].map(([kind, label]) => <button type="button" key={kind} disabled={busy || pendingDimensions} aria-pressed={tool === 'Rectangle' && drawKind === kind} onClick={() => { choose('Rectangle'); setDrawKind(kind); if (kind !== 'Rect2') setName(fresh(label.toLowerCase().replaceAll(' ', ''))); }}>Draw {label.toLowerCase()}</button>)}</nav>}
+      {!!shapes.length && <ConstructionShapeList shapes={shapes} selected={selectedShape || shapes[0]?.id || ''} hidden={hidden} disabled={busy || pendingDimensions}
+        onSelect={id => { setSelectedShape(id); if (tool === 'Trace') selectTraceShape(id); else if (tool !== 'Shapes') choose('Shapes'); }}
+        onToggle={id => setHidden(previous => { const next = new Set(previous); if (!next.delete(id)) next.add(id); return next; })} onShowAll={() => setHidden(new Set())} />}
+      {tool === 'Shapes' && construction && <ConstructionShapes construction={construction} selected={selectedShape} busy={busy} revision={index}
+        onRelated={id => { setDrawKind('Rect2'); choose('Rectangle'); setReference(id); setName(fresh('notch')); }}
         onDimensions={changes => void transact({ kind: 'constructionDimensions', changes })} onParameter={(id, value) => void apply({ action: 'parameter', parent: id, value })} onPending={setPendingDimensions} />}
+
       <details className="construction-advanced"><summary>Advanced: points, lines and Paths</summary><nav aria-label="Construction tools">{(['Layout', 'Point', 'Line', 'Circle', 'Path'] as const).map(t => <button key={t} disabled={busy} aria-pressed={tool === t} onClick={() => choose(t)}>{t}</button>)}</nav></details>
       {!['Shapes', 'Extrude', 'Line step', 'Arc step'].includes(tool) && <form onSubmit={e => { e.preventDefault(); submit(); }}>
-        <h3>{editingPoint ? `Edit Point: ${name}` : tool === 'Trace' ? 'Trace a Profile' : `Add ${tool}`}</h3>
+        <h3>{editingPoint ? `Edit Point: ${name}` : tool === 'Trace' ? 'Trace a Profile' : tool === 'Rectangle' ? `Draw ${drawKind === 'Rect2' ? 'rectangle' : drawKind === 'Circle2' ? 'circle' : drawKind === 'Ellipse2' ? 'ellipse' : drawKind === 'Slot2' ? 'slot' : 'rounded rectangle'}` : `Add ${tool}`}</h3>
         <label>Name<input aria-label="Construction name" value={name} readOnly={!!editingPoint} disabled={busy} onChange={e => setName(e.target.value)} required /></label>
         {['Rectangle', 'Point', 'Line', 'Circle', 'Trace'].includes(tool) && ownerChoice}
         {tool === 'Layout' && choice('Plane', plane, setPlane, ['XY', 'XZ', 'YZ'])}
         {tool === 'Rectangle' && <>
-          <details open={!!reference}><summary>Advanced: explicit relationship</summary><label>Relationship<select aria-label="Rectangle relationship" disabled={busy} value={reference ? 'inset' : 'independent'} onChange={e => setReference(e.target.value === 'inset' ? rectangles[0]?.id ?? '' : '')}><option value="independent">Independent dimensions and position</option><option value="inset" disabled={!rectangles.length}>Top-right aligned inset</option></select></label></details>
+          <p>{drawKind}</p>
+          {drawKind === 'Rect2' && <details open={!!reference}><summary>Advanced: explicit relationship</summary><label>Relationship<select aria-label="Rectangle relationship" disabled={busy} value={reference ? 'inset' : 'independent'} onChange={e => setReference(e.target.value === 'inset' ? rectangles[0]?.id ?? '' : '')}><option value="independent">Independent dimensions and position</option><option value="inset" disabled={!rectangles.length}>Top-right aligned inset</option></select></label></details>}
           {reference ? <><label>Reference rectangle<select aria-label="Reference rectangle" disabled={busy} value={reference} onChange={e => setReference(e.target.value)}>{rectangles.map(shape => <option key={shape.id} value={shape.id}>{shape.name}</option>)}</select></label>
             <label className="draft-check"><input type="checkbox" disabled={busy} checked={sharedInset} onChange={e => setSharedInset(e.target.checked)} />Use one shared wall dimension</label>
             {numberField(sharedInset ? 'Wall thickness' : 'Left inset', insetX, setInsetX)}{!sharedInset && numberField('Bottom inset', insetY, setInsetY)}
             <small>Top and right edges follow the reference. Width, height and center remain driven by its dimensions and the inset.</small>
-          </> : <><div className="draft-pair">{numberField('Width', width, setWidth)}{numberField('Height', rectHeight, setRectHeight)}</div><div className="draft-pair">{numberField('Center X', x, setX)}{numberField('Center Y', y, setY)}</div></>}
-          <small>Drag on the canvas to draw, or enter dimensions and Add Rectangle. Each rectangle has its own placement. Rect2 supplies right angles and parallel opposite sides.</small>
+          </> : <>{drawKind !== 'Circle2' && <div className="draft-pair">{numberField(drawKind === 'Slot2' ? 'Overall length' : 'Width', width, setWidth)}{numberField(drawKind === 'Slot2' ? 'Slot width' : 'Height', rectHeight, setRectHeight)}</div>}<div className="draft-pair">{numberField('Center X', x, setX)}{numberField('Center Y', y, setY)}</div></>}
+          {(drawKind === 'Circle2' || drawKind === 'RoundedRect2') && numberField('Radius', radius, setRadius)}
+          <small>Drag on the canvas to draw, or enter dimensions and add the selected shape. Each shape has its own placement and retains its intrinsic geometry.</small>
         </>}
         {['Point', 'Path'].includes(tool) && <div className="draft-pair">{numberField('X', x, setX)}{numberField('Y', y, setY)}</div>}
         {tool === 'Path' && <>{numberField('Initial heading', turn, setTurn, 'deg')}<small>Paths use local XY. Positive turns go counterclockwise.</small></>}
@@ -171,13 +186,13 @@ export function IntelliDraftPanel({ runtime, initialSource = blank, onCommit, on
         {tool === 'Line' && choice('To point', secondPoint, setTo, points.map(p => p.name))}
         {tool === 'Circle' && numberField('Radius', radius, setRadius)}
         {tool === 'Trace' && selectedOwner?.kind === 'Struct' && <>
-          {!!rectangles.length && <>
-            <label>Trace shape<select aria-label="Trace shape" disabled={busy} value={traceRectangle?.id ?? ''} onChange={e => setTraceShape(e.target.value)}>{rectangles.map(shape => <option key={shape.id} value={shape.id}>{shape.name}</option>)}</select></label>
+          {!!traceShapes.length && <>
+            <label>Trace shape<select aria-label="Trace shape" disabled={busy} value={traceConstructionShape?.id ?? ''} onChange={e => selectTraceShape(e.target.value)}>{traceShapes.map(shape => <option key={shape.id} value={shape.id}>{shape.name}</option>)}</select></label>
             <p>Click this shape's highlighted spans on the canvas in boundary order. Named corners provide the endpoints.</p>
-            <button type="button" disabled={busy} onClick={() => setTrace([{ reference: traceRectangle!.name, wholeLoop: true }])}>Use whole rectangle outline</button>
+            <button type="button" disabled={busy} onClick={() => setTrace([{ reference: traceConstructionShape!.name, wholeLoop: true }])}>{traceConstructionShape?.kind === 'Rect2' ? 'Use whole rectangle outline' : 'Use whole shape outline'}</button>
             <details><summary>Available boundary spans</summary><div className="span-choices">{selectable.map(span => <button type="button" key={span.id} disabled={busy} onClick={() => pickSpan(span)} aria-label={`Add span ${span.reference} from ${span.from} to ${span.to}`}>{span.reference}<small>{span.from} → {span.to}</small></button>)}</div></details>
           </>}
-          <details open={!rectangles.length}><summary>Manual guide trace</summary>
+          <details open={!traceShapes.length}><summary>Manual guide trace</summary>
             {choice('Guide', selectedGuide?.name ?? '', setGuide, guides.map(g => g.name))}
             <label className="draft-check"><input type="checkbox" disabled={busy} checked={arc} onChange={e => setArc(e.target.checked)} />Trace a span between named points</label>
             {arc && <>{choice('Span from', firstPoint, setFrom, points.map(p => p.name))}{choice('Span to', secondPoint, setTo, points.map(p => p.name))}</>}
@@ -188,7 +203,7 @@ export function IntelliDraftPanel({ runtime, initialSource = blank, onCommit, on
           <button type="button" disabled={busy || !trace.length} onClick={() => setTrace([])}>Clear trace selection</button>
           <small>{profile ? 'This replaces the current Profile only when the new trace resolves. ' : ''}Close checks closure; it does not add an edge.</small>
         </>}
-        <button className="draft-primary" disabled={busy || ['Rectangle', 'Point', 'Line', 'Circle'].includes(tool) && !layouts.length || tool === 'Trace' && (!selectedOwner || selectedOwner.kind === 'Struct' && !trace.length)}>{editingPoint ? 'Update Point' : tool === 'Trace' ? 'Trace Profile' : `Add ${tool}`}</button>
+        <button className="draft-primary" disabled={busy || ['Rectangle', 'Point', 'Line', 'Circle'].includes(tool) && !layouts.length || tool === 'Trace' && (!selectedOwner || selectedOwner.kind === 'Struct' && !trace.length)}>{editingPoint ? 'Update Point' : tool === 'Trace' ? 'Trace Profile' : tool === 'Rectangle' && drawKind !== 'Rect2' ? 'Add shape' : `Add ${tool}`}</button>
       </form>}
       {!body && !['Shapes', 'Rectangle', 'Extrude'].includes(tool) && paths.map(path => <form key={path.id} onSubmit={e => { e.preventDefault(); void apply({ action: 'step', parent: path.id, name, kind: tool === 'Arc step' ? 'Arc' : 'Line', length, radius, turn }); }}>
         <h3>Path: {path.name}</h3><p>Each step starts at the previous endpoint.</p>
@@ -200,30 +215,34 @@ export function IntelliDraftPanel({ runtime, initialSource = blank, onCommit, on
       </form>)}
       {profile && !body && tool === 'Extrude' && <form onSubmit={e => { e.preventDefault(); void apply({ action: 'extrude', parent: profile.id, name: fresh('body'), length: height }); }}><h3>Profile: {profile.name}</h3>{numberField('Extrusion depth', height, setHeight)}<button disabled={busy}>Extrude Profile</button></form>}
       {tool === 'Extrude' && body && <p>The Profile already has a material consumer. Use Shapes to edit its construction, then Build and use part.</p>}
-      <details><summary>Advanced construction objects and dimensions</summary>{elements.filter(e => !['Model', 'Struct', 'Profile', 'Static', 'Rect2'].includes(e.kind)).map(e => <div className="draft-object" key={e.id}><b>{e.name} · {e.kind}</b>
+      <details><summary>Advanced construction objects and dimensions</summary>{elements.filter(e => !['Model', 'Struct', 'Profile', 'Static'].includes(e.kind) && !shapes.some(shape => shape.id === e.id)).map(e => <div className="draft-object" key={e.id}><b>{e.name} · {e.kind}</b>
         {e.kind === 'Point2' && <button disabled={busy} onClick={() => { const point = points.find(p => p.name === e.name); if (!point) return; setTool('Point'); setEditingPoint(e.id); setName(e.name); setX(point.x); setY(point.y); }}>Edit point {e.name}</button>}
         {e.fields.filter(f => typeof f.number === 'number').map(f => <button key={f.name} disabled={busy || !f.editable || !['Line', 'Arc', 'Circle2', 'Path', 'Extrude'].includes(e.kind)} onClick={() => setDimension({ owner: e.id, field: f.name, value: f.number!, unit: f.unit! })}>{e.name}.{f.name}: {f.value}</button>)}
       </div>)}</details>
       {dimension && <form onSubmit={e => { e.preventDefault(); void apply({ action: 'dimension', parent: dimension.owner, field: dimension.field, value: dimension.value }); }}><h3>Edit {dimension.field}</h3>{numberField('Driving dimension', dimension.value, value => setDimension({ ...dimension, value }), dimension.unit)}<button disabled={busy}>Update dimension</button><button type="button" disabled={busy} onClick={() => setDimension(null)}>Cancel dimension edit</button></form>}
     </aside>
     <ConstructionCanvas bounds={{ x: minX - margin, y: -maxY - margin, width: maxX - minX + margin * 2, height: maxY - minY + margin * 2 }} shapes={canvasShapes}
-      revision={index} selected={selectedShape || shapes[0]?.id || ''} drawing={tool === 'Rectangle' && !reference} movable={tool === 'Shapes'} disabled={busy || pendingDimensions}
-      onSelect={setSelectedShape} onDraw={rect => void apply({ action: 'rectangle', parent: selectedOwner?.id, name, ...rect })}
+      revision={index} selected={selectedShape || shapes[0]?.id || ''} drawKind={drawKind} drawing={tool === 'Rectangle' && !reference} movable={tool === 'Shapes'} disabled={busy || pendingDimensions}
+      onSelect={setSelectedShape} onDraw={rect => void apply(drawKind === 'Rect2' ? { action: 'rectangle', parent: selectedOwner?.id, name, ...rect } : {
+        action: 'shape', kind: drawKind, parent: selectedOwner?.id, name, ...rect,
+        ...(drawKind === 'Slot2' ? { width: Math.max(rect.width, rect.height), height: Math.min(rect.width, rect.height), turn: rect.height > rect.width ? 90 : 0 } : {}),
+        radius: Math.min(rect.width, rect.height) / (drawKind === 'Circle2' ? 2 : 8),
+      })}
       onMove={(shape, center) => void transact({ kind: 'constructionDimensions', changes: shape.controls.filter(c => c.label === 'Center X' || c.label === 'Center Y').map(c => ({ control: c.id, value: center[c.label === 'Center X' ? 0 : 1] })) })}
       onPoint={tool === 'Point' ? point => { setX(point[0]); setY(point[1]); } : undefined}
-      hint={tool === 'Rectangle' && !reference ? 'Drag between two corners to draw. Then enter exact dimensions.' : tool === 'Shapes' ? 'Drag a shape to place it. Alignment is temporary; hold Alt to bypass. Middle-drag to pan.' : tool === 'Trace' ? 'Select boundary spans. Gold construction stays intact.' : 'Gold: construction shapes · dark: traced Profile'}>
+      hint={tool === 'Rectangle' && !reference ? 'Drag between two corners to draw the selected shape. Then enter exact dimensions.' : tool === 'Shapes' ? 'Drag a shape to place it. Alignment is temporary; hold Alt to bypass. Middle-drag to pan.' : tool === 'Trace' ? 'Select boundary spans. Gold construction stays intact.' : 'Gold: construction shapes · dark: traced Profile'}>
       <line x1={minX - margin} x2={maxX + margin} y1={0} y2={0} stroke="#ddd" strokeWidth={scale * .6} /><line x1={0} x2={0} y1={-maxY - margin} y2={-minY + margin} stroke="#ddd" strokeWidth={scale * .6} />
       {polylines.map(item => <polyline key={(item.construction ? 'guide:' : 'trace:') + item.curve.id} aria-label={item.curve.name} points={item.points.map(p => `${p[0]},${-p[1]}`).join(' ')} fill="none" stroke={item.construction ? '#ad7b22' : '#243e49'} strokeWidth={item.construction ? 1.5 : 2.5} opacity={item.construction && view?.loops.length ? .5 : 1} vectorEffect="non-scaling-stroke"><title>{item.curve.name}</title></polyline>)}
       {tool === 'Trace' && pickedSpans.map(span => <polyline key={'picked:' + span.id} points={sketchCurvePoints(span.curve).map(p => `${p[0]},${-p[1]}`).join(' ')} fill="none" stroke="#243e49" strokeWidth="3" vectorEffect="non-scaling-stroke" />)}
       {tool === 'Trace' && selectable.map(span => <TraceSpanTarget key={span.id} span={span} scale={scale} selected={pickedSpans.some(p => p.id === span.id)} hovered={hoveredSpan === span.id} onHover={setHoveredSpan} onPick={pickSpan} />)}
-      {tool === 'Shapes' && shapes.map(shape => <text key={shape.id} role="button" tabIndex={pendingDimensions ? -1 : 0} aria-disabled={pendingDimensions} aria-label={`Select construction ${shape.name}`} x={shape.center[0]} y={-shape.center[1]} fontSize={scale * 2.7} textAnchor="middle" fill="#855b0c" style={{ cursor: 'pointer', paintOrder: 'stroke', stroke: '#fafaf7', strokeWidth: scale * .6 }} onClick={() => { if (!pendingDimensions) setSelectedShape(shape.id); }} onKeyDown={e => { if (!pendingDimensions && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); setSelectedShape(shape.id); } }}>{shape.name} · {shape.kind}</text>)}
+      {tool === 'Shapes' && shownShapes.filter(shape => shownShapes.length <= 6 || shape.id === (selectedShape || shownShapes[0]?.id)).map(shape => <text key={shape.id} role="button" tabIndex={pendingDimensions ? -1 : 0} aria-disabled={pendingDimensions} aria-label={`Select construction ${shape.name}`} x={shape.center[0]} y={-shape.center[1]} fontSize={scale * 2.7} textAnchor="middle" fill="#855b0c" style={{ cursor: 'pointer', paintOrder: 'stroke', stroke: '#fafaf7', strokeWidth: scale * .6 }} onClick={() => { if (!pendingDimensions) setSelectedShape(shape.id); }} onKeyDown={e => { if (!pendingDimensions && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); setSelectedShape(shape.id); } }}>{shape.name} · {shape.kind}</text>)}
       {!['Shapes', 'Rectangle'].includes(tool) && pointLabels.filter(p => tool !== 'Trace' || spans.some(s => s.id === hoveredSpan && p.names.some(name => name === s.from || name === s.to))).map(p => <g key={p.names[0]}><title>{p.names.join(', ')}</title><circle cx={p.x} cy={-p.y} r={scale * .7} fill="#ad7b22" /><text x={p.x + scale} y={-p.y - scale} fontSize={scale * 2.1} fill="#72531b">{p.names[0]}{p.names.length > 1 ? ` (+${p.names.length - 1})` : ''}</text></g>)}
     </ConstructionCanvas></div>
     <footer><div role="status">{busy ? 'Checking with compiler…' : pendingDimensions ? 'Apply or discard dimension edits before building.' : profile ? 'Profile resolved · solid admission checked by Build' : 'Construction draft · not a built part'}{error && <p role="alert">{error}</p>}{construction?.diagnostics.map((d, i) => <p key={i}>{d.code}: {d.message}</p>)}</div><button className="draft-primary" disabled={busy || pendingDimensions || !body} onClick={() => void commit()}>Build and use part</button></footer>
   </dialog>;
 }
 function nextName(name: string) { const match = name.match(/^(.*?)(\d+)$/); return match ? match[1] + (Number(match[2]) + 1) : name.length === 1 && name >= 'a' && name < 'z' ? String.fromCharCode(name.charCodeAt(0) + 1) : name + '2'; }
-function message(error: unknown) { const text = error instanceof Error ? error.message : String(error); const code = (error as { code?: unknown })?.code; return typeof code === 'string' && !text.startsWith(code) ? `${code}: ${text}` : text; }
+function message(error: unknown) { const text = error instanceof Error ? error.message : String(error); const code = (error as { code?: unknown })?.code; const details = (error as { details?: unknown })?.details; if (code === 'internal-error' && typeof details === 'string' && details) return `${code}: ${text} ${details}`; return typeof code === 'string' && !text.startsWith(code) ? `${code}: ${text}` : text; }
 
 function TraceSpanTarget({ span, scale, selected, hovered, onHover, onPick }: {
   span: DraftSpan; scale: number; selected: boolean; hovered: boolean; onHover(id: string | null): void; onPick(span: DraftSpan): void;

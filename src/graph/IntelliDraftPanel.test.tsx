@@ -21,6 +21,14 @@ function projection(built = false): SketchProjection {
       points: [], guides: [], frames: [], diagnostics: [], validationLevel: 'ConstructionResolvedNotTraced' } };
 }
 describe('IntelliDraft transaction', () => {
+  it('preserves the runtime explanation when a generic failure includes diagnostic details', async () => {
+    const failure = Object.assign(new Error('Aetheris could not complete the operation.'), { code: 'internal-error', details: 'Face 3 has unsupported surface kind LinearExtrusion.' });
+    const runtime = { sketch: vi.fn().mockResolvedValue(projection()), sketchEdit: vi.fn().mockRejectedValue(failure) };
+    render(<IntelliDraftPanel runtime={runtime} onCommit={vi.fn()} onClose={vi.fn()} />);
+    await waitFor(() => expect(runtime.sketch).toHaveBeenCalledOnce());
+    fireEvent.click(screen.getByRole('button', { name: 'Add Layout' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('Face 3 has unsupported surface kind LinearExtrusion');
+  });
   it('keeps the draft and current part untouched when a construction edit is refused', async () => {
     const runtime = { sketch: vi.fn().mockResolvedValue(projection()), sketchEdit: vi.fn().mockRejectedValue(new Error('draft-name-exists: choose a unique name')) };
     const commit = vi.fn(); render(<IntelliDraftPanel runtime={runtime} onCommit={commit} onClose={vi.fn()} />);

@@ -10,15 +10,15 @@ it('keeps dimension edits local until Apply and requires Apply or Discard before
   }] });
   const construction: DraftConstruction = { shapes: [shape('outer'), shape('other')], spans: [], frames: [], points: [], guides: [], diagnostics: [], validationLevel: 'ConstructionResolvedNotTraced',
     elements: [{ id: 'wall', name: 'wall', kind: 'Static', parent: 'Part', span: { start: 0, length: 4 }, fields: [{ name: 'value', value: '8mm', number: 8, unit: 'mm', editable: true }] }] };
-  const select = vi.fn(), dimensions = vi.fn(), parameter = vi.fn(), pending = vi.fn();
-  render(<ConstructionShapes construction={construction} selected="outer" onSelect={select} onCreate={vi.fn()} onRelated={vi.fn()} onDimensions={dimensions} onParameter={parameter} onPending={pending} busy={false} revision={0} />);
+  const dimensions = vi.fn(), parameter = vi.fn(), pending = vi.fn();
+  render(<ConstructionShapes construction={construction} selected="outer" onRelated={vi.fn()} onDimensions={dimensions} onParameter={parameter} onPending={pending} busy={false} revision={0} />);
   fireEvent.change(screen.getByLabelText('Width'), { target: { value: '80' } });
   await waitFor(() => expect(pending).toHaveBeenLastCalledWith(true));
   expect(dimensions).not.toHaveBeenCalled(); expect(parameter).not.toHaveBeenCalled();
-  expect(screen.getByRole('button', { name: 'Select other' })).toBeDisabled(); expect(screen.getByLabelText('wall')).toBeDisabled();
+  expect(screen.getByLabelText('wall')).toBeDisabled();
   fireEvent.click(screen.getByRole('button', { name: 'Discard dimension edits' }));
   expect(screen.getByLabelText('Width')).toHaveValue(60); await waitFor(() => expect(pending).toHaveBeenLastCalledWith(false));
-  expect(screen.getByRole('button', { name: 'Select other' })).toBeEnabled(); expect(screen.getByLabelText('wall')).toBeEnabled();
+  expect(screen.getByLabelText('wall')).toBeEnabled();
   fireEvent.change(screen.getByLabelText('Width'), { target: { value: '80' } });
   fireEvent.click(screen.getByRole('button', { name: 'Apply shape dimensions' }));
   expect(dimensions).toHaveBeenCalledWith([{ control: 'outer/width', value: 80 }]);
