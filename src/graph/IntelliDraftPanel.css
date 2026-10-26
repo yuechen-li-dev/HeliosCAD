@@ -27,6 +27,15 @@
 .intellidraft li button { padding:1px 5px; min-height:24px; margin-left:4px }
 .draft-canvas { flex:1; min-width:0; position:relative; background:radial-gradient(#ddd 1px,transparent 1px) 0 0/16px 16px }
 .draft-canvas svg { width:100%; height:100% }
+.draft-canvas svg { touch-action:none }
+.draft-canvas svg.drawing { cursor:crosshair }
+.draft-canvas-tools { position:absolute; z-index:1; top:8px; right:8px; display:flex; gap:4px }
+.draft-shape-target { cursor:move }
+.draft-shape-target:focus { outline:none }
+.draft-shape-target:focus-visible>rect { stroke:#1d655a; stroke-width:3 }
+.draft-gesture-preview { fill:#e5c77533; stroke:#916b16; stroke-width:2; stroke-dasharray:6 3 }
+.draft-alignment-guide { stroke:#cb3d96; stroke-width:1; stroke-dasharray:5 4 }
+.draft-alignment-guide text { stroke:none; fill:#a12672; paint-order:stroke; font-family:system-ui }
 .draft-axes { position:absolute; bottom:10px; left:12px; color:#626255; background:#fafaf7dd; padding:3px }
 .draft-object { display:flex; flex-direction:column; align-items:stretch; gap:4px; padding:8px 0; border-bottom:1px solid #eee }
 .draft-object button { text-align:left }

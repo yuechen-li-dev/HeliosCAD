@@ -1,20 +1,25 @@
 # IntelliDraft
 
-IntelliDraft constructs a profile from dimensioned shapes and explicit dependencies. Gold rectangles retain their dimensions, right angles and equal, parallel opposite sides. Trace chooses the material boundary from that construction. You edit the driving dimensions instead of maintaining a collection of unrelated corner coordinates.
+IntelliDraft draws retained construction shapes, then traces a material Profile from their boundaries. A rectangle retains its exact size, right angles and parallel opposite sides. Each shape has its own placement. Temporary alignment guides help you position shapes without creating persistent relationships or a constraint solver.
 
-Open **IntelliDraft** above the viewport. It opens an existing profile-based part when available; **New profile part** starts a separate draft. Otherwise it starts a new construction layout. The current part stays unchanged until the candidate passes **Build and use part**.
+Open **IntelliDraft** above the viewport. It edits an existing profile-based part when available; **New profile part** starts a separate draft. Otherwise it starts a new construction layout. The current part stays unchanged until **Build and use part** succeeds.
 
-## Make an L from two rectangles
+## Draw, dimension, place, repeat, trace
 
-The complete reference program is Aetheris's `fixtures/Regression/IntelliDraft/rectangles-l.firmament`. Its intentional revision is `rectangles-l-revised.firmament`.
+The complete reference program is Aetheris's `fixtures/Regression/IntelliDraft/independent-rectangles-l.firmament`.
 
-1. Name the construction layout `layout`, choose **XY**, then **Add Layout**.
-2. Add a rectangle named `outer`: **Width = 60 mm**, **Height = 40 mm**, **Center X/Y = 0 mm**. Choose **Add Rectangle**.
-3. With `outer` selected, choose **Add related rectangle**. Name it `notch`, keep **Top-right aligned inset**, and select `outer` as its reference. Keep **Use one shared wall dimension**, set **Wall thickness = 8 mm**, then **Add Rectangle**.
+1. Name the layout `layout`, choose **XY**, then **Add Layout**.
+2. Name the first rectangle `outer`. Drag between two corners on the canvas to draw it. Enter exact **Width = 60 mm**, **Height = 40 mm**, then **Apply shape dimensions**. **Placement** lets you enter an exact center; use **Center X/Y = 0 mm** for this example. Alternatively, fill these values before choosing **Add Rectangle**.
+3. Choose **Draw rectangle**, name it `notch`, and draw the second rectangle. Set its exact **Width = 52 mm**, **Height = 32 mm**, then apply.
+4. Drag the second rectangle until its top and right edges align with the first. Pink guides indicate nearby edge or center alignment. Release to store its placement: **Center X/Y = 4 mm** in this example. You can verify or enter these values under **Placement**.
 
-The second rectangle has width 52 mm, height 32 mm and center (4, 4) mm. Those are derived values: its top and right edges follow the first rectangle, and its left and bottom edges are inset by the shared wall input. Both rectangles remain gold construction objects.
+The placement is a number, not a relationship. Moving or resizing `outer` later does not pull `notch` along. The rectangles retain their own shape properties; the source does not acquire a hidden mate or an expression linking the two shapes.
 
-4. Choose **Trace**. Select a **Trace shape**, then click its highlighted spans on the canvas in this order:
+**Hold Alt while dragging** to bypass alignment. **Escape** cancels the active gesture without closing the workspace or changing source. Pointer cancellation also abandons the preview. Drawing corners and unsnapped dragging use 0.1 mm authoring increments; an alignment uses the projected target position exactly. This increment is not a declared manufacturing tolerance. Explicit numeric fields can use finer precision.
+
+**Fit construction**, **+ / −**, and middle-button dragging navigate the canvas. Click a shape card to inspect its dimensions. Overlapping shapes can be selected through their cards; dragging the visible body uses the topmost shape under the pointer.
+
+5. Choose **Trace**. Select a **Trace shape**, then click these spans in boundary order:
 
 | Shape | Selected span |
 |---|---|
@@ -25,40 +30,32 @@ The second rectangle has width 52 mm, height 32 mm and center (4, 4) mm. Those a
 | outer | Top edge left of the notch's top-left corner |
 | outer | Entire left edge |
 
-The compiler supplies the named corner landmarks. You do not create six points or six Line2 declarations. Connected spans are oriented to follow the preceding span. Selected pieces stay dark across both rectangles; gold construction remains visible. **Available boundary spans** provides the same choices as accessible buttons.
+Named corners supply the endpoints. You do not author six points or six Line2 declarations. Connected spans follow the preceding span; selected pieces stay dark while the gold construction remains visible. **Available boundary spans** offers the same choices as accessible buttons.
 
-5. Choose **Trace Profile**, leave **Extrusion depth = 6 mm**, then **Extrude Profile** and **Build and use part**.
+6. Choose **Trace Profile**, leave **Extrusion depth = 6 mm**, then **Extrude Profile** and **Build and use part**.
 
-This L occupies X=-30–30 mm, Y=-20–20 mm and Z=0–6 mm, with nominal volume 4,416 mm³. To use a whole rectangle instead, choose **Use whole rectangle outline** before **Trace Profile**.
+The L occupies X=-30–30 mm, Y=-20–20 mm and Z=0–6 mm, with nominal volume 4,416 mm³. For a single rectangle, **Use whole rectangle outline** replaces span-by-span selection.
 
-## Edit the explanation of the part
+## Exact inputs and transactions
 
-Return to **Shapes** and select `outer`. Change **Width** to 80 mm and choose **Apply shape dimensions**. The notch becomes 72 mm wide and stays aligned. Its width displays **Driven by outerWidth - notchWall**: it is not an independent value to overwrite.
+Drawing and dragging preview locally, then submit one compiler-owned source transaction on release. Dimension fields require **Apply** or **Discard** before switching editors, tools or building. Independent dimensions remain writable; expression-driven dimensions show their authored expressions and remain read-only. Dragging never replaces an explicit expression with a number.
 
-Under **Relationship dimensions**, change `notchWall` to 10 mm and apply it. Both leg widths follow the same input. The notch becomes 70 × 30 mm, and the revised L has nominal volume 6,600 mm³. **Placement** contains the independent center controls.
+**Undo** and **Redo** navigate staged source transactions. **Cancel** discards the staged draft. Save source or create a checkpoint before closing or refreshing a local browser tab. A complete candidate must pass normal engineering build admission before replacing the current document.
 
-Shape types supply intrinsic relationships. References and shared parameters supply relationships between shapes. The source retains ordinary Rect2 declarations, named inputs and expressions; the UI does not replace these with sampled points or infer relationships from a mesh.
+A traced Profile must remain closed and valid. A move that breaks an existing Profile is refused with the compiler's diagnostic and leaves the preceding candidate intact; another shape is never moved to repair it. Correct the placement or use Trace to select a different valid boundary. **Close** verifies closure and never invents a missing segment.
 
-Apply or discard pending dimension fields before switching tools or building. **Discard dimension edits** resets that form. An invalid change leaves the preceding source and geometry intact; discard the refused input or enter another value. Derived controls show their expressions and remain read-only. Typed tolerances and other driven expressions are not flattened into literal coordinates.
+## Explicit dependencies are optional
 
-## Trace, drafts and history
+Under **Advanced: explicit expression relationship**, **Add related rectangle** intentionally creates a dimension-driven top-right inset with a shared wall or separate insets. This is an explicit source expression workflow, separate from independent placement. Its values remain editable through their driving inputs. Ordinary dragging and alignment never select this behavior implicitly.
 
-Trace selects a boundary; it is not a Boolean union or subtraction. **Close** checks that the selected chain closes and never invents a missing edge. A disconnected, degenerate or invalid trace is rejected. Remove or reorder entries to correct a selection. Re-entering Trace for an existing Profile replaces its boundary only after the new trace resolves.
+Existing references `rectangles-l.firmament` and `rectangles-l-revised.firmament` demonstrate those optional explicit dependencies.
 
-**Undo** and **Redo** navigate staged source transactions. **Cancel** discards the staged draft. A complete candidate must pass the real engineering build before replacing the current document. Updating an existing part uses the normal undoable graph transaction. Save source or create a checkpoint to retain work across closing or refreshing a local browser tab.
+## Advanced construction and limits
 
-## Advanced construction
+The direct draw-and-drag tool currently creates rectangles. Shapes whose compiler-projected center controls are independently writable can be moved; positions driven by expressions retain their inputs. **Advanced: points, lines and Paths** retains named Point2/Line2/Circle2 guides and ordered line/arc Path steps. Circle spans use named endpoints. Paths use distances, radii and signed turns; **Close Path with line** explicitly adds a closing line. Existing slot and rounded-rectangle dimensions and circular profile openings remain available through **Sketch**.
 
-**Advanced: points, lines and Paths** retains named Point2/Line2/Circle2 guides and ordered line/arc Path steps. These are escape hatches when closed shapes do not express the design well. Circle spans use named endpoints; Paths use distances, radii and signed turns. Positive turns are counterclockwise; **Close Path with line** explicitly adds a closing line.
+Layouts support XY, XZ and YZ; UI-created Paths use XY. Alignment considers shapes in the same layout, using compiler-projected bounds. It is temporary positioning assistance, not general geometric inference. Trace uses existing named landmarks. Arbitrary intersection creation, new inner-loop assembly, arbitrary trim/extend and freeform curve editing are not implemented.
 
-**Advanced construction objects and dimensions** edits those authored points and literal step dimensions. Existing rectangle/slot dimensions and circular profile openings also remain available through **Sketch**.
-
-## Limits
-
-The relationship preset covers an unrotated reference rectangle in the same Concept Struct, aligned at its top-right with either a shared wall input or separate left/bottom insets. It is not a general rotational mate or inverse constraint system. Edit the driving inputs rather than asking a derived field to solve backwards.
-
-Construction layouts support XY, XZ and YZ. Paths created here use XY. The frame banner shows how local axes map into world space. Boundary span choices use existing named landmarks; arbitrary intersections, geometric snaps, new inner-loop assembly, arbitrary trim/extend and freeform curve editing are not implemented. There is no simultaneous 2D constraint solver.
-
-The canvas samples compiler-resolved curves for display only. Engineering geometry and validation remain compiler-owned. Included/generated construction does not become writable by flattening its expanded geometry.
+The canvas samples compiler-resolved curves for display only. Geometry, admissibility and source provenance remain compiler-owned. Included/generated geometry does not become writable by flattening its expansion.
 
 Related: [graph modeling](graph-modeling.md), [exports](exports.md).

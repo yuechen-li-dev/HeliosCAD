@@ -20,10 +20,10 @@ export function ConstructionShapes({ construction, selected, onSelect, onCreate,
     .flatMap(e => e.fields.filter(f => f.name === 'value' && f.number !== null && f.editable).map(f => ({ ...f, id: e.id, name: e.name })));
   return <div className="construction-shapes">
     <h3>Construction shapes</h3>
-    <p>Dimensions and placement define the shape. Its type supplies the geometric relationships.</p>
+    <p>Drag shapes on the canvas to position them. Alignment guides help placement without linking shapes.</p>
     <div className="shape-cards">{shapes.map(s => <button key={s.id} type="button" disabled={busy || pending !== null} aria-pressed={shape?.id === s.id} onClick={() => onSelect(s.id)} aria-label={`Select ${s.name}`}><b>{s.name}</b><span>{s.kind}</span></button>)}</div>
-    <button type="button" disabled={busy || pending !== null} onClick={onCreate}>Add rectangle</button>
-    {shape?.kind === 'Rect2' && <><small>Rect2 retains four right angles and equal, parallel opposite sides.</small><button type="button" disabled={busy || pending !== null} onClick={() => onRelated(shape.id)}>Add related rectangle</button></>}
+    <button type="button" disabled={busy || pending !== null} onClick={onCreate}>Draw rectangle</button>
+    {shape?.kind === 'Rect2' && <><small>Rect2 retains four right angles and equal, parallel opposite sides.</small><details><summary>Advanced: explicit expression relationship</summary><p>This intentionally links dimensions. Ordinary dragging and snapping never do this.</p><button type="button" disabled={busy || pending !== null} onClick={() => onRelated(shape.id)}>Add related rectangle</button></details></>}
     {shape && <ShapeDimensions key={shape.id + ':' + revision} shape={shape} busy={busy || pending !== null && pending !== 'shape'} onApply={onDimensions} onDirty={dirty => setPending(dirty ? 'shape' : null)} />}
     {!!relationshipParameters.length && <div className="relationship-parameters"><h3>Relationship dimensions</h3><p>Changing these inputs updates the construction that depends on them.</p>
       {relationshipParameters.map(parameter => <ParameterDimension key={parameter.id + ':' + revision} name={parameter.name} value={parameter.number!} disabled={busy || pending !== null && pending !== parameter.id} onApply={value => onParameter(parameter.id, value)} onDirty={dirty => setPending(dirty ? parameter.id : null)} />)}
@@ -38,7 +38,7 @@ function ShapeDimensions({ shape, busy, onApply, onDirty }: { shape: SketchShape
       const next = { ...values, [control.id]: e.target.valueAsNumber }; setValues(next);
       onDirty(shape.controls.some(c => c.editable && next[c.id] !== undefined && next[c.id] !== c.value));
     }} required />
-      <small>{control.editable ? control.parameter ? `Shared input: ${control.parameter}` : 'Independent dimension' : `Driven by ${control.authored}`}</small>
+      <small>{control.editable ? control.parameter ? `Parameter: ${control.parameter}` : 'Independent dimension' : `Driven by ${control.authored}`}</small>
     </label>;
   return <form onSubmit={event => { event.preventDefault(); onApply(changes); }}><h3>{shape.name}</h3>
     {shape.controls.filter(c => !c.label.startsWith('Center')).map(controlField)}

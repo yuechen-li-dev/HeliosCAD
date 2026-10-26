@@ -122,7 +122,7 @@ test('two retained rectangles produce an L through canvas tracing and stay relat
   await act(p, 'Add Layout');
   await expect(p.getByLabel('Construction name', { exact: true })).toHaveValue('outer');
   await p.getByLabel('Width', { exact: true }).fill('60'); await p.getByLabel('Height', { exact: true }).fill('40');
-  await act(p, 'Add Rectangle'); await act(p, 'Add related rectangle');
+  await act(p, 'Add Rectangle'); await p.getByText('Advanced: explicit expression relationship', { exact: true }).click(); await act(p, 'Add related rectangle');
   await expect(p.getByLabel('Rectangle relationship')).toHaveValue('inset');
   await p.getByLabel('Wall thickness').fill('8'); await act(p, 'Add Rectangle');
   await expect(p.getByLabel('Width', { exact: true })).toHaveValue('52');
@@ -173,4 +173,80 @@ test('a rectangle can be traced as a complete outline without defining corner po
   await act(p, 'Use whole rectangle outline'); await act(p, 'Trace Profile'); await act(p, 'Extrude Profile');
   await p.getByRole('button', { name: 'Build and use part', exact: true }).click(); await expect(p).toHaveCount(0);
   await expect(page.locator('.status-ready')).toContainText('Ready');
+});
+
+// All geometry is authored through visible pointer/field interactions. DOM matrices
+// only translate test pointer locations into the canvas's displayed world frame.
+async function canvasPosition(p: Locator, x: number, y: number) {
+  return p.getByRole('group', { name: 'Construction and Profile preview' }).evaluate((svg, point) => {
+    const location = new DOMPoint(point[0], -point[1]).matrixTransform((svg as SVGSVGElement).getScreenCTM()!);
+    return { x: location.x, y: location.y };
+  }, [x, y]);
+}
+async function pointerDrag(page: Page, p: Locator, from: [number, number], to: [number, number], alt = false) {
+  const a = await canvasPosition(p, ...from), b = await canvasPosition(p, ...to);
+  await page.mouse.move(a.x, a.y); await page.mouse.down();
+  if (alt) await page.keyboard.down('Alt');
+  await page.mouse.move(b.x, b.y, { steps: 12 });
+  if (!alt) { await expect(p.locator('.draft-alignment-guide')).not.toHaveCount(0); await page.screenshot({ path: resolve(output, 'soft-alignment-guides.png') }); }
+  await page.mouse.up();
+  if (alt) await page.keyboard.up('Alt');
+  await expect(p.getByRole('status')).not.toContainText('Checking with compiler');
+  await expect(p.getByRole('alert')).toHaveCount(0);
+  await expect(p.locator('.draft-alignment-guide')).toHaveCount(0);
+}
+
+test('draw, dimension and independently drag rectangles with temporary alignment, then trace the L', async ({ page }) => {
+  await start(page); const p = panel(page); await act(p, 'Add Layout');
+  const first = await canvasPosition(p, -30, -20), last = await canvasPosition(p, 30, 20);
+  await page.mouse.move(first.x, first.y); await page.mouse.down(); await page.mouse.move(last.x, last.y, { steps: 12 }); await page.mouse.up();
+  await expect(p.getByLabel('Width', { exact: true })).toHaveValue('60');
+  await expect(p.getByLabel('Height', { exact: true })).toHaveValue('40');
+  await act(p, 'Draw rectangle'); await p.getByLabel('Construction name', { exact: true }).fill('notch');
+  const second = await canvasPosition(p, -20, -10), secondEnd = await canvasPosition(p, 0, 10);
+  await page.mouse.move(second.x, second.y); await page.mouse.down(); await page.mouse.move(secondEnd.x, secondEnd.y, { steps: 12 }); await page.mouse.up();
+  await expect(p.getByLabel('Width', { exact: true })).toHaveValue('20');
+  await p.getByLabel('Width', { exact: true }).fill('52'); await p.getByLabel('Height', { exact: true }).fill('32'); await act(p, 'Apply shape dimensions');
+  // Independent notch starts centered at (-10,0). Near the target aligns top/right,
+  // but source gets only its own numeric center, with no link to outer.
+  await pointerDrag(page, p, [-10, 0], [3.8, 3.8]);
+  await p.getByText('Placement', { exact: true }).click();
+  await expect(p.getByLabel('Center X', { exact: true })).toHaveValue('4'); await expect(p.getByLabel('Center Y', { exact: true })).toHaveValue('4');
+  await page.screenshot({ path: resolve(output, 'soft-aligned-rectangles.png') });
+  // Alt deliberately permits near-but-unaligned placement. Undo restores only that rectangle.
+  await pointerDrag(page, p, [4, 4], [3.8, 3.8], true);
+  await p.getByText('Placement', { exact: true }).click();
+  await expect(p.getByLabel('Center X', { exact: true })).toHaveValue('3.8');
+  await act(p, 'Undo');
+  for (const [cx, cy] of [[-4, -4], [-4, 4], [4, -4]]) {
+    await pointerDrag(page, p, [4, 4], [cx + .2, cy + .2]);
+    await p.getByText('Placement', { exact: true }).click();
+    await expect(p.getByLabel('Center X', { exact: true })).toHaveValue(String(cx));
+    await expect(p.getByLabel('Center Y', { exact: true })).toHaveValue(String(cy));
+    await act(p, 'Undo');
+  }
+  // Cancel a gesture with Escape: no source transaction and no accidental modal close.
+  const gestureStart = await canvasPosition(p, 4, 4), cancel = await canvasPosition(p, 10, 10);
+  await page.mouse.move(gestureStart.x, gestureStart.y); await page.mouse.down(); await page.mouse.move(cancel.x, cancel.y, { steps: 5 }); await page.keyboard.press('Escape'); await page.mouse.up();
+  await expect(p).toBeVisible(); await expect(p.locator('.draft-gesture-preview')).toHaveCount(0);
+  // Move the envelope independently and prove the notch does not follow. Restore it with Undo.
+  await act(p, 'Select outer'); await pointerDrag(page, p, [-26, -16], [-19, -13], true);
+  await p.getByText('Placement', { exact: true }).click();
+  await expect(p.getByLabel('Center X', { exact: true })).toHaveValue('7'); await expect(p.getByLabel('Center Y', { exact: true })).toHaveValue('3');
+  await act(p, 'Select notch'); await p.getByText('Placement', { exact: true }).click();
+  await expect(p.getByLabel('Center X', { exact: true })).toHaveValue('4'); await expect(p.getByLabel('Center Y', { exact: true })).toHaveValue('4');
+  await act(p, 'Undo');
+  await p.getByRole('button', { name: 'Trace', exact: true }).click();
+  for (const [shape, edge, from, to] of [
+    ['outer', 'outer.Bottom', 'outer.BottomLeft', 'outer.BottomRight'], ['outer', 'outer.Right', 'outer.BottomRight', 'notch.BottomRight'],
+    ['notch', 'notch.Bottom', 'notch.BottomLeft', 'notch.BottomRight'], ['notch', 'notch.Left', 'notch.TopLeft', 'notch.BottomLeft'],
+    ['outer', 'outer.Top', 'notch.TopLeft', 'outer.TopLeft'], ['outer', 'outer.Left', 'outer.TopLeft', 'outer.BottomLeft'],
+  ]) {
+    await p.getByLabel('Trace shape').selectOption({ label: shape }); await p.getByRole('button', { name: `Trace ${edge} from ${from} to ${to}`, exact: true }).click();
+  }
+  await act(p, 'Trace Profile'); await act(p, 'Extrude Profile');
+  const source = await qualify(page, 'independent-rectangles-l', 'independent-rectangles-l.firmament');
+  expect(source).toContain('Static notchCenterX: Length = 4mm'); expect(source).toContain('Static notchCenterY: Length = 4mm');
+  expect(source).not.toContain('notchWall'); expect(source).not.toContain('outerWidth -');
+  expect((source.match(/Rect2\s/g) ?? []).length).toBe(2); expect(source).not.toMatch(/\b(?:Point2|Line2)\s/);
 });
