@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { DraftSpan, SketchShape } from '@aetheris/cad';
-import { alignedNeighbours, explainRefusal, freshName, predictedBounds, snap, snapStep, traceClosure, translation, type Point } from './draftGeometry';
+import { alignedNeighbours, arcEnd, explainRefusal, freshName, predictedBounds, snap, snapStep, traceClosure, translation, type Point } from './draftGeometry';
 
 const rect = (id: string, cx: number, cy: number, w: number, h: number, editable = true): SketchShape => ({
   id, name: id, kind: 'Rect2', center: [cx, cy], controls: [
@@ -84,4 +84,16 @@ describe('words', () => {
     expect(explainRefusal(text)).toMatch(/^This change pulls the traced outline apart: outer and notch no longer meet/);
   });
   it('passes unknown compiler text through unchanged', () => { expect(explainRefusal('something else')).toBe('something else'); });
+});
+
+describe('arc ends', () => {
+  it('lands on the circle at 15° steps and is exact on the axes', () => {
+    expect(arcEnd([0, 20], [20, 20], [-19, 21])).toEqual([-20, 20]);
+    const [x, y] = arcEnd([0, 0], [10, 0], [7, 7.5]);
+    expect(Math.hypot(x, y)).toBeCloseTo(10, 12); expect(Math.atan2(y, x) * 180 / Math.PI).toBeCloseTo(45, 9);
+  });
+  it('follows the cursor freely with Alt', () => {
+    const [x, y] = arcEnd([0, 0], [10, 0], [3, 4], 15, true);
+    expect([x, y].map(v => Number(v.toFixed(9)))).toEqual([6, 8]);
+  });
 });

@@ -105,3 +105,20 @@
 .intellidraft .draft-shape-actions input { width:auto; flex:1 }
 .draft-problem details { margin-top:4px; color:var(--draft-muted) }
 .draft-problem code { display:block; white-space:pre-wrap; overflow-wrap:anywhere; font:11px/1.4 var(--font-mono) }
+/* Grouped tools: the button draws the current type; the narrow menu picks another (Line2 / Axis2, Rounded / Smooth). */
+.draft-tool-split { display:inline-flex }
+.intellidraft .draft-tool-split>button { border-top-right-radius:0; border-bottom-right-radius:0 }
+.intellidraft .draft-tool-split>select { width:22px; min-height:28px; padding:0 2px; border-left:0; border-top-left-radius:0; border-bottom-left-radius:0; color:var(--draft-muted); cursor:pointer }
+.draft-axis-preview { fill:none; stroke:var(--draft-preview-stroke); stroke-width:1; stroke-dasharray:3 4 }
+.draft-axis-guide line { stroke:var(--draft-reference); stroke-width:1; stroke-dasharray:10 4 2 4 }
+.draft-axis-guide.selected line { stroke:var(--draft-selected); stroke-width:2 }
+.draft-axis-guide circle { fill:var(--draft-reference) }
+.draft-axis-guide text { fill:var(--draft-reference); paint-order:stroke; stroke:var(--draft-label-halo); stroke-width:.4px; font-family:var(--font-family) }
+.draft-guides { padding:10px 0; border-bottom:1px solid var(--draft-rule) }
+.draft-guides h3 { margin:0 0 6px; font-size:13px }
+.draft-guides ul { list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:3px; max-height:160px; overflow-y:auto }
+.draft-guides li { display:flex; gap:4px }
+.intellidraft .draft-guides li>button:first-child { flex:1; display:flex; justify-content:space-between; align-items:baseline; gap:8px; min-height:28px; padding:3px 8px; text-align:left }
+.draft-guides small { color:var(--draft-muted); font-size:11px }
+.intellidraft .draft-guides li>button:last-child { min-height:28px; width:28px; padding:0 }
+.draft-axes { user-select:none }

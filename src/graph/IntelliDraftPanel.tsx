@@ -4,8 +4,8 @@ import { sketchCurvePoints } from '@aetheris/three-telos';
 import type { WebSdkCadRuntime } from '../sdk/CadRuntime';
 import { ConstructionShapeList } from './ConstructionShapeList';
 import { ConstructionShapes } from './ConstructionShapes';
-import { ConstructionCanvas, type CanvasShape } from './ConstructionCanvas';
-import { alignedNeighbours, explainRefusal, freshName, nameStem, predictedBounds, shapeLabel, traceClosure, translation, type AlignedNeighbour } from './draftGeometry';
+import { ConstructionCanvas, type CanvasShape, type StrokePoint } from './ConstructionCanvas';
+import { STROKE_KINDS, alignedNeighbours, explainRefusal, freshName, nameStem, predictedBounds, shapeLabel, traceClosure, translation, type AlignedNeighbour } from './draftGeometry';
 import './IntelliDraftPanel.css';
 
 const blank = 'Model DraftPart {\n  units: mm\n}\n';
@@ -19,11 +19,19 @@ type DimensionEdit = { shape: SketchShape; control: SketchShape['controls'][numb
 type Step = (text: string, previous: LanguageEdit | null) => Promise<LanguageEdit>;
 type Runtime = Pick<WebSdkCadRuntime, 'sketch' | 'sketchEdit'> & Partial<Pick<WebSdkCadRuntime, 'edit'>>;
 
-const DRAW_TOOLS = [
-  { kind: 'Rect2', label: 'rectangle', short: 'Rect', key: 'r' }, { kind: 'Circle2', label: 'circle', short: 'Circle', key: 'c' },
-  { kind: 'Ellipse2', label: 'ellipse', short: 'Ellipse', key: 'e' }, { kind: 'Slot2', label: 'slot', short: 'Slot', key: 's' },
-  { kind: 'RoundedRect2', label: 'rounded rectangle', short: 'Rounded', key: 'u' },
-] as const;
+type DrawTool = { kind: string; label: string; short: string; key: string; group: string; option?: string };
+// Tools sharing a group sit behind one hotbar button with a type menu; the key picks the group's current type.
+const DRAW_TOOLS: readonly DrawTool[] = [
+  { kind: 'Line2', label: 'line', short: 'Line', key: 'l', group: 'line', option: 'Line · Line2' },
+  { kind: 'Axis2', label: 'axis', short: 'Axis', key: 'l', group: 'line', option: 'Axis · Axis2' },
+  { kind: 'Arc', label: 'arc', short: 'Arc', key: 'a', group: 'arc' },
+  { kind: 'Rect2', label: 'rectangle', short: 'Rect', key: 'r', group: 'rect' }, { kind: 'Circle2', label: 'circle', short: 'Circle', key: 'c', group: 'circle' },
+  { kind: 'Ellipse2', label: 'ellipse', short: 'Ellipse', key: 'e', group: 'ellipse' }, { kind: 'Slot2', label: 'slot', short: 'Slot', key: 's', group: 'slot' },
+  { kind: 'RoundedRect2', label: 'rounded rectangle', short: 'Rounded', key: 'u', group: 'rounded', option: 'Rounded · RoundedRect2' },
+  { kind: 'SmoothRoundedRect2', label: 'smooth rounded rectangle', short: 'Smooth', key: 'u', group: 'rounded', option: 'Smooth (squircle) · SmoothRoundedRect2' },
+];
+const TOOL_GROUPS = [...new Set(DRAW_TOOLS.map(t => t.group))];
+const GUIDE_KINDS = new Set(['Line2', 'Axis2', 'Circle2']);
 
 /** Source is the construction model. The browser selects compiler-resolved entities and stages
  * ordinary source transactions; it neither solves constraints nor evaluates engineering geometry. */
@@ -55,6 +63,8 @@ export function IntelliDraftPanel({ runtime, initialSource = blank, onCommit, on
   const [addOpen, setAddOpen] = useState(false), [fitRequest, setFitRequest] = useState(0);
   const [alignPrompt, setAlignPrompt] = useState<AlignPrompt | null>(null), [dimensionEdit, setDimensionEdit] = useState<DimensionEdit | null>(null);
   const [renaming, setRenaming] = useState<string | null>(null);
+  const [variant, setVariant] = useState<Record<string, string>>({ line: 'Line2', rounded: 'RoundedRect2' });
+  const [pickedGuide, setPickedGuide] = useState('');
   const dialog = useRef<HTMLDialogElement>(null), mounted = useRef(true);
   const inspector = useRef<HTMLElement>(null);
   useEffect(() => { if (inspector.current) inspector.current.scrollTop = 0; }, [tool]);
@@ -75,7 +85,8 @@ export function IntelliDraftPanel({ runtime, initialSource = blank, onCommit, on
   const construction = view?.construction, elements = construction?.elements ?? [];
   const layouts = elements.filter(e => e.kind === 'Struct'), paths = elements.filter(e => e.kind === 'Path');
   const selectedOwner = elements.find(e => e.id === owner) ?? layouts[0] ?? paths[0];
-  const shapes = construction?.shapes ?? [];
+  // A Circle2 centred on a named point is the arc tool's guide circle, not a placed shape.
+  const shapes = (construction?.shapes ?? []).filter(s => !(s.kind === 'Circle2' && !s.controls.some(c => c.label === 'Center X')));
   const shownShapes = shapes.filter(shape => !hidden.has(shape.id));
   const rectangles = shownShapes.filter(shape => shape.kind === 'Rect2');
   const selected = shapes.find(s => s.id === selectedShape) ?? (tool === 'Rectangle' ? undefined : shapes[0]);
@@ -86,7 +97,8 @@ export function IntelliDraftPanel({ runtime, initialSource = blank, onCommit, on
   const selectedGuide = guides.find(g => g.name === guide) ?? guides[0];
   const wholeOutlineShape = selected && !hidden.has(selected.id) ? selected : shownShapes[0];
   // Every visible shape's edges are traceable; the outline may cross between shapes freely.
-  const selectable = spans.filter(s => shownShapes.some(shape => shape.id === s.owner));
+  // Line2 and Circle2 guides own spans too: lines between named points, arcs between points on a circle.
+  const selectable = spans.filter(s => shownShapes.some(shape => shape.id === s.owner) || !shapes.some(shape => shape.id === s.owner) && !hidden.has(s.owner));
   const pickedSpans = spans.filter(span => trace.some(t => t.reference === span.reference && t.from === span.from && t.to === span.to));
   const closure = traceClosure(trace, spans, span => sketchCurvePoints(span.curve).map(p => [p[0], p[1]] as const));
   const firstPoint = from || points[0]?.name || '', secondPoint = to || points[1]?.name || points[0]?.name || '';
@@ -94,6 +106,10 @@ export function IntelliDraftPanel({ runtime, initialSource = blank, onCommit, on
   const usedNames = new Set(elements.map(e => e.name));
   const freshLegacy = (stem: string) => { let value = stem; for (let n = 2; usedNames.has(value); n++) value = stem + n; return value; };
   const drawing = tool === 'Rectangle';
+  const stroking = drawing && STROKE_KINDS.has(drawKind);
+  // Lines, arc circles and axes drawn as construction: not closed shapes, listed and deletable on their own.
+  const strokeGuides = elements.filter(e => GUIDE_KINDS.has(e.kind) && !shapes.some(shape => shape.id === e.id));
+  const axes = construction?.axes ?? [];
 
   function report(error: unknown) {
     const raw = message(error), text = explainRefusal(raw);
@@ -108,6 +124,8 @@ export function IntelliDraftPanel({ runtime, initialSource = blank, onCommit, on
   };
   const chooseDraw = (kind: string) => {
     if (pendingDimensions) { setProblem({ text: 'Apply or discard the dimension edits before changing tools.' }); return; }
+    const group = DRAW_TOOLS.find(t => t.kind === kind)?.group; if (group) setVariant(v => ({ ...v, [group]: kind }));
+    if (STROKE_KINDS.has(kind)) setAddOpen(false);
     setEditingPoint(null); setDimensionEdit(null); setAlignPrompt(null); setTool('Rectangle'); setReference(''); setDrawKind(kind);
     setName(freshName(nameStem(kind), usedNames)); setOwner(layouts[0]?.id ?? '');
   };
@@ -160,6 +178,45 @@ export function IntelliDraftPanel({ runtime, initialSource = blank, onCommit, on
     if (operation.action === 'movePoint') setEditingPoint(null);
     if (operation.action === 'dimension') setDimension(null);
     if (operation.action === 'trace') { setTrace([]); setTool('Extrude'); }
+  };
+
+  /** Lines, axes and arcs: the points they need, then the guide, as one undoable step. A stroke end
+   * that snapped onto an existing named point reuses it, so drawn construction joins exactly. */
+  const drawStroke = (picked: StrokePoint[]) => {
+    const own = name.trim() || freshName(nameStem(drawKind), usedNames);
+    const taken = new Set([...usedNames, own]);
+    const pointName = (suffix: string) => { let value = own + suffix; for (let n = 2; taken.has(value); n++) value = own + suffix + n; taken.add(value); return value; };
+    let parent: string | undefined = selectedOwner?.kind === 'Struct' ? selectedOwner.id : layouts[0]?.id;
+    const op = (make: () => DraftOperation): Step => (text, previous) => {
+      void previous; return runtime.sketchEdit(text, { kind: 'construction', construction: make() }, DOCUMENT, String(index));
+    };
+    const steps: Step[] = [];
+    if (!parent) steps.push(async (text, previous) => {
+      const edit = await op(() => ({ action: 'layout', name: freshLegacy('layout'), plane }))(text, previous); parent = edit.nodes.at(-1) ?? parent; return edit;
+    });
+    const ensure = (point: StrokePoint, suffix: string) => {
+      if (point.name) return point.name;
+      const created = pointName(suffix); steps.push(op(() => ({ action: 'point', parent, name: created, x: point.at[0], y: point.at[1] }))); return created;
+    };
+    const [a, b, c] = picked, clean = (n: number) => Number(n.toFixed(9));
+    if (drawKind === 'Axis2') steps.push(op(() => ({ action: 'axis', parent, name: own, x: a.at[0], y: a.at[1], directionX: clean(b.at[0] - a.at[0]), directionY: clean(b.at[1] - a.at[1]) })));
+    else if (drawKind === 'Line2') { const start = ensure(a, 'Start'), end = ensure(b, 'End'); steps.push(op(() => ({ action: 'line', parent, name: own, from: start, to: end }))); }
+    else {
+      const center = ensure(a, 'Center'), radius = Math.hypot(b.at[0] - a.at[0], b.at[1] - a.at[1]);
+      steps.push(op(() => ({ action: 'circle', parent, name: own, from: center, radius }))); ensure(b, 'Start'); ensure(c, 'End');
+    }
+    void transactSteps(steps).then(edit => { if (edit) { setPickedGuide(own); setName(freshName(nameStem(drawKind), taken)); } });
+  };
+  const removeGuide = (element: { id: string; name: string }) => {
+    if (busy || pendingDimensions) return;
+    // Its own endpoints (named <guide>Start/End/Center by the tools) go too when nothing else uses them.
+    const owned = elements.filter(e => e.kind === 'Point2' && new RegExp(`^${element.name}(Start|End|Center)\\d*$`).test(e.name));
+    const dropIfUnused = (point: { id: string; name: string }): Step => async (text, previous) => {
+      const uses = text.match(new RegExp(`\\b${point.name}\\b`, 'g'))?.length ?? 0;
+      return uses > 1 ? previous! : editStep({ kind: 'removeDeclaration', node: point.id }, true)(text, previous);
+    };
+    void transactSteps([editStep({ kind: 'removeDeclaration', node: element.id }, true), ...owned.map(dropIfUnused)])
+      .then(edit => { if (edit) { setPickedGuide(''); setTrace([]); } });
   };
 
   /** Size edits that move an edge another shape is lined up with ask once whether to bring it along. */
@@ -254,12 +311,17 @@ export function IntelliDraftPanel({ runtime, initialSource = blank, onCommit, on
     }
     if (event.altKey || busy) return;
     const draw = DRAW_TOOLS.find(t => t.key === event.key.toLowerCase());
-    if (draw) { event.preventDefault(); chooseDraw(draw.kind); return; }
+    if (draw) { event.preventDefault(); chooseDraw(variant[draw.group] ?? draw.kind); return; }
     switch (event.key) {
       case 'v': case 'V': event.preventDefault(); choose('Shapes'); return;
       case 't': case 'T': if (shapes.length || paths.length || guides.length) { event.preventDefault(); choose('Trace'); } return;
       case 'f': case 'F': event.preventDefault(); setFitRequest(n => n + 1); return;
-      case 'Delete': case 'Backspace': if (selected && (tool === 'Shapes' || drawing)) { event.preventDefault(); removeShape(selected); } return;
+      case 'Delete': case 'Backspace': {
+        const guide = strokeGuides.find(g => g.name === pickedGuide);
+        if (guide && (tool === 'Shapes' || drawing)) { event.preventDefault(); removeGuide(guide); }
+        else if (selected && (tool === 'Shapes' || drawing)) { event.preventDefault(); removeShape(selected); }
+        return;
+      }
       case 'Escape':
         // Escape steps back (prompt → drawing tool → selection) before it offers to close.
         if (alignPrompt) { event.preventDefault(); setAlignPrompt(null); }
@@ -270,7 +332,10 @@ export function IntelliDraftPanel({ runtime, initialSource = blank, onCommit, on
 
   const status = busy ? 'Checking with compiler…' : pendingDimensions ? 'Apply or discard dimension edits before building.'
     : body ? 'Ready to build · Build and use part checks the solid' : profile ? 'Outline traced · extrude it to make a part' : 'Draft · nothing is built until Build and use part';
-  const hint = drawing ? `Drag to draw a ${shapeLabel(drawKind).toLowerCase()}. Esc returns to select.` : tool === 'Shapes' ? 'Drag a shape to move it. Pink guides line shapes up; Alt moves freely.' : tool === 'Trace' ? 'Click edges in order around the outline you want.' : 'Middle-drag to pan.';
+  const hint = drawing && drawKind === 'Arc' ? 'Drag from the arc centre to its start, then click its end. Points snap to named points.'
+    : drawing && drawKind === 'Axis2' ? 'Drag through two points on the axis. Axis2 is a reference direction; it is not traced.'
+    : drawing && drawKind === 'Line2' ? 'Drag from one end to the other. Ends snap to named points; Alt draws freely.'
+    : drawing ? `Drag to draw a ${shapeLabel(drawKind).toLowerCase()}. Esc returns to select.` : tool === 'Shapes' ? 'Drag a shape to move it. Pink guides line shapes up; Alt moves freely.' : tool === 'Trace' ? 'Click edges in order around the outline you want.' : 'Middle-drag to pan.';
 
   return <dialog ref={dialog} tabIndex={-1} className="intellidraft" aria-label="IntelliDraft" onKeyDown={keyDown} onCancel={e => { e.preventDefault(); cancel(); }}>
     <header><strong>IntelliDraft</strong><span>Draw → Trace → Extrude</span>
@@ -284,20 +349,28 @@ export function IntelliDraftPanel({ runtime, initialSource = blank, onCommit, on
       {drawing && !reference && <section className="draft-new-shape" aria-label="Next shape">
         <label>Name<input aria-label="Construction name" value={name} disabled={busy} onChange={e => setName(e.target.value)} required /></label>
         {ownerChoice}
-        <details open={addOpen} onToggle={e => setAddOpen(e.currentTarget.open)}><summary>Add by dimensions</summary>
+        {!stroking && <details open={addOpen} onToggle={e => setAddOpen(e.currentTarget.open)}><summary>Add by dimensions</summary>
           {addOpen && <form onSubmit={e => { e.preventDefault(); submit(); }}>
             {drawKind === 'Rect2' && rectangles.length > 0 && <label>Relationship<select aria-label="Rectangle relationship" disabled={busy} value="independent" onChange={e => { if (e.target.value === 'inset') { setReference(rectangles[0].id); setName(freshLegacy('notch')); } }}><option value="independent">Independent dimensions and position</option><option value="inset">Top-right aligned inset (explicit expression)</option></select></label>}
             {drawKind !== 'Circle2' && <div className="draft-pair">{numberField(drawKind === 'Slot2' ? 'Overall length' : 'Width', width, setWidth, 'mm', drawKind === 'Slot2' ? 'New overall length' : 'New width')}{numberField(drawKind === 'Slot2' ? 'Slot width' : 'Height', rectHeight, setRectHeight, 'mm', drawKind === 'Slot2' ? 'New slot width' : 'New height')}</div>}
             <div className="draft-pair">{numberField('Center X', x, setX, 'mm', 'New center X')}{numberField('Center Y', y, setY, 'mm', 'New center Y')}</div>
             {(drawKind === 'Circle2' || drawKind === 'RoundedRect2') && numberField('Radius', radius, setRadius, 'mm', 'New radius')}
+            {drawKind === 'SmoothRoundedRect2' && numberField('Corner extent', radius, setRadius, 'mm', 'New corner extent')}
             <button className="draft-primary" disabled={busy}>{drawKind === 'Rect2' ? 'Add Rectangle' : 'Add shape'}</button>
           </form>}
-        </details>
+        </details>}
       </section>}
 
       {!!shapes.length && <ConstructionShapeList shapes={shapes} selected={selected?.id ?? ''} hidden={hidden} disabled={busy || pendingDimensions}
         onSelect={id => { setSelectedShape(id); if (tool !== 'Shapes' && tool !== 'Trace' && !drawing) choose('Shapes'); }}
         onToggle={id => setHidden(previous => { const next = new Set(previous); if (!next.delete(id)) next.add(id); return next; })} onShowAll={() => setHidden(new Set())} />}
+
+      {!!(strokeGuides.length) && (tool === 'Shapes' || drawing) && <section className="draft-guides" aria-label="Lines, arcs and axes">
+        <h3>Lines, arcs and axes ({strokeGuides.length})</h3>
+        <ul>{strokeGuides.map(g => <li key={g.id}><button type="button" aria-pressed={pickedGuide === g.name} disabled={busy} onClick={() => setPickedGuide(pickedGuide === g.name ? '' : g.name)}>
+          <b>{g.name}</b><small>{g.kind === 'Circle2' ? 'Arc circle · Circle2' : g.kind === 'Axis2' ? 'Axis · Axis2' : 'Line · Line2'}</small></button>
+          <button type="button" aria-label={`Delete ${g.name}`} title="Delete · Del" disabled={busy || pendingDimensions || !runtime.edit} onClick={() => removeGuide(g)}>×</button></li>)}</ul>
+      </section>}
 
       {(tool === 'Shapes' || drawing && !reference) && construction && selected && <>
         <div className="draft-shape-actions">
@@ -381,11 +454,12 @@ export function IntelliDraftPanel({ runtime, initialSource = blank, onCommit, on
     </aside>
     <ConstructionCanvas bounds={{ x: minX - margin, y: -maxY - margin, width: maxX - minX + margin * 2, height: maxY - minY + margin * 2 }} shapes={canvasShapes}
       autoFit={!fresh} fitRequest={fitRequest}
+      stroke={stroking ? drawKind === 'Arc' ? 'arc' : drawKind === 'Axis2' ? 'axis' : 'segment' : undefined} snapPoints={points} onStroke={drawStroke}
       revision={index} selected={selected?.id ?? ''} drawKind={drawKind} drawing={drawing && !reference} movable={tool === 'Shapes'} disabled={busy || pendingDimensions || !!alignPrompt}
       onSelect={id => { setSelectedShape(id); setDimensionEdit(null); }} onDraw={rect => void apply(drawKind === 'Rect2' ? { action: 'rectangle', parent: selectedOwner?.id, name, ...rect } : {
         action: 'shape', kind: drawKind, parent: selectedOwner?.id, name, ...rect,
         ...(drawKind === 'Slot2' ? { width: Math.max(rect.width, rect.height), height: Math.min(rect.width, rect.height), turn: rect.height > rect.width ? 90 : 0 } : {}),
-        radius: Math.min(rect.width, rect.height) / (drawKind === 'Circle2' ? 2 : 8),
+        radius: Math.min(rect.width, rect.height) / (drawKind === 'Circle2' ? 2 : drawKind === 'SmoothRoundedRect2' ? 4 : 8),
       })}
       onMove={(shape, center) => void transact({ kind: 'constructionDimensions', changes: shape.controls.filter(c => c.label === 'Center X' || c.label === 'Center Y').map(c => ({ control: c.id, value: center[c.label === 'Center X' ? 0 : 1] })) })}
       onPoint={tool === 'Point' ? point => { setX(point[0]); setY(point[1]); } : undefined}
@@ -393,8 +467,16 @@ export function IntelliDraftPanel({ runtime, initialSource = blank, onCommit, on
       header={<>
         <div className="draft-hotbar" role="toolbar" aria-label="Drawing tools">
           <button type="button" aria-pressed={tool === 'Shapes'} disabled={busy || pendingDimensions} aria-label="Select and move" title="Select and move · V" onClick={() => choose('Shapes')}>Select <kbd>V</kbd></button>
-          {DRAW_TOOLS.map(t => <button type="button" key={t.kind} aria-label={`Draw ${t.label}`} aria-pressed={drawing && drawKind === t.kind && !reference} disabled={busy || pendingDimensions}
-            title={`Draw ${t.label} · ${t.key.toUpperCase()}`} onClick={() => chooseDraw(t.kind)}>{t.short} <kbd>{t.key.toUpperCase()}</kbd></button>)}
+          {TOOL_GROUPS.map(group => {
+            const options = DRAW_TOOLS.filter(t => t.group === group), t = options.find(o => o.kind === variant[group]) ?? options[0];
+            const active = drawing && options.some(o => o.kind === drawKind) && !reference;
+            return <span key={group} className={options.length > 1 ? 'draft-tool-split' : undefined}>
+              <button type="button" aria-label={`Draw ${t.label}`} aria-pressed={active} disabled={busy || pendingDimensions}
+                title={`Draw ${t.label} · ${t.key.toUpperCase()}`} onClick={() => chooseDraw(t.kind)}>{t.short} <kbd>{t.key.toUpperCase()}</kbd></button>
+              {options.length > 1 && <select aria-label={`${options[0].short} type`} title={`${options[0].short} type`} value={t.kind} disabled={busy || pendingDimensions}
+                onChange={e => chooseDraw(e.target.value)}>{options.map(o => <option key={o.kind} value={o.kind}>{o.option}</option>)}</select>}
+            </span>;
+          })}
         </div>
         {!layouts.length && <label className="draft-plane">Plane<select aria-label="Drawing plane" value={plane} disabled={busy} onChange={e => setPlane(e.target.value)}><option>XY</option><option>XZ</option><option>YZ</option></select></label>}
       </>}
@@ -427,14 +509,21 @@ export function IntelliDraftPanel({ runtime, initialSource = blank, onCommit, on
       <line x1={minX - margin} x2={maxX + margin} y1={0} y2={0} style={{ stroke: 'var(--draft-axis)' }} strokeWidth={scale * .6} /><line x1={0} x2={0} y1={-maxY - margin} y2={-minY + margin} style={{ stroke: 'var(--draft-axis)' }} strokeWidth={scale * .6} />
       {tool === 'Trace' && closure.closed && closure.polygon.length > 2 && <polygon className="draft-closed-fill" points={closure.polygon.map(p => `${p[0]},${-p[1]}`).join(' ')} pointerEvents="none" />}
       {polylines.map(item => {
-        const isSelected = item.construction && !!selected && (tool === 'Shapes' || drawing) && ownsCurve(selected, item.curve.name);
-        return <polyline key={(item.construction ? 'guide:' : 'trace:') + item.curve.id} aria-label={item.curve.name} points={item.points.map(p => `${p[0]},${-p[1]}`).join(' ')} fill="none"
+        const isSelected = item.construction && (tool === 'Shapes' || drawing) && (pickedGuide ? item.curve.name === pickedGuide : !!selected && ownsCurve(selected, item.curve.name));
+        // Arc circles stay faint and dashed; the arcs between their points are what gets traced.
+        const arcCircle = item.construction && item.curve.kind === 'Circle' && strokeGuides.some(g => g.name === item.curve.name);
+        return <polyline key={(item.construction ? 'guide:' : 'trace:') + item.curve.id} aria-label={item.curve.name} points={item.points.map(p => `${p[0]},${-p[1]}`).join(' ')} fill="none" strokeDasharray={arcCircle && !isSelected ? '6 5' : undefined}
           style={{ stroke: isSelected ? 'var(--draft-selected)' : item.construction ? 'var(--draft-construction)' : 'var(--draft-profile)' }} strokeWidth={isSelected ? 2.5 : item.construction ? 1.5 : 2.5}
           opacity={item.construction && view?.loops.length && !isSelected ? .5 : 1} vectorEffect="non-scaling-stroke"><title>{item.curve.name}</title></polyline>;
       })}
+      {axes.filter(axis => !hidden.has(axis.id)).map(axis => { const far = Math.max(maxX - minX, maxY - minY, 100) * 4, [ox, oy] = axis.origin, [dx, dy] = axis.direction;
+        return <g key={axis.id} className={pickedGuide === axis.name ? 'draft-axis-guide selected' : 'draft-axis-guide'} pointerEvents="none"><title>{axis.name} · Axis2</title>
+          <line x1={ox - dx * far} y1={-(oy - dy * far)} x2={ox + dx * far} y2={-(oy + dy * far)} vectorEffect="non-scaling-stroke" />
+          <circle cx={ox} cy={-oy} r={scale * .6} /><text x={ox + scale} y={-oy - scale} fontSize={scale * 1.8}>{axis.name}</text></g>; })}
       {tool === 'Trace' && pickedSpans.map(span => <polyline key={'picked:' + span.id} points={sketchCurvePoints(span.curve).map(p => `${p[0]},${-p[1]}`).join(' ')} fill="none" style={{ stroke: 'var(--draft-profile)' }} strokeWidth="3" vectorEffect="non-scaling-stroke" />)}
-      {tool === 'Trace' && selectable.map(span => <TraceSpanTarget key={span.id} span={span} scale={scale} selected={pickedSpans.some(p => p.id === span.id)} hovered={hoveredSpan === span.id} onHover={setHoveredSpan} onPick={pickSpan} />)}
-      {!['Shapes', 'Rectangle', 'Extrude'].includes(tool) && pointLabels.filter(p => tool !== 'Trace' || spans.some(s => s.id === hoveredSpan && p.names.some(name => name === s.from || name === s.to))).map(p => <g key={p.names[0]}><title>{p.names.join(', ')}</title><circle cx={p.x} cy={-p.y} r={scale * .7} style={{ fill: 'var(--draft-construction)' }} /><text x={p.x + scale} y={-p.y - scale} fontSize={scale * 2.1} style={{ fill: 'var(--draft-construction-label)', paintOrder: 'stroke', stroke: 'var(--draft-label-halo)', strokeWidth: scale * .45 }}>{p.names[0]}{p.names.length > 1 ? ` (+${p.names.length - 1})` : ''}</text></g>)}
+      {tool === 'Trace' && selectable.map(span => <TraceSpanTarget key={span.id} span={span} scale={scale} selected={pickedSpans.some(p => p.id === span.id)} hovered={hoveredSpan === span.id} onHover={setHoveredSpan}
+        onPick={(clicked, at) => pickSpan(at ? nearestSpan(selectable, at, scale * 1.5, closure.known && !closure.closed ? closure.open : undefined) ?? clicked : clicked)} />)}
+      {(!['Shapes', 'Rectangle', 'Extrude'].includes(tool) || stroking) && pointLabels.filter(p => tool !== 'Trace' || spans.some(s => s.id === hoveredSpan && p.names.some(name => name === s.from || name === s.to))).map(p => <g key={p.names[0]}><title>{p.names.join(', ')}</title><circle cx={p.x} cy={-p.y} r={scale * .7} style={{ fill: 'var(--draft-construction)' }} /><text x={p.x + scale} y={-p.y - scale} fontSize={scale * 2.1} style={{ fill: 'var(--draft-construction-label)', paintOrder: 'stroke', stroke: 'var(--draft-label-halo)', strokeWidth: scale * .45 }}>{p.names[0]}{p.names.length > 1 ? ` (+${p.names.length - 1})` : ''}</text></g>)}
     </ConstructionCanvas></div>
     <footer><div role="status">{status}{problem && <div role="alert" className="draft-problem">{problem.text}{problem.detail && <details><summary>Compiler detail</summary><code>{problem.detail}</code></details>}</div>}{construction?.diagnostics.map((d, i) => <p key={i}>{d.code}: {d.message}</p>)}</div><button className="draft-primary" disabled={busy || pendingDimensions || !body} onClick={() => void commit()}>Build and use part</button></footer>
   </dialog>;
@@ -468,7 +557,7 @@ function DimensionAnnotations({ item, scale, disabled, onEdit }: {
       ? { role: 'button', tabIndex: 0, 'aria-label': `Edit ${control.label} of ${shape.name}`, onClick: open(control), onPointerDown: (e: { stopPropagation(): void }) => e.stopPropagation(), onKeyDown: (e: ReactKeyboardEvent<SVGGElement>) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(control)(e); } } }
       : { 'aria-label': label };
     const cls = control.editable ? 'draft-dimension' : 'draft-dimension driven';
-    if (control.label === 'Radius' || control.label === 'Diameter') {
+    if (control.label === 'Radius' || control.label === 'Diameter' || control.label === 'Corner extent') {
       const cx = b.x + b.width, cy = b.y + b.height;
       return <g key={control.id} className={cls} {...target}><title>{label}</title>
         <line x1={cx - b.width * .15} y1={-(cy - b.height * .15)} x2={cx + gap} y2={-(cy + gap)} vectorEffect="non-scaling-stroke" />
@@ -488,12 +577,18 @@ function DimensionAnnotations({ item, scale, disabled, onEdit }: {
 }
 
 function TraceSpanTarget({ span, scale, selected, hovered, onHover, onPick }: {
-  span: DraftSpan; scale: number; selected: boolean; hovered: boolean; onHover(id: string | null): void; onPick(span: DraftSpan): void;
+  span: DraftSpan; scale: number; selected: boolean; hovered: boolean; onHover(id: string | null): void; onPick(span: DraftSpan, at?: readonly [number, number]): void;
 }) {
   const points = sketchCurvePoints(span.curve), first = points[0], last = points.at(-1)!;
   return <g className="draft-span-target" role="button" tabIndex={0} aria-pressed={selected} aria-label={`Trace ${span.reference} from ${span.from} to ${span.to}`}
     style={{ cursor: 'pointer' }} onMouseEnter={() => onHover(span.id)} onMouseLeave={() => onHover(null)}
-    onClick={e => { e.stopPropagation(); onPick(span); }} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onPick(span); } }}>
+    onClick={e => {
+      e.stopPropagation();
+      // Overlapping hit areas (a line tangent to a circle) are resolved by distance, not paint order.
+      const matrix = (e.currentTarget as SVGGraphicsElement).ownerSVGElement?.getScreenCTM();
+      const p = matrix ? new DOMPoint(e.clientX, e.clientY).matrixTransform(matrix.inverse()) : null;
+      onPick(span, p ? [p.x, -p.y] : undefined);
+    }} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onPick(span); } }}>
     <title>{span.reference}: {span.from} → {span.to}</title>
     <polyline points={points.map(p => `${p[0]},${-p[1]}`).join(' ')} fill="none" style={{ stroke: hovered ? 'var(--draft-hover)' : selected ? 'var(--draft-profile)' : 'var(--draft-span)' }} strokeWidth="3" vectorEffect="non-scaling-stroke" />
     <polyline points={points.map(p => `${p[0]},${-p[1]}`).join(' ')} fill="none" stroke="transparent" strokeWidth="14" vectorEffect="non-scaling-stroke" />
@@ -501,4 +596,26 @@ function TraceSpanTarget({ span, scale, selected, hovered, onHover, onPick }: {
         for accessibility clients that otherwise see a zero-area SVG bounding box. */}
     <circle cx={(first[0] + last[0]) / 2} cy={-(first[1] + last[1]) / 2} r={scale * 1.2} fill="transparent" />
   </g>;
+}
+
+/** The span under a click: the nearest within reach, preferring one that continues the open trace
+ * when several are about as close. */
+function nearestSpan(spans: readonly DraftSpan[], at: readonly [number, number], reach: number, openEnd?: readonly [number, number]) {
+  const distance = (span: DraftSpan) => {
+    const points = sketchCurvePoints(span.curve); let best = Infinity;
+    for (let i = 0; i + 1 < points.length; i++) {
+      const [ax, ay] = points[i], [bx, by] = points[i + 1], dx = bx - ax, dy = by - ay, len = dx * dx + dy * dy;
+      const t = len ? Math.max(0, Math.min(1, ((at[0] - ax) * dx + (at[1] - ay) * dy) / len)) : 0;
+      best = Math.min(best, Math.hypot(at[0] - ax - t * dx, at[1] - ay - t * dy));
+    }
+    return best;
+  };
+  const touches = (span: DraftSpan) => {
+    if (!openEnd) return false;
+    const points = sketchCurvePoints(span.curve);
+    return [points[0], points.at(-1)!].some(p => Math.hypot(p[0] - openEnd[0], p[1] - openEnd[1]) < 1e-6);
+  };
+  const ranked = spans.map(span => ({ span, d: distance(span) })).filter(c => c.d <= reach).sort((a, b) => a.d - b.d);
+  if (!ranked.length) return undefined;
+  return (ranked.find(c => c.d - ranked[0].d < reach / 3 && touches(c.span)) ?? ranked[0]).span;
 }

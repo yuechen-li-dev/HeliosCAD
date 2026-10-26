@@ -35,7 +35,7 @@ export function predictedBounds(shape: SketchShape, changes: ReadonlyMap<string,
   const turned = Math.abs(quarterTurns) % 2 === 1;
   let width: number | undefined, height: number | undefined;
   switch (shape.kind) {
-    case 'Rect2': case 'RoundedRect2': case 'Ellipse2':
+    case 'Rect2': case 'RoundedRect2': case 'SmoothRoundedRect2': case 'Ellipse2':
       width = value(shape, 'Width', changes); height = value(shape, 'Height', changes); break;
     case 'Circle2': {
       const radius = value(shape, 'Radius', changes), diameter = value(shape, 'Diameter', changes);
@@ -126,10 +126,24 @@ export function traceClosure(trace: readonly TraceEntry[], spans: readonly Draft
 }
 
 /** Plain names for compiler shape kinds. */
-export const shapeLabel = (kind: string) => ({ Rect2: 'Rectangle', Circle2: 'Circle', Ellipse2: 'Ellipse', Slot2: 'Slot', RoundedRect2: 'Rounded rectangle' } as Record<string, string>)[kind] ?? kind;
+export const shapeLabel = (kind: string) => ({ Rect2: 'Rectangle', Circle2: 'Circle', Ellipse2: 'Ellipse', Slot2: 'Slot', RoundedRect2: 'Rounded rectangle',
+  SmoothRoundedRect2: 'Smooth rounded rectangle', Line2: 'Line', Axis2: 'Axis', Arc: 'Arc' } as Record<string, string>)[kind] ?? kind;
 
 /** Default name stem per drawable kind: rect1, circle1, … */
-export const nameStem = (kind: string) => ({ Rect2: 'rect', Circle2: 'circle', Ellipse2: 'ellipse', Slot2: 'slot', RoundedRect2: 'rounded' } as Record<string, string>)[kind] ?? 'shape';
+export const nameStem = (kind: string) => ({ Rect2: 'rect', Circle2: 'circle', Ellipse2: 'ellipse', Slot2: 'slot', RoundedRect2: 'rounded',
+  SmoothRoundedRect2: 'smooth', Line2: 'line', Axis2: 'axis', Arc: 'arc' } as Record<string, string>)[kind] ?? 'shape';
+
+/** Drawing kinds that are strokes between picked points rather than closed shapes. */
+export const STROKE_KINDS = new Set(['Line2', 'Axis2', 'Arc']);
+
+/** Where an arc ends: on its circle, at the cursor's angle, snapped to `degrees` steps unless `free`. */
+export function arcEnd(center: Point, start: Point, cursor: Point, degrees = 15, free = false): Point {
+  const radius = Math.hypot(start[0] - center[0], start[1] - center[1]);
+  let angle = Math.atan2(cursor[1] - center[1], cursor[0] - center[0]);
+  if (!free) { const step = degrees * Math.PI / 180; angle = Math.round(angle / step) * step; }
+  const exact = (value: number) => Math.abs(value - Math.round(value)) < 1e-9 ? Math.round(value) : value;
+  return [exact(center[0] + radius * Math.cos(angle)), exact(center[1] + radius * Math.sin(angle))];
+}
 
 /** The first unused `stem1`, `stem2`, … */
 export function freshName(stem: string, used: ReadonlySet<string>) {

@@ -329,3 +329,59 @@ test('a vertically drawn slot retains its vertical orientation', async ({ page }
   await p.getByRole('button', { name: 'Trace', exact: true }).click(); await act(p, 'Use whole shape outline'); await act(p, 'Use this outline'); await act(p, 'Extrude Profile');
   await qualify(page, 'draw-slot2-vertical', 'draw-slot2-vertical.firmament');
 });
+
+async function stroke(page: Page, p: Locator, from: [number, number], to: [number, number]) {
+  const a = await canvasPosition(p, ...from), b = await canvasPosition(p, ...to);
+  await page.mouse.move(a.x, a.y); await page.mouse.down(); await page.mouse.move(b.x, b.y, { steps: 8 }); await page.mouse.up();
+  await expect(p.getByRole('status')).not.toContainText('Checking with compiler');
+  await expect(p.getByRole('alert')).toHaveCount(0);
+}
+async function clickAt(page: Page, p: Locator, at: [number, number]) { const q = await canvasPosition(p, ...at); await page.mouse.click(q.x, q.y); }
+
+test('line and arc tools draft a door outline that traces by clicking in any order', async ({ page }) => {
+  await start(page); const p = panel(page);
+  await page.keyboard.press('l'); await expect(p.getByRole('button', { name: 'Draw line', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await stroke(page, p, [-20, 0], [20, 0]);
+  // Later strokes start and end on the named points already drawn, so the outline joins exactly.
+  await stroke(page, p, [20, 0], [20, 20]); await stroke(page, p, [-20, 20], [-20, 0]);
+  await page.keyboard.press('a');
+  await stroke(page, p, [0, 20], [20, 20]);
+  await clickAt(page, p, [-20, 21]);
+  await expect(p.getByRole('status')).not.toContainText('Checking with compiler'); await expect(p.getByRole('alert')).toHaveCount(0);
+  const guides = p.getByRole('region', { name: 'Lines, arcs and axes' });
+  await expect(guides.getByRole('listitem')).toHaveCount(4);
+  await page.screenshot({ path: resolve(output, 'line-arc-door-construction.png') });
+  await p.getByRole('button', { name: 'Trace', exact: true }).click();
+  // Clockwise, starting on the left; the bottom click sits where the guide circle touches the line.
+  for (const at of [[-20, 10], [0, 40], [20, 10], [5, 0]] as [number, number][]) await clickAt(page, p, at);
+  await expect(p.getByText('Outline closed ✓ · 4 edges')).toBeVisible();
+  await act(p, 'Use this outline'); await act(p, 'Extrude Profile');
+  await p.getByRole('button', { name: 'Build and use part', exact: true }).click(); await expect(p).toHaveCount(0);
+  await expect(page.locator('.status-ready')).toContainText('Ready');
+  const download = page.waitForEvent('download'); await page.getByRole('button', { name: 'Save source', exact: true }).click();
+  const sourcePath = resolve(output, 'line-arc-door.firmament'); await (await download).saveAs(sourcePath);
+  const source = await readFile(sourcePath, 'utf8');
+  expect(source).toContain('Line2 line2 { from: line1End; to: line2End }'); expect(source).toContain('Circle2 arc1 { center: arc1Center; radius: 20mm }');
+  expect(source).toMatch(/arc1 from line2End to line3Start/);
+  const validation = JSON.parse(execFileSync('dotnet', [cli, 'validate', sourcePath, '--json'], { encoding: 'utf8' }));
+  expect(validation.firmamentV2Validation.status).toBe('valid');
+});
+
+test('the line menu declares an Axis2 and the rounded menu draws a SmoothRoundedRect2', async ({ page }) => {
+  await start(page); const p = panel(page);
+  await p.getByRole('combobox', { name: 'Rounded type' }).selectOption('SmoothRoundedRect2');
+  await expect(p.getByRole('button', { name: 'Draw smooth rounded rectangle', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await stroke(page, p, [-30, -20], [30, 20]);
+  await expect(p.getByRole('button', { name: 'Edit Corner extent of smooth1', exact: true })).toBeVisible();
+  await p.getByRole('combobox', { name: 'Line type' }).selectOption('Axis2');
+  await stroke(page, p, [-20, -10], [20, 10]);
+  await expect(p.getByRole('region', { name: 'Lines, arcs and axes' }).getByText('Axis · Axis2')).toBeVisible();
+  await expect(p.locator('.draft-axis-guide')).toHaveCount(1);
+  await page.keyboard.press('Delete');
+  await expect(p.getByRole('status')).not.toContainText('Checking with compiler');
+  await expect(p.locator('.draft-axis-guide')).toHaveCount(0);
+  await act(p, 'Undo'); await expect(p.locator('.draft-axis-guide')).toHaveCount(1);
+  await p.getByRole('button', { name: 'Trace', exact: true }).click(); await act(p, 'Use whole shape outline'); await act(p, 'Use this outline'); await act(p, 'Extrude Profile');
+  await p.getByRole('button', { name: 'Build and use part', exact: true }).click(); await expect(p).toHaveCount(0);
+  await expect(page.locator('.status-ready')).toContainText('Ready');
+});
