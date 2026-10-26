@@ -281,6 +281,13 @@ export function HeliosApp({ project, initialWorkspace, chooseBase = false, onSho
     }, 200);
     return () => { current = false; clearTimeout(timer); };
   }, [editorMode, source, sourceName, sourceRevision]);
+  // Reopen the draft over an existing Profile. Asked fresh: the graph outline is only kept in graph mode.
+  const openIntelliDraft = async () => {
+    setPendingAuthoring(null);
+    const revision = sourceRevision, text = source;
+    const nodes = await runtime.outline(text, sourceName, String(revision)).then(o => o.nodes).catch(() => outline?.nodes ?? []);
+    setIntelliDraft({ revision, source: nodes.some(n => n.kind === 'Profile') ? text : undefined });
+  };
   useEffect(() => { try { localStorage.setItem('helios-editor-mode', editorMode); } catch { /* per-viewer convenience only */ } }, [editorMode]);
   // Geometry or tree selection highlights the unit, and row, that declares it. A selection the
   // graph itself made is not echoed back: the entity found for a container is often a child.
@@ -822,7 +829,7 @@ export function HeliosApp({ project, initialWorkspace, chooseBase = false, onSho
         <div className={`viewport-pane${ghosted ? ' ghosted' : ''}`}>
         {previewModel && <div className="authoring-preview-banner" role="status">Preview · source unchanged · Apply or Cancel</div>}
         <div className="viewport-toolbar" inert={!!sketch || !!intelliDraft}>
-          <button title="Named construction geometry, Paths and traced Profiles" disabled={!!busy || buildStarted !== null} onClick={() => { setPendingAuthoring(null); setIntelliDraft({ revision: sourceRevision, source: outline?.nodes.some(n => n.kind === 'Profile') ? source : undefined }); }}>IntelliDraft</button>
+          <button title="Named construction geometry, Paths and traced Profiles" disabled={!!busy || buildStarted !== null} onClick={() => void openIntelliDraft()}>IntelliDraft</button>
           <button title="Edit a Profile with source-owned dimensions" disabled={!!busy || buildStarted !== null} onClick={() => setSketch({ node: null })}>Sketch</button>
           <button title="Show retained geometric Concept Structs as gold wireframes; disabled when none are available" aria-pressed={showConcepts}
             disabled={!model?.mesh.definitions.some(d => d.concepts?.length) && !model?.mesh.occurrences.some(o => o.concepts?.length)} onClick={() => setShowConcepts(value => !value)}>Concepts</button>

@@ -45,6 +45,7 @@
   --draft-guide: #e070b8; --draft-guide-label: #f39ad0;
   --draft-preview-fill: rgba(201, 152, 67, .18); --draft-preview-stroke: #d6a348;
   --draft-card-border: #6d5a35; --draft-card-ink: #b9a77f; --draft-error: var(--error); --draft-backdrop: rgba(0, 0, 0, .45);
+  --draft-selected: #f0c46a; --draft-fill: rgba(233, 228, 214, .12); --draft-dimension: #8fb8d8; --draft-dimension-driven: #6f7a73;
 }
 
 /* Apollonia: ink on paper, gold for whatever is active or selected. Gold is
@@ -86,6 +87,7 @@
   --draft-guide: #cb3d96; --draft-guide-label: #a12672;
   --draft-preview-fill: #e5c77533; --draft-preview-stroke: #916b16;
   --draft-card-border: #b4934f; --draft-card-ink: #75684b; --draft-error: #9d2920; --draft-backdrop: rgba(0, 0, 0, .2);
+  --draft-selected: #7a5310; --draft-fill: rgba(36, 62, 73, .10); --draft-dimension: #2b5f86; --draft-dimension-driven: #8b8a82;
 }
 
 * { box-sizing: border-box; }

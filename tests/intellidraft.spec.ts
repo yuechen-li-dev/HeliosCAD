@@ -11,7 +11,7 @@ async function start(page: Page) {
   await page.goto('/'); await page.getByRole('button', { name: 'New part', exact: true }).click();
   await expect(page.locator('.status-ready')).toContainText('Ready', { timeout: 120_000 });
   await page.getByRole('button', { name: 'IntelliDraft', exact: true }).click();
-  await expect(panel(page).getByRole('button', { name: 'Add Layout', exact: true })).toBeVisible();
+  await expect(panel(page).getByRole('button', { name: 'Draw rectangle', exact: true })).toHaveAttribute('aria-pressed', 'true');
   await expect(page.locator('dialog.intellidraft:modal')).toBeVisible();
 }
 async function act(p: Locator, name: string) {
@@ -19,9 +19,29 @@ async function act(p: Locator, name: string) {
   await expect(p.getByRole('status')).not.toContainText('Checking with compiler');
   await expect(p.getByRole('alert')).toHaveCount(0);
 }
+async function advanced(p: Locator, tool: string) {
+  if (!await p.getByRole('button', { name: tool, exact: true }).isVisible()) await p.getByText('Advanced: points, lines and Paths', { exact: true }).click();
+  await p.getByRole('button', { name: tool, exact: true }).click();
+}
+async function layout(p: Locator) { await advanced(p, 'Layout'); await act(p, 'Add Layout'); }
+const select = (p: Locator) => p.getByRole('button', { name: 'Select and move', exact: true }).click();
+/** Type a new shape's dimensions in "Add by dimensions"; the section closes again so it never shadows the inspector. */
+async function addShape(p: Locator, fields: Record<string, number | string>, button = 'Add Rectangle') {
+  const section = p.getByText('Add by dimensions', { exact: true });
+  if (!await p.getByLabel('New center X', { exact: true }).isVisible()) await section.click();
+  for (const [label, value] of Object.entries(fields)) {
+    if (label === 'name') await p.getByLabel('Construction name', { exact: true }).fill(String(value));
+    else await p.getByLabel(label, { exact: true }).fill(String(value));
+  }
+  await act(p, button); await section.click();
+}
+async function span(p: Locator, edge: string, from: string, to: string) {
+  const name = `Add span ${edge} from ${from} to ${to}`;
+  if (!await p.getByRole('button', { name, exact: true }).isVisible()) await p.getByText('Edges as a list', { exact: true }).click();
+  await p.getByRole('button', { name, exact: true }).click();
+}
 async function point(p: Locator, name: string, x: number, y: number) {
-  if (!await p.getByRole('button', { name: 'Point', exact: true }).isVisible()) await p.getByText('Advanced: points, lines and Paths', { exact: true }).click();
-  await p.getByRole('button', { name: 'Point', exact: true }).click();
+  await advanced(p, 'Point');
   await p.getByLabel('Construction name', { exact: true }).fill(name);
   await p.getByLabel('X', { exact: true }).fill(String(x)); await p.getByLabel('Y', { exact: true }).fill(String(y));
   await act(p, 'Add Point');
@@ -61,18 +81,18 @@ async function qualify(page: Page, name: string, fixture: string) {
 }
 
 test('named points and lines trace an L, edit upstream, reject a broken trace, undo and build without source editing', async ({ page }) => {
-  await start(page); const p = panel(page); await act(p, 'Add Layout');
+  await start(page); const p = panel(page); await layout(p);
   for (const [name, x, y] of [['a', 0, 0], ['b', 60, 0], ['c', 60, 8], ['d', 8, 8], ['e', 8, 40], ['f', 0, 40]] as const) await point(p, name, x, y);
   await p.getByRole('button', { name: 'Line', exact: true }).click();
   const edges = [['bottom', 'a', 'b'], ['right', 'b', 'c'], ['ledge', 'c', 'd'], ['upright', 'd', 'e'], ['top', 'e', 'f'], ['left', 'f', 'a']];
   for (const [name, from, to] of edges) await line(p, name, from, to);
   await p.getByRole('button', { name: 'Trace', exact: true }).click();
   await act(p, 'Add to boundary');
-  await p.getByRole('button', { name: 'Trace Profile', exact: true }).click();
+  await p.getByRole('button', { name: 'Use this outline', exact: true }).click();
   await expect(p.getByRole('alert')).toBeVisible(); await expect(p.getByRole('button', { name: 'Build and use part', exact: true })).toBeDisabled();
   await p.getByRole('button', { name: 'Remove bottom from trace', exact: true }).click();
   for (const [edge] of edges) { await p.getByLabel('Guide', { exact: true }).selectOption(edge); await p.getByRole('button', { name: 'Add to boundary', exact: true }).click(); }
-  await act(p, 'Trace Profile');
+  await act(p, 'Use this outline');
   await p.getByText('Advanced construction objects and dimensions', { exact: true }).click();
   await p.getByRole('button', { name: 'Edit point b', exact: true }).click();
   await p.getByLabel('X', { exact: true }).fill('65'); await act(p, 'Update Point');
@@ -87,25 +107,25 @@ test('named points and lines trace an L, edit upstream, reject a broken trace, u
 });
 
 test('a circle span and a chord form an exact D profile', async ({ page }) => {
-  await start(page); const p = panel(page); await act(p, 'Add Layout');
+  await start(page); const p = panel(page); await layout(p);
   await point(p, 'center', 0, 0); await point(p, 'lower', 0, -15); await point(p, 'upper', 0, 15);
   await p.getByRole('button', { name: 'Circle', exact: true }).click();
   await p.getByLabel('Radius', { exact: true }).fill('15'); await act(p, 'Add Circle');
   await p.getByRole('button', { name: 'Line', exact: true }).click(); await line(p, 'chord', 'upper', 'lower');
   await p.getByRole('button', { name: 'Trace', exact: true }).click();
-  await p.getByText('Manual guide trace', { exact: true }).click();
+  if (!await p.getByLabel('Guide', { exact: true }).isVisible()) await p.getByText('Manual guide trace', { exact: true }).click();
   await p.getByLabel('Guide', { exact: true }).selectOption('rim');
   await p.getByLabel('Trace a span between named points').check();
   await p.getByLabel('Span from').selectOption('lower'); await p.getByLabel('Span to').selectOption('upper');
   await act(p, 'Add to boundary');
   await p.getByLabel('Trace a span between named points').uncheck(); await p.getByLabel('Guide', { exact: true }).selectOption('chord'); await act(p, 'Add to boundary');
-  await act(p, 'Trace Profile'); await act(p, 'Extrude Profile');
+  await act(p, 'Use this outline'); await act(p, 'Extrude Profile');
   const source = await qualify(page, 'arc-chord-d', 'arc-chord-d.firmament');
   expect(source).toContain('rim from lower to upper as rimArc'); expect(source).toContain('radius: 15mm');
 });
 
 test('ordered distance and turn Path steps build a rounded outline', async ({ page }) => {
-  await start(page); const p = panel(page); await p.getByText('Advanced: points, lines and Paths', { exact: true }).click(); await p.getByRole('button', { name: 'Path', exact: true }).click(); await act(p, 'Add Path');
+  await start(page); const p = panel(page); await advanced(p, 'Path'); await act(p, 'Add Path');
   const step = async (name: string, kind: string, size: number, turn: number) => {
     await p.getByRole('button', { name: kind + ' step', exact: true }).click();
     await p.getByLabel('Step name').fill(name); await p.getByLabel(kind === 'Line' ? 'Step length' : 'Arc radius').fill(String(size));
@@ -120,10 +140,8 @@ test('ordered distance and turn Path steps build a rounded outline', async ({ pa
 
 test('two retained rectangles produce an L through canvas tracing and stay related after resizing', async ({ page }) => {
   await start(page); const p = panel(page);
-  await act(p, 'Add Layout');
-  await expect(p.getByLabel('Construction name', { exact: true })).toHaveValue('outer');
-  await p.getByLabel('Width', { exact: true }).fill('60'); await p.getByLabel('Height', { exact: true }).fill('40');
-  await act(p, 'Add Rectangle'); await p.getByText('Advanced: explicit expression relationship', { exact: true }).click(); await act(p, 'Add related rectangle');
+  await expect(p.getByLabel('Construction name', { exact: true })).toHaveValue('rect1');
+  await addShape(p, { name: 'outer', 'New width': 60, 'New height': 40, 'New center X': 0, 'New center Y': 0 }); await p.getByText('Advanced: explicit expression relationship', { exact: true }).click(); await act(p, 'Add related rectangle');
   await expect(p.getByLabel('Rectangle relationship')).toHaveValue('inset');
   await p.getByLabel('Wall thickness').fill('8'); await act(p, 'Add Rectangle');
   await expect(p.getByLabel('Width', { exact: true })).toHaveValue('52');
@@ -131,19 +149,16 @@ test('two retained rectangles produce an L through canvas tracing and stay relat
   await expect(p.getByText('Driven by outerWidth - notchWall', { exact: true })).toBeVisible();
   await page.screenshot({ path: resolve(output, 'two-rectangles-construction.png') });
   await p.getByRole('button', { name: 'Trace', exact: true }).click();
-  const span = async (shape: string, edge: string, from: string, to: string) => {
-    await p.getByLabel('Trace shape').selectOption({ label: shape });
-    await p.getByRole('button', { name: `Trace ${edge} from ${from} to ${to}`, exact: true }).click();
-  };
-  await span('outer', 'outer.Bottom', 'outer.BottomLeft', 'outer.BottomRight');
-  await span('outer', 'outer.Right', 'outer.BottomRight', 'notch.BottomRight');
-  await span('notch', 'notch.Bottom', 'notch.BottomLeft', 'notch.BottomRight');
-  await span('notch', 'notch.Left', 'notch.TopLeft', 'notch.BottomLeft');
-  await span('outer', 'outer.Top', 'notch.TopLeft', 'outer.TopLeft');
-  await span('outer', 'outer.Left', 'outer.TopLeft', 'outer.BottomLeft');
+  await span(p, 'outer.Bottom', 'outer.BottomLeft', 'outer.BottomRight');
+  await span(p, 'outer.Right', 'outer.BottomRight', 'notch.BottomRight');
+  await span(p, 'notch.Bottom', 'notch.BottomLeft', 'notch.BottomRight');
+  await span(p, 'notch.Left', 'notch.TopLeft', 'notch.BottomLeft');
+  await span(p, 'outer.Top', 'notch.TopLeft', 'outer.TopLeft');
+  await span(p, 'outer.Left', 'outer.TopLeft', 'outer.BottomLeft');
+  await expect(p.getByText('Outline closed ✓ · 6 edges')).toBeVisible();
   await expect(p.getByRole('list', { name: 'Trace order' }).locator('li')).toHaveCount(6);
   await page.screenshot({ path: resolve(output, 'two-rectangles-trace.png') });
-  await act(p, 'Trace Profile'); await act(p, 'Extrude Profile');
+  await act(p, 'Use this outline'); await act(p, 'Extrude Profile');
   const source = await qualify(page, 'rectangles-l', 'rectangles-l.firmament');
   expect((source.match(/Rect2\s/g) ?? []).length).toBe(2);
   expect(source).not.toMatch(/\b(?:Line2|Point2)\s/);
@@ -169,9 +184,9 @@ test('two retained rectangles produce an L through canvas tracing and stay relat
 });
 
 test('a rectangle can be traced as a complete outline without defining corner points', async ({ page }) => {
-  await start(page); const p = panel(page); await act(p, 'Add Layout'); await act(p, 'Add Rectangle');
+  await start(page); const p = panel(page); await addShape(p, {});
   await p.getByRole('button', { name: 'Trace', exact: true }).click();
-  await act(p, 'Use whole rectangle outline'); await act(p, 'Trace Profile'); await act(p, 'Extrude Profile');
+  await act(p, 'Use whole rectangle outline'); await act(p, 'Use this outline'); await act(p, 'Extrude Profile');
   await p.getByRole('button', { name: 'Build and use part', exact: true }).click(); await expect(p).toHaveCount(0);
   await expect(page.locator('.status-ready')).toContainText('Ready');
 });
@@ -198,16 +213,20 @@ async function pointerDrag(page: Page, p: Locator, from: [number, number], to: [
 }
 
 test('draw, dimension and independently drag rectangles with temporary alignment, then trace the L', async ({ page }) => {
-  await start(page); const p = panel(page); await act(p, 'Add Layout');
+  await start(page); const p = panel(page);
+  await p.getByLabel('Construction name', { exact: true }).fill('outer');
   const first = await canvasPosition(p, -30, -20), last = await canvasPosition(p, 30, 20);
   await page.mouse.move(first.x, first.y); await page.mouse.down(); await page.mouse.move(last.x, last.y, { steps: 12 }); await page.mouse.up();
   await expect(p.getByLabel('Width', { exact: true })).toHaveValue('60');
   await expect(p.getByLabel('Height', { exact: true })).toHaveValue('40');
-  await act(p, 'Draw rectangle'); await p.getByLabel('Construction name', { exact: true }).fill('notch');
+  // The rectangle tool stays active and proposes the next free name.
+  await expect(p.getByLabel('Construction name', { exact: true })).toHaveValue('rect1');
+  await p.getByLabel('Construction name', { exact: true }).fill('notch');
   const second = await canvasPosition(p, -20, -10), secondEnd = await canvasPosition(p, 0, 10);
   await page.mouse.move(second.x, second.y); await page.mouse.down(); await page.mouse.move(secondEnd.x, secondEnd.y, { steps: 12 }); await page.mouse.up();
   await expect(p.getByLabel('Width', { exact: true })).toHaveValue('20');
   await p.getByLabel('Width', { exact: true }).fill('52'); await p.getByLabel('Height', { exact: true }).fill('32'); await act(p, 'Apply shape dimensions');
+  await select(p);
   // Independent notch starts centered at (-10,0). Near the target aligns top/right,
   // but source gets only its own numeric center, with no link to outer.
   await pointerDrag(page, p, [-10, 0], [3.8, 3.8]);
@@ -238,14 +257,12 @@ test('draw, dimension and independently drag rectangles with temporary alignment
   await expect(p.getByLabel('Center X', { exact: true })).toHaveValue('4'); await expect(p.getByLabel('Center Y', { exact: true })).toHaveValue('4');
   await act(p, 'Undo');
   await p.getByRole('button', { name: 'Trace', exact: true }).click();
-  for (const [shape, edge, from, to] of [
-    ['outer', 'outer.Bottom', 'outer.BottomLeft', 'outer.BottomRight'], ['outer', 'outer.Right', 'outer.BottomRight', 'notch.BottomRight'],
-    ['notch', 'notch.Bottom', 'notch.BottomLeft', 'notch.BottomRight'], ['notch', 'notch.Left', 'notch.TopLeft', 'notch.BottomLeft'],
-    ['outer', 'outer.Top', 'notch.TopLeft', 'outer.TopLeft'], ['outer', 'outer.Left', 'outer.TopLeft', 'outer.BottomLeft'],
-  ]) {
-    await p.getByLabel('Trace shape').selectOption({ label: shape }); await p.getByRole('button', { name: `Trace ${edge} from ${from} to ${to}`, exact: true }).click();
-  }
-  await act(p, 'Trace Profile'); await act(p, 'Extrude Profile');
+  for (const [edge, from, to] of [
+    ['outer.Bottom', 'outer.BottomLeft', 'outer.BottomRight'], ['outer.Right', 'outer.BottomRight', 'notch.BottomRight'],
+    ['notch.Bottom', 'notch.BottomLeft', 'notch.BottomRight'], ['notch.Left', 'notch.TopLeft', 'notch.BottomLeft'],
+    ['outer.Top', 'notch.TopLeft', 'outer.TopLeft'], ['outer.Left', 'outer.TopLeft', 'outer.BottomLeft'],
+  ]) await span(p, edge, from, to);
+  await act(p, 'Use this outline'); await act(p, 'Extrude Profile');
   const source = await qualify(page, 'independent-rectangles-l', 'independent-rectangles-l.firmament');
   expect(source).toContain('Static notchCenterX: Length = 4mm'); expect(source).toContain('Static notchCenterY: Length = 4mm');
   expect(source).not.toContain('notchWall'); expect(source).not.toContain('outerWidth -');
@@ -254,7 +271,7 @@ test('draw, dimension and independently drag rectangles with temporary alignment
 
 for (const [kind, label] of [['Rect2', 'rectangle'], ['Circle2', 'circle'], ['Ellipse2', 'ellipse'], ['Slot2', 'slot'], ['RoundedRect2', 'rounded rectangle']]) {
   test(`draw ${kind}, move it, trace its full outline and qualify the exported part`, async ({ page }) => {
-    await start(page); const p = panel(page); await act(p, 'Add Layout');
+    await start(page); const p = panel(page);
     await p.getByRole('button', { name: `Draw ${label}`, exact: true }).click();
     await p.getByLabel('Construction name', { exact: true }).fill('outline');
     const a = await canvasPosition(p, -20, -10), b = await canvasPosition(p, 20, 10);
@@ -262,33 +279,28 @@ for (const [kind, label] of [['Rect2', 'rectangle'], ['Circle2', 'circle'], ['El
     await expect(p.getByRole('button', { name: 'Select outline', exact: true })).toBeVisible();
     await expect(p.getByRole('alert')).toHaveCount(0);
     if (kind === 'RoundedRect2') { await p.getByLabel('Radius', { exact: true }).fill('2'); await act(p, 'Apply shape dimensions'); }
-    await pointerDrag(page, p, [0, 0], [5, 0], true);
+    await select(p); await pointerDrag(page, p, [0, 0], [5, 0], true);
     await p.getByText('Placement', { exact: true }).click(); await expect(p.getByLabel('Center X', { exact: true })).toHaveValue('5');
     await p.getByRole('button', { name: 'Trace', exact: true }).click();
     await act(p, kind === 'Rect2' ? 'Use whole rectangle outline' : 'Use whole shape outline');
-    await act(p, 'Trace Profile'); await act(p, 'Extrude Profile');
+    await act(p, 'Use this outline'); await act(p, 'Extrude Profile');
     const source = await qualify(page, 'draw-' + kind.toLowerCase(), 'draw-' + kind.toLowerCase() + '.firmament');
     expect(source).toContain(kind + ' outline');
   });
 }
 
 test('a long mixed shape list scrolls, filters and hides construction without mutating the part', async ({ page }) => {
-  await start(page); const p = panel(page); await act(p, 'Add Layout');
-  await p.getByLabel('Construction name', { exact: true }).fill('outline');
-  await p.getByLabel('Width', { exact: true }).fill('40'); await p.getByLabel('Height', { exact: true }).fill('20'); await p.getByLabel('Center X', { exact: true }).fill('5'); await act(p, 'Add Rectangle');
+  await start(page); const p = panel(page);
+  await addShape(p, { name: 'outline', 'New width': 40, 'New height': 20, 'New center X': 5, 'New center Y': 0 });
   const labels = ['circle', 'ellipse', 'slot', 'rounded rectangle', 'rectangle'];
   for (let i = 0; i < 15; i++) {
     await p.getByRole('button', { name: 'Draw ' + labels[i % labels.length], exact: true }).click();
-    await p.getByLabel('Construction name', { exact: true }).fill('detail' + i);
-    await p.getByLabel('Center X', { exact: true }).fill(String((i % 5) * 32 - 64)); await p.getByLabel('Center Y', { exact: true }).fill(String(Math.floor(i / 5) * 24 + 24));
-    if (labels[i % labels.length] !== 'circle') {
-      await p.getByLabel(labels[i % labels.length] === 'slot' ? 'Overall length' : 'Width', { exact: true }).fill('20');
-      await p.getByLabel(labels[i % labels.length] === 'slot' ? 'Slot width' : 'Height', { exact: true }).fill('12');
-    }
-    if (['circle', 'rounded rectangle'].includes(labels[i % labels.length])) await p.getByLabel('Radius', { exact: true }).fill('2');
-    await act(p, labels[i % labels.length] === 'rectangle' ? 'Add Rectangle' : 'Add shape');
+    const kind = labels[i % labels.length], fields: Record<string, number | string> = { name: 'detail' + i, 'New center X': (i % 5) * 32 - 64, 'New center Y': Math.floor(i / 5) * 24 + 24 };
+    if (kind !== 'circle') { fields[kind === 'slot' ? 'New overall length' : 'New width'] = 20; fields[kind === 'slot' ? 'New slot width' : 'New height'] = 12; }
+    if (['circle', 'rounded rectangle'].includes(kind)) fields['New radius'] = 2;
+    await addShape(p, fields, kind === 'rectangle' ? 'Add Rectangle' : 'Add shape');
   }
-  const list = p.getByRole('list', { name: 'Construction shape list' }); await expect(list.getByRole('listitem')).toHaveCount(16);
+  await select(p); const list = p.getByRole('list', { name: 'Construction shape list' }); await expect(list.getByRole('listitem')).toHaveCount(16);
   await act(p, 'Fit construction'); await page.screenshot({ path: resolve(output, 'shape-list-many.png') });
   expect(await list.evaluate(el => el.scrollHeight > el.clientHeight)).toBe(true);
   await expect(list.getByRole('button', { name: 'Select detail14', exact: true })).toBeInViewport();
@@ -297,8 +309,8 @@ test('a long mixed shape list scrolls, filters and hides construction without mu
   await p.getByRole('button', { name: 'Select detail14', exact: true }).click(); await expect(p.getByLabel('Show detail14', { exact: true })).not.toBeChecked();
   await p.getByRole('button', { name: 'Show all', exact: true }).click(); await expect(p.getByLabel('Show detail14', { exact: true })).toBeChecked();
   await p.getByLabel('Filter construction shapes').fill('');
-  await p.getByRole('button', { name: 'Trace', exact: true }).click(); await p.getByLabel('Trace shape').selectOption({ label: 'outline' });
-  await act(p, 'Use whole rectangle outline'); await act(p, 'Trace Profile'); await act(p, 'Extrude Profile');
+  await p.getByRole('button', { name: 'Trace', exact: true }).click(); await act(p, 'Select outline');
+  await act(p, 'Use whole rectangle outline'); await act(p, 'Use this outline'); await act(p, 'Extrude Profile');
   const before = await qualify(page, 'many-shapes', 'draw-rect2.firmament');
   await page.getByRole('button', { name: 'IntelliDraft', exact: true }).click();
   await panel(page).getByLabel('Filter construction shapes').fill('outline'); await panel(page).getByLabel('Show outline', { exact: true }).uncheck();
@@ -309,11 +321,11 @@ test('a long mixed shape list scrolls, filters and hides construction without mu
 });
 
 test('a vertically drawn slot retains its vertical orientation', async ({ page }) => {
-  await start(page); const p = panel(page); await act(p, 'Add Layout');
+  await start(page); const p = panel(page);
   await p.getByRole('button', { name: 'Draw slot', exact: true }).click(); await p.getByLabel('Construction name', { exact: true }).fill('outline');
   const a = await canvasPosition(p, -5, -20), b = await canvasPosition(p, 15, 20);
   await page.mouse.move(a.x, a.y); await page.mouse.down(); await page.mouse.move(b.x, b.y, { steps: 10 }); await page.mouse.up();
   await expect(p.getByLabel('Rotation', { exact: true })).toHaveValue('90');
-  await p.getByRole('button', { name: 'Trace', exact: true }).click(); await act(p, 'Use whole shape outline'); await act(p, 'Trace Profile'); await act(p, 'Extrude Profile');
+  await p.getByRole('button', { name: 'Trace', exact: true }).click(); await act(p, 'Use whole shape outline'); await act(p, 'Use this outline'); await act(p, 'Extrude Profile');
   await qualify(page, 'draw-slot2-vertical', 'draw-slot2-vertical.firmament');
 });
