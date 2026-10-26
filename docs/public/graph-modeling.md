@@ -3,6 +3,10 @@
 Use the graph to create a block, drill holes, finish edges and export exact
 geometry without writing Firmament. No AI connection is needed.
 
+For a custom outline, use [IntelliDraft](intellidraft.md): named points and
+guides or distance-driven Paths, then Trace and Extrude. **Sketch** retains the
+closed-shape dimension workspace for rectangles, circles and slots.
+
 1. Choose **New part**. In **Choose base shape**, keep **Box**, enter Size X = 60,
    Y = 40 and Z = 12 mm, then **Preview → Apply**. The block is centred in X/Y;
    its bottom is at Z = 0.

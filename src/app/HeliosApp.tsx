@@ -25,6 +25,7 @@ import { WorkspaceStatus } from './WorkspaceStatus';
 import { useTheme } from '../themes/useTheme';
 import { GraphPanel, type GraphSelection } from '../graph/GraphPanel';
 import { SketchPanel } from '../graph/SketchPanel';
+import { IntelliDraftPanel } from '../graph/IntelliDraftPanel';
 import { NodeInspector, type GraphEditState } from '../graph/NodeInspector';
 import { outlineNode, spliceField } from '../graph/fieldEdit';
 import { bodyParent, featureTarget, paletteOperation, paletteUnavailable, wireOperation } from '../graph/graphAuthoring';
@@ -49,6 +50,7 @@ export function HeliosApp({ project, initialWorkspace, chooseBase = false, onSho
   const [buildClient] = useState(() => new AetherisWorkerClient(runtime));
   const [editorMode, setEditorMode] = useState<'graph' | 'source'>(() => chooseBase ? 'graph' : readEditorMode());
   const [sketch, setSketch] = useState<{ node: string | null } | null>(null);
+  const [intelliDraft, setIntelliDraft] = useState<{ revision: number; source?: string } | null>(null);
   const shellLayout = useShellLayout(editorMode);
   const [model, setModel] = useState<ModelSession | null>(null);
   const [showConcepts, setShowConcepts] = useState(false);
@@ -812,7 +814,8 @@ export function HeliosApp({ project, initialWorkspace, chooseBase = false, onSho
         <ResizeHandle axis="horizontal" label="Resize source and viewport" value={shellLayout.editorPercent} onResize={shellLayout.resizeEditor} />
         <div className={`viewport-pane${ghosted ? ' ghosted' : ''}`}>
         {previewModel && <div className="authoring-preview-banner" role="status">Preview · source unchanged · Apply or Cancel</div>}
-        <div className="viewport-toolbar" inert={!!sketch}>
+        <div className="viewport-toolbar" inert={!!sketch || !!intelliDraft}>
+          <button title="Named construction geometry, Paths and traced Profiles" disabled={!!busy || buildStarted !== null} onClick={() => { setPendingAuthoring(null); setIntelliDraft({ revision: sourceRevision, source: outline?.nodes.some(n => n.kind === 'Profile') ? source : undefined }); }}>IntelliDraft</button>
           <button title="Edit a Profile with source-owned dimensions" disabled={!!busy || buildStarted !== null} onClick={() => setSketch({ node: null })}>Sketch</button>
           <button title="Show retained geometric Concept Structs as gold wireframes; disabled when none are available" aria-pressed={showConcepts}
             disabled={!model?.mesh.definitions.some(d => d.concepts?.length) && !model?.mesh.occurrences.some(o => o.concepts?.length)} onClick={() => setShowConcepts(value => !value)}>Concepts</button>
@@ -820,6 +823,24 @@ export function HeliosApp({ project, initialWorkspace, chooseBase = false, onSho
           <div><select aria-label="Display mode" value={displayMode} onChange={event => setDisplayMode(event.target.value as DisplayMode)}><option value="shaded">Shaded</option><option value="edges">Shaded with edges</option><option value="wireframe">Wireframe</option></select><button aria-label="Selection mode" title="Switch face or edge selection" onClick={() => { setSelectionMode(value => value === 'face' ? 'edge' : 'face'); setDisplayMode('edges'); }}>{selectionMode === 'face' ? 'Faces' : 'Edges'}</button><button title="Toggle camera projection" onClick={() => setViewMode(value => value === 'perspective' ? 'orthographic' : 'perspective')}>{viewMode === 'perspective' ? 'Perspective' : 'Orthographic'}</button></div>
         </div>
         <Viewport measurementDisabledReason={previewModel ? 'Apply or cancel the preview before measuring.' : sketch ? 'Close the sketch workspace before measuring the built solid.' : busy || displayRevision !== sourceRevision ? "Build the current source successfully before measuring." : undefined} showConcepts={showConcepts} pose={previewModel ? null : pose} busyMessage={busy === 'Worker failed' ? null : busy} errorMessage={shownDiagnostics.some(item => item.severity === 'error') ? (model ? 'Build failed. The last valid model remains visible; see Problems for details.' : 'Build needs attention. See Problems for the compiler diagnostic.') : null} model={previewModel ?? model} selectedEntityId={previewModel ? null : selectedEntityId} selectedTopologyId={previewModel ? null : selectedFaceId} theme={theme} displayMode={displayMode} viewMode={viewMode} viewCommand={previewModel ? `fit-preview-${previewModel.id}` : viewCommand} selectionMode={selectionMode} onSelect={previewModel ? () => {} : select} captureRef={capturePreview} />
+        {intelliDraft && <IntelliDraftPanel key={intelliDraft.source === undefined ? 'new' : 'existing'} runtime={runtime} initialSource={intelliDraft.source}
+          onNew={() => setIntelliDraft({ revision: sourceRevision })} onClose={() => setIntelliDraft(null)} onCommit={async candidate => {
+          if (busy || buildStarted !== null) throw new Error('Wait for the current build to finish.');
+          if (sourceRevisionRef.current !== intelliDraft.revision) throw new Error('The working document changed. Cancel this draft and start again to avoid replacing newer work.');
+          const result = await runtime.preview(candidate, intelliDraft.source === undefined ? 'intellidraft.firmament' : sourceName, sourceRevision, projectDocuments.current);
+          try {
+            if (!result.model || result.diagnostics.some(d => d.severity === 'error'))
+              throw new Error(result.diagnostics.map(d => `${d.code}: ${d.message}`).join('\n') || 'The compiler did not admit this part.');
+          } finally { await result.model?.dispose(); }
+          if (sourceRevisionRef.current !== intelliDraft.revision) throw new Error('The working document changed during compilation. Your draft is retained.');
+          if (intelliDraft.source !== undefined) {
+            applyGraphChange({ start: 0, length: source.length, before: source, replacement: candidate, next: candidate }, { nodeId: '', field: null, label: 'Updated IntelliDraft construction', warnings: [] });
+            setIntelliDraft(null); return;
+          }
+          if (dirtyFiles.size && !confirm('Use this built IntelliDraft part and replace the working document? Save or checkpoint unsaved edits first if you need them.')) return;
+          projectRoot.current = null; projectDocuments.current = {}; setProjectFileNames([]); setWorkspaceTitle('IntelliDraft part');
+          await open(candidate, 'intellidraft.firmament'); setIntelliDraft(null);
+        }} />}
         {sketch && <SketchPanel revision={sourceRevision} node={sketch.node} callbacks={{
           project: node => runtime.sketch(source, node, sourceName, String(sourceRevision)),
           preview: async request => {

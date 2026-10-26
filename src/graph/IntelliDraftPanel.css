@@ -1,0 +1,46 @@
+.intellidraft { position:fixed; inset:60px 12px 30px; margin:0; padding:0; max-width:none; max-height:none; width:auto; height:auto; z-index:40; display:flex; flex-direction:column; background:#fafaf7; color:#242424; font:13px/1.45 system-ui; color-scheme:light; box-shadow:0 4px 28px #0003; border:1px solid #aaa; border-radius:6px; overflow:hidden }
+.intellidraft:not([open]) { display:none }
+.intellidraft::backdrop { background:#0003 }
+.intellidraft header,.intellidraft footer { display:flex; align-items:center; gap:10px; padding:10px 14px; border-bottom:1px solid #d6d5cd }
+.intellidraft header strong { font-size:17px }
+.intellidraft header span { color:#68685d; flex:1 }
+.intellidraft button,.intellidraft input,.intellidraft select { font:inherit; color:inherit; border:1px solid #b8b8aa; border-radius:4px; background:#fff; padding:6px 9px; min-height:32px; box-sizing:border-box }
+.intellidraft button { cursor:pointer }
+.intellidraft button:disabled { opacity:.45; cursor:default }
+.intellidraft button:focus-visible,.intellidraft input:focus-visible,.intellidraft select:focus-visible { outline:2px solid #987321; outline-offset:2px }
+.intellidraft .draft-primary { background:#2e423e; color:white; border-color:#2e423e }
+.draft-intro { margin:0; padding:10px 14px; background:#f1f0e7; border-bottom:1px solid #d6d5cd }
+.draft-body { display:flex; min-height:0; flex:1 }
+.draft-body aside { width:300px; max-width:45%; overflow:auto; padding:12px; border-right:1px solid #d6d5cd }
+.draft-body nav { display:flex; flex-wrap:wrap; gap:5px }
+.intellidraft button[aria-pressed=true] { background:#efe2bb; border-color:#ad7b22 }
+.intellidraft form { display:flex; flex-direction:column; gap:9px; padding:12px 0; border-bottom:1px solid #ddd }
+.intellidraft h3,.intellidraft p { margin:0 }
+.intellidraft label { display:flex; flex-direction:column; gap:3px }
+.intellidraft input,.intellidraft select { width:100%; min-width:0 }
+.draft-pair { display:flex; gap:8px }
+.draft-pair>* { flex:1; min-width:0 }
+.intellidraft .draft-check { flex-direction:row; align-items:center }
+.draft-check input { width:auto; min-height:0 }
+.intellidraft ol { padding-left:23px; margin:0 }
+.intellidraft li { padding:3px 0 }
+.intellidraft li button { padding:1px 5px; min-height:24px; margin-left:4px }
+.draft-canvas { flex:1; min-width:0; position:relative; background:radial-gradient(#ddd 1px,transparent 1px) 0 0/16px 16px }
+.draft-canvas svg { width:100%; height:100% }
+.draft-axes { position:absolute; bottom:10px; left:12px; color:#626255; background:#fafaf7dd; padding:3px }
+.draft-object { display:flex; flex-direction:column; align-items:stretch; gap:4px; padding:8px 0; border-bottom:1px solid #eee }
+.draft-object button { text-align:left }
+.construction-shapes { display:flex; flex-direction:column; gap:9px; padding-top:12px }
+.shape-cards { display:grid; grid-template-columns:1fr 1fr; gap:6px }
+.shape-cards button { display:flex; flex-direction:column; align-items:flex-start; gap:3px; border-color:#b4934f }
+.shape-cards span { font-size:11px; color:#75684b }
+.construction-shapes small,.intellidraft form small { color:#686351; overflow-wrap:anywhere }
+.construction-advanced { margin-top:12px }
+.span-choices { display:flex; flex-direction:column; gap:5px; padding:6px 0 }
+.span-choices button { display:flex; flex-direction:column; text-align:left; gap:3px; overflow-wrap:anywhere }
+.span-choices small { font-size:11px }
+.draft-span-target:focus { outline:none }
+.draft-span-target:focus-visible>polyline:first-of-type { stroke:#1d655a; stroke-width:5 }
+.intellidraft footer { border-top:1px solid #d6d5cd; border-bottom:0 }
+.intellidraft footer>div { flex:1 }
+.intellidraft [role=alert] { color:#9d2920; max-height:80px; overflow:auto }
