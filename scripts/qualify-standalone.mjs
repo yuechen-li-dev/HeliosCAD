@@ -197,11 +197,20 @@ try {
   await expect(page.getByRole('button', { name: 'Restore Restored Manual checkpoint', exact: true })).toBeVisible();
   await expect(page.locator('.status-ready')).toContainText('Ready', { timeout: 120_000 });
   assert.deepEqual(errors, []);
+  const graphQualification = process.argv.includes('--graph');
+  if (graphQualification) {
+    // Exercise the extracted production bundle, with the ordinary launch cookie,
+    // through the same graph-only workflows used during UI development.
+    const result = spawnSync(process.execPath, [join(root, 'node_modules/@playwright/test/cli.js'),
+      'test', '--config', 'playwright.graph.config.ts'], { cwd: root, stdio: 'inherit',
+      env: { ...process.env, HELIOS_GRAPH_BASE_URL: address, HELIOS_GRAPH_LAUNCH_URL: address + '/__helios/start#' + session.Token } });
+    assert.equal(result.status, 0, 'Packaged graph authoring qualification failed.');
+  }
   const cookies = await context.cookies(); cookie = cookies.map(value => `${value.name}=${value.value}`).join('; ');
   await stop(cookie);
   const log = await readFile(join(data, 'logs/helios.log'), 'utf8'); assert.ok(!log.includes(session.Token));
   await writeFile(join(working, 'QUALIFICATION.json'), JSON.stringify({ verdict: 'passed', archive: basename(archive), manifest,
-    browser: browser.version(), checks: ['inventory', 'self-contained startup', 'authentication and CSRF', 'loopback origin guard', 'single host', 'production WASM build', 'STEP bounds/topology/reopening', 'GLB/PDF export', 'local projects restart', 'browser checkpoint restart/restore', 'AI settings', 'Quit and process exit'], errors }, null, 2));
+    browser: browser.version(), checks: ['inventory', 'self-contained startup', 'authentication and CSRF', 'loopback origin guard', 'single host', 'production WASM build', 'STEP bounds/topology/reopening', 'GLB/PDF export', 'local projects restart', 'browser checkpoint restart/restore', 'AI settings', 'Quit and process exit', ...(graphQualification ? ['graph-only part authoring and recovery'] : [])], errors }, null, 2));
   await writeFile(join(root, 'artifacts/local/standalone/qualified.json'), JSON.stringify({ working, archive }, null, 2));
   console.log(`Standalone qualification passed: ${working}`);
 } finally {

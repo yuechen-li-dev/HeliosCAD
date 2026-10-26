@@ -192,9 +192,9 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .graph-unit header small { grid-column: 1 / -1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-secondary); font-size: var(--type-caption); }
 .graph-problems { display: inline-grid; place-items: center; min-width: 17px; height: 16px; padding: 0 4px; border-radius: 999px; color: var(--panel-elevated); background: var(--error); font-size: var(--type-caption); font-weight: 600; font-variant-numeric: tabular-nums; }
 .graph-rows { margin: 0; padding: 0 4px 6px; list-style: none; border-top: 1px solid var(--border); }
-.graph-rows button { display: flex; justify-content: space-between; gap: 8px; width: 100%; margin-top: 2px; padding: 3px 6px; border-radius: var(--radius-control); background: transparent; text-align: left; cursor: pointer; }
+.graph-rows button { display: flex; flex-direction: column; align-items: stretch; justify-content: center; gap: 1px; min-height: 38px; width: 100%; margin-top: 2px; padding: 4px 6px; border-radius: var(--radius-control); background: transparent; text-align: left; cursor: pointer; }
 .graph-rows button span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.graph-rows button small { flex: none; max-width: 55%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-secondary); font-size: var(--type-caption); font-variant-numeric: tabular-nums; }
+.graph-rows button small { flex: none; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-secondary); font-size: var(--type-caption); font-variant-numeric: tabular-nums; }
 .graph-rows button:hover { background: var(--control-bg); }
 .graph-rows button.selected { background: color-mix(in srgb, var(--selection) 22%, transparent); }
 .graph-more { padding: 3px 6px 0; color: var(--text-secondary); font-size: var(--type-caption); }
@@ -256,7 +256,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .node-add-form > div { grid-column: 2; display: flex; gap: 4px; }
 .node-add-form button.primary { border-color: var(--accent); background: var(--accent); color: var(--accent-contrast); font-weight: 600; }
 .node-add-form .node-error { grid-column: 1 / -1; margin: 0; }
-.node-field-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-secondary); font-size: var(--type-ui); }
+.node-field-name { overflow-wrap: anywhere; color: var(--text-secondary); font-size: var(--type-ui); }
 .node-field:focus-within .node-field-name { color: var(--text-primary); }
 .node-field-state { grid-column: 2; margin-top: 3px; color: var(--text-secondary); font-size: var(--type-caption); line-height: 1.35; }
 .node-field-state.ok { color: var(--success); animation: node-fade 2.4s ease-in forwards; }
@@ -496,3 +496,22 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .pattern-editor td, .pattern-editor th { text-align: left; border-bottom: 1px solid var(--border, #ddd); padding: 6px; overflow-wrap: anywhere; }
 .pattern-point-preview { width: 100%; height: 140px; background: #b5871510; border: 1px solid #b5871544; }
 .pattern-point-preview circle { fill: #b58715; stroke: #ffdf7d; stroke-width: .4px; vector-effect: non-scaling-stroke; }
+.field-set { display: grid; gap: 6px; grid-column: 1 / -1; }
+.field-set-actions { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px 4px; }
+.field-set-actions small { width: 100%; color: var(--text-secondary); }
+.field-set-actions button { padding: 6px 9px; border: 1px solid var(--border); background: var(--control-bg); color: var(--text-primary); cursor: pointer; }
+.field-set-actions button.primary { background: var(--text-primary); color: var(--panel-bg); }
+.field-set-actions button:disabled { opacity: .45; cursor: default; }
+.node-choice { display: grid; min-width: 0; gap: 4px; }
+.node-choice select { width: 100%; min-width: 0; padding: 5px; color: var(--text-primary); background: var(--control-bg); border: 1px solid var(--border); }
+.node-feature-actions { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 8px; }
+.node-feature-actions small { flex-basis: 100%; color: var(--text-secondary); }
+.authoring-panel .node-field-label label { display: block; }
+.authoring-panel .node-vector { gap: 5px; }
+.authoring-panel .node-field { grid-template-columns: minmax(100px, .65fr) minmax(150px, 1fr); }
+.authoring-panel .field-set { padding: 8px 0; border-block: 1px solid var(--border); }
+.node-head strong, .node-head small { grid-column: 1 / -1; }
+.node-head .node-actions { grid-column: 1 / -1; grid-row: auto; justify-content: flex-start; margin-top: 7px; }
+.field-help { padding: 4px; color: var(--text-secondary); font-size: var(--type-caption); }
+.field-help p { line-height: 1.5; margin: 6px 0; }
+.node-end-depth { color: var(--text-secondary); font-size: var(--type-caption); }

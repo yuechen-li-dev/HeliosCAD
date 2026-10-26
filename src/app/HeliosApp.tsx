@@ -134,6 +134,7 @@ export function HeliosApp({ project, initialWorkspace, chooseBase = false, onSho
   useEffect(() => { if (pendingAuthoring && pendingAuthoring.revision !== sourceRevision) setPendingAuthoring(null); }, [sourceRevision, pendingAuthoring]);
   function beginAuthoring(action: AuthoringAction, mate?: PendingAuthoring['mate']) {
     if (busy || buildStarted !== null) { pushOutput('Wait for the current operation to finish.'); return; }
+    if (outline?.document !== sourceName || outline.revision !== String(sourceRevisionRef.current)) { pushOutput('Updating graph controls; try again when they are ready.'); return; }
     setEditorMode('graph'); setSideTab('selection');
     setPendingAuthoring({ action, node: inspectedId, revision: sourceRevisionRef.current, mate });
   }
@@ -358,12 +359,12 @@ export function HeliosApp({ project, initialWorkspace, chooseBase = false, onSho
   const pendingGraphSelection = useRef<string | null>(null);
   useEffect(() => {
     const id = pendingGraphSelection.current;
-    if (!id || !partGraph) return;
+    if (!id || !partGraph || outline?.revision !== String(sourceRevision)) return;
     const unitId = partGraph.unitOf.get(id);
     if (!unitId) return;
     pendingGraphSelection.current = null;
     setGraphSelection({ unitId, rowId: id === unitId ? null : id });
-  }, [partGraph]);
+  }, [partGraph, sourceRevision, outline]);
   const structuralEdit = async (operations: readonly LanguageEditOperation[], meta: { nodeId: string; label: string; select?: string | null }): Promise<string | null> => {
     if (busy === 'Exporting' || busy === 'Worker failed') return 'Wait for the current operation to finish.';
     const original = source, revision = sourceRevisionRef.current;
@@ -381,6 +382,9 @@ export function HeliosApp({ project, initialWorkspace, chooseBase = false, onSho
   };
   const siblingsOf = (node: OutlineNode) => (outline?.nodes ?? []).filter(item => item.parentId === node.parentId).sort((a, b) => a.order - b.order);
   const graphActions = {
+    onApplyFields: (node: OutlineNode, values: readonly { field: string; value: string }[]) =>
+      structuralEdit(values.map(value => ({ kind: 'setField' as const, node: node.id, ...value })),
+        { nodeId: node.id, label: `Updated ${node.name ?? node.kind}: ${values.map(v => v.field).join(', ')}`, select: node.id }),
     onAddField: (node: OutlineNode, field: string, value: string) =>
       structuralEdit([{ kind: 'setField', node: node.id, field, value }], { nodeId: node.id, label: `Added ${field}: ${value} to ${node.name ?? node.kind}` }),
     onRemoveField: (node: OutlineNode, field: OutlineField) =>
@@ -479,7 +483,7 @@ export function HeliosApp({ project, initialWorkspace, chooseBase = false, onSho
     onOpenSource: id => { const node = outline?.nodes.find(n => n.id === id); if (node) { setEditorMode('source'); navigateSource({ source: sourceName, start: node.span.start, length: node.span.length, line: 1, column: 1 }); } },
   };
   const graphAuthoring = () => {
-    if (busy || buildStarted !== null || pendingAuthoring || !outline) return null;
+    if (busy || buildStarted !== null || pendingAuthoring || !outline || outline.document !== sourceName || outline.revision !== String(sourceRevision)) return null;
     const target = featureTarget(outline, inspectedId);
     return {
       actions: constructionActions(),
@@ -527,13 +531,20 @@ export function HeliosApp({ project, initialWorkspace, chooseBase = false, onSho
   }
   const contextActions = () => {
     const node = outlineNode(outline, inspectedId);
+    const target = featureTarget(outline, inspectedId);
     const ids = node?.occurrence && ['Part', 'Assembly', 'Subassembly'].includes(node.kind) ? ['placement']
       : node?.kind === 'Mate' || node?.kind === 'Interface' && node.parentId ? ['mate']
       : node && ['Pattern', 'Points', 'Series', 'Linear', 'Stations', 'Function'].includes(node.kind) ? ['pattern-editor']
       : node?.kind === 'Profile' ? ['extrude', 'pocket'] : node?.kind === 'Hole' ? ['pattern']
       : node && ['Box', 'Cylinder', 'Extrude', 'Compose'].includes(node.kind) ? ['base', 'pocket'] : [];
-    return <div className="node-construction-actions">{constructionActions().filter(a => ids.includes(a.id)).map(a =>
-      <button key={a.id} disabled={!!a.reason || !!busy || buildStarted !== null} title={a.reason ?? a.description} onClick={a.run}>{a.label}</button>)}</div>;
+    const updating = outline?.document !== sourceName || outline.revision !== String(sourceRevision);
+    return <div className="node-construction-actions">{updating && <small role="status">Updating graph controls…</small>}{'body' in target && <div className="node-feature-actions" aria-label={`Features on ${target.body.name}`}>
+      <small>On {target.body.name}</small>
+      {palette.filter(item => ['hole', 'hole-blind', 'counterbore', 'countersink', 'chamfer', 'fillet'].includes(item.id)).map(item =>
+        <button key={item.id} disabled={!!busy || buildStarted !== null || updating} title={item.description} onClick={() => beginAuthoring({ kind: 'feature', item })}>
+          {item.id === 'hole' ? 'Add hole…' : item.id === 'chamfer' ? 'Chamfer…' : item.id === 'fillet' ? 'Fillet…' : `${item.label}…`}</button>)}
+    </div>}{constructionActions().filter(a => ids.includes(a.id)).map(a =>
+      <button key={a.id} disabled={!!a.reason || !!busy || buildStarted !== null || updating} title={a.reason ?? a.description} onClick={a.run}>{a.label}</button>)}</div>;
   };
   const revertGraphEdit = () => {
     if (!graphEdit) return;
@@ -543,9 +554,9 @@ export function HeliosApp({ project, initialWorkspace, chooseBase = false, onSho
     if (!sourcePanel.current?.replace({ source: sourceName, start: 0, length: source.length, line: 1, column: 1 }, source, base)
         || before === sourceRevisionRef.current) editSource(base);
     pushOutput('Reverted the draft');
-    // Back to exactly what the displayed model was built from: nothing to rebuild.
-    if ((projectRoot.current ?? sourceName) === sourceName && model?.source === base) setDisplayRevision(sourceRevisionRef.current);
-    else void submitBuild(base, sourceName, sourceRevisionRef.current);
+    // A failed setSource also changed the live SDK session. Restore that authority,
+    // not just the displayed snapshot, before permitting exports or the next edit.
+    void submitBuild(base, sourceName, sourceRevisionRef.current);
   };
   const inspectorProps = () => {
     const unit = graphSelection && partGraph?.units.find(item => item.id === graphSelection.unitId);
@@ -557,11 +568,13 @@ export function HeliosApp({ project, initialWorkspace, chooseBase = false, onSho
       && item.source.start >= node.span.start && item.source.start <= node.span.start + node.span.length) : [];
     const edit = graphEdit && graphEdit.revision === sourceRevision ? graphEdit : null;
     return {
-      node, nodes: partGraph?.nodes ?? new Map<string, OutlineNode>(), focusField, problems, buildProblems: shownDiagnostics, edit,
+      node, revision: sourceRevision, nodes: partGraph?.nodes ?? new Map<string, OutlineNode>(), focusField, problems, buildProblems: shownDiagnostics, edit,
       completion: completion && node && completion.nodeId === node.id ? completion.fields : [],
       external: unit?.category === 'external' ? { title: unit.title, document: unit.document } : null,
       schema: semanticSchema?.constructs.find(item => item.id === node?.schemaId) ?? null,
-      readOnly: busy === 'Worker failed' ? 'The build worker stopped. Restart it from the status bar to edit.' : null,
+      readOnly: busy === 'Worker failed' ? 'The build worker stopped. Restart it from the status bar to edit.'
+        : busy || buildStarted !== null ? 'Building…'
+        : outline?.document !== sourceName || outline.revision !== String(sourceRevision) ? 'Updating graph controls…' : null,
     };
   };
   const rebuildSource = async () => {
@@ -767,7 +780,7 @@ export function HeliosApp({ project, initialWorkspace, chooseBase = false, onSho
           onSelect={(unitId, row, graph) => selectFromGraph(unitId, row, graph)} onOpenSource={(unitId, row, graph) => openFromGraph(unitId, row, graph)}
           authoring={graphAuthoring()} assembly={assemblyView()}
           inspector={<div className="graph-side">
-            {pendingAuthoring && outline ? <AuthoringPanel pending={pendingAuthoring} source={source} sourceName={sourceName} outline={outline} palette={palette}
+            {pendingAuthoring && outline ? <AuthoringPanel pending={pendingAuthoring} source={source} sourceName={sourceName} outline={outline} palette={palette} schema={semanticSchema}
               runtime={runtime} assembly={assemblyGraph} jointKinds={jointKinds} selection={previewModel ? null : selectedSelection}
               documents={projectDocuments.current} root={projectRoot.current ?? sourceName} onCancel={() => setPendingAuthoring(null)}
               onPreview={setPreviewModel} onSketch={() => { setPendingAuthoring(null); newSketch('Rect2'); }}
@@ -775,7 +788,7 @@ export function HeliosApp({ project, initialWorkspace, chooseBase = false, onSho
               onApply={(result, label) => {
                 if (pendingAuthoring.revision !== sourceRevisionRef.current) { pushOutput('Source changed; prepare the edit again.'); setPendingAuthoring(null); return; }
                 setPendingAuthoring(null); setPreviewModel(null);
-                if (!result.changed) return;
+                if (!result.changed) { const target = featureTarget(outline, pendingAuthoring.node); if ('body' in target) selectGraphNode(target.body.id); return; }
                 pendingGraphSelection.current = result.nodes.at(-1) ?? pendingAuthoring.node;
                 applyGraphChange({ ...result.edit, before: source.slice(result.edit.start, result.edit.start + result.edit.length), next: result.text },
                   { nodeId: result.nodes.at(-1) ?? pendingAuthoring.node ?? '', field: null, label, warnings: result.warnings });
@@ -834,7 +847,7 @@ export function HeliosApp({ project, initialWorkspace, chooseBase = false, onSho
         {model?.motions?.length ? <MotionStrip clips={model.motions} revision={model.revision} onPose={setPose}
           sample={(motion, t) => runtime.sampleMotion(motion, t)} coverage={next => poseCoverage(model.mesh, next)} /> : null}
         <div className="viewport-caption"><span>{model?.name ?? workspaceTitle}</span><span>{previewModel ? 'Preview · source unchanged' : ghosted ? 'Last good model · the current draft does not build' : displayRevision !== sourceRevision && model ? 'Last valid model · source changed' : model ? 'Compiled geometry' : 'Waiting for geometry'}</span></div>
-        {welcomeHint && <div className="workflow-hint"><span><b>Source → Build → Geometry</b> Edit on the left. Ctrl+Enter builds. Drag to orbit; scroll to zoom.</span><button aria-label="Dismiss workflow hint" onClick={() => { setWelcomeHint(false); localStorage.setItem('helios-workflow-understood', '1'); }}>×</button></div>}
+        {welcomeHint && <div className="workflow-hint"><span><b>{editorMode === 'graph' ? 'Select → Edit → Apply' : 'Source → Build → Geometry'}</b> {editorMode === 'graph' ? 'Select the body to add holes or finish edges. Preview new features, then Apply.' : 'Edit on the left. Ctrl+Enter builds.'} Drag to orbit; scroll to zoom.</span><button aria-label="Dismiss workflow hint" onClick={() => { setWelcomeHint(false); localStorage.setItem('helios-workflow-understood', '1'); }}>×</button></div>}
         </div>
       </div>
       <aside className="utility-dock" aria-label="Utility panel">

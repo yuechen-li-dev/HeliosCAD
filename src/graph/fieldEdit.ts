@@ -47,13 +47,17 @@ export function splitSequence(text: string): string[] | null {
 export type VectorPart = { readonly kind: 'quantity'; readonly value: Quantity } | { readonly kind: 'name'; readonly name: string };
 
 export type FieldEditor =
-  | { readonly kind: 'quantity'; readonly value: Quantity }
+  | { readonly kind: 'quantity'; readonly value: Quantity; readonly wrapper?: 'Blind' }
   | { readonly kind: 'vector'; readonly parts: readonly VectorPart[]; readonly pointType?: 'Point2' | 'Point3' }
   | { readonly kind: 'text' };
 
 const identifier = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
 export function editorFor(field: OutlineField): FieldEditor {
+  // A blind termination is one source-owned depth, not an unconstrained text box.
+  const blind = field.name.toLowerCase() === 'end' ? /^\s*Blind\s*(?:\(([^()]*)\)|\s+(.+))\s*$/.exec(field.text) : null;
+  const depth = blind ? parseQuantity(blind[1] ?? blind[2]) : null;
+  if (depth) return { kind: 'quantity', value: depth, wrapper: 'Blind' };
   if (field.shape === 'quantity' || field.shape === 'number') {
     const value = parseQuantity(field.text);
     if (value) return { kind: 'quantity', value };

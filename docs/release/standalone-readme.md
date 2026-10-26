@@ -24,6 +24,23 @@ retain projects containing includes or imported STEP assets.
 the compiled product supports them. Inspect dimensions and tolerances before
 using an automatically generated drawing for manufacture.
 
+## First part without code
+
+1. Choose **New part**, keep **Box**, and enter its Size X/Y/Z. **Preview → Apply**.
+2. Select the Body card and click **Add hole…**. Keep +Z for the top face, enter
+   Center X/Y and Diameter, then **Preview → Apply**. Counterbored, countersunk
+   and blind holes are beside the same action; blind termination has a depth input.
+3. Select a hole row to edit its fields together with **Apply changes**. Choose
+   **Chamfer…** or **Fillet…** to finish a supported boundary. **Field help**
+   explains the compiler's fields. **+ Add** opens the full catalog.
+4. Use **Export → STEP AP242 → Download selected format** and **Save source**.
+
+**Discard edits** resets unapplied values. A rejected preview leaves source
+unchanged. If applied fields fail to build, **Revert to last good** restores and
+rebuilds the accepted source. Undo/Redo operate on complete edits. Some advanced
+feature combinations remain unsupported; previews report their actual diagnostic.
+Angular mold Draft is not currently a V2 graph feature.
+
 ## Save, stop, and restart
 
 Use **Version Control** for browser-local checkpoints. Download working source

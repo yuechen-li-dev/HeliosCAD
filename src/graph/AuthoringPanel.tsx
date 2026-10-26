@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
-import type { Diagnostic, LanguageEdit, LanguageEditOperation, LanguageOutline, ModelSession, OutlineNode, PaletteItem, SelectionDescription } from '@aetheris/cad';
+import type { Diagnostic, LanguageEdit, LanguageEditOperation, LanguageOutline, ModelSession, OutlineNode, PaletteItem, SelectionDescription, SemanticSchema } from '@aetheris/cad';
 import type { CadRuntime } from '../sdk/CadRuntime';
-import { FieldRow } from './NodeInspector';
+import { FieldRow, FieldSet } from './NodeInspector';
 import { parseQuantity, spliceField } from './fieldEdit';
 import { PatternEditor } from './PatternEditor';
 import { bodyParent, featureTarget, paletteOperation, uniqueName } from './graphAuthoring';
@@ -13,6 +13,7 @@ export interface PendingAuthoring { action: AuthoringAction; node: string | null
 
 interface Props {
   pending: PendingAuthoring; source: string; sourceName: string; outline: LanguageOutline; palette: readonly PaletteItem[];
+  schema?: SemanticSchema | null;
   runtime: CadRuntime; assembly: AssemblyGraph | null; jointKinds: readonly string[]; selection: SelectionDescription | null;
   documents: Readonly<Record<string, string>>; root: string; onCancel(): void; onSketch(): void;
   onPreview(model: ModelSession | null): void; onApply(edit: LanguageEdit, label: string): void;
@@ -48,6 +49,14 @@ export function AuthoringPanel(props: Props) {
   const [numbers, setNumbers] = useState({ columns: '2', rows: '1', pitchX: '10', pitchY: '10', depth: '2', x: '0', y: '0', width: '20', length: '12', diameter: '10' });
   const [draft, setDraft] = useState(pending.action.kind === 'feature' ? pending.action.item.source : '');
   const [draftNode, setDraftNode] = useState<OutlineNode | null>(null);
+  const fieldDraft = useRef<{ read(): { field: string; value: string }[] | null }>(null);
+  // Both base and feature dialogs project the compiler's outline; no UI field schema.
+  useEffect(() => {
+    if (pending.action.kind !== 'base') return;
+    const original = bodies.find(n => n.id === body);
+    setDraft(original?.kind.toLowerCase() === base ? source.slice(original.span.start, original.span.start + original.span.length)
+      : bases.find(item => item.id === base)?.source ?? '');
+  }, [base, body, source, palette]);
   const parts = assembly?.parts.filter(p => p.kind !== 'ground') ?? [];
   const [part, setPart] = useState(parts.find(p => p.id === selected?.id)?.id ?? parts.find(p => !p.anchored)?.id ?? parts[0]?.id ?? '');
   const placementNode = outline.nodes.find(n => n.parentId === part && n.kind === 'Placement');
@@ -82,6 +91,7 @@ export function AuthoringPanel(props: Props) {
   useEffect(() => { invalidate(); return () => { generation.current++; release(); }; }, []);
   useEffect(() => {
     if (!draft) return;
+    setDraftNode(null);
     let current = true;
     void runtime.outline(draft, 'pending.firmament', String(pending.revision)).then(view => { if (current) setDraftNode(view.nodes[0] ?? null); })
       .catch(reason => { if (current) setError(String(reason)); });
@@ -92,19 +102,28 @@ export function AuthoringPanel(props: Props) {
     const value = Number(numbers[key]); if (!numbers[key].trim() || !Number.isFinite(value)) throw new Error('Enter finite numbers in every dimension.');
     if ((key === 'columns' || key === 'rows') && !Number.isInteger(value)) throw new Error('Rows and columns must be whole numbers.'); return value;
   };
+  const editedDraft = (overrides: readonly { field: string; value: string }[] = []) => {
+    if (!draftNode || !fieldDraft.current) throw new Error('The compiler is preparing the field controls. Try Preview again.');
+    const changes = fieldDraft.current.read(); if (!changes) throw new Error('Correct the highlighted field before previewing.');
+    let text = draft;
+    // Read every live control first; apply value spans from right to left so offsets stay valid.
+    for (const field of [...draftNode.fields].sort((a, b) => b.valueSpan.start - a.valueSpan.start)) {
+      const change = overrides.find(c => c.field === field.name) ?? changes.find(c => c.field === field.name); if (!change) continue;
+      const result = spliceField(text, field, change.value); if ('error' in result) throw new Error(result.error); text = result.source;
+    }
+    return text;
+  };
   const operations = (): readonly LanguageEditOperation[] => {
     switch (pending.action.kind) {
       case 'base': {
         const item = bases.find(i => i.id === base); if (!item) throw new Error('Choose a base shape.');
         if (body) {
-          const original = bodies.find(n => n.id === body);
-          return [{ kind: 'replaceDeclaration', node: body, source: original?.kind.toLowerCase() === item.id
-            ? source.slice(original.span.start, original.span.start + original.span.length) : item.source }];
+          return [{ kind: 'replaceDeclaration', node: body, source: editedDraft() }];
         }
-        return [{ kind: 'insertDeclaration', parent: bodyParent(outline, pending.node), source: item.source, name }];
+        return [{ kind: 'insertDeclaration', parent: bodyParent(outline, pending.node), source: editedDraft(), name }];
       }
       case 'feature': {
-        const operation = paletteOperation({ ...pending.action.item, source: draft }, outline, body || pending.node);
+        const operation = paletteOperation({ ...pending.action.item, source: editedDraft() }, outline, body || pending.node);
         if ('reason' in operation) throw new Error(operation.reason);
         return [{ ...operation, name } as LanguageEditOperation];
       }
@@ -141,7 +160,11 @@ export function AuthoringPanel(props: Props) {
         if (result.model) await result.model.dispose(); setState('failed'); return;
       }
       preview.current = result.model; show.current(result.model); setPrepared(edit); setState('previewed');
-    } catch (reason) { if (ticket === generation.current) { setError(reason instanceof Error ? reason.message : String(reason)); setState('failed'); } }
+    } catch (reason) { if (ticket === generation.current) {
+      const message = reason instanceof Error ? reason.message : String(reason);
+      const details = reason && typeof reason === 'object' && 'details' in reason && typeof reason.details === 'string' ? reason.details : '';
+      setError(details && details !== message ? `${message} ${details}` : message); setState('failed');
+    } }
   };
   const choose = (label: string, value: string, items: readonly { value: string; label: string }[], change: (value: string) => void) =>
     <label>{label}<select aria-label={label} value={value} disabled={state === 'preparing'} onChange={e => { invalidate(); change(e.target.value); }}>
@@ -151,7 +174,8 @@ export function AuthoringPanel(props: Props) {
   const bodyChoice = choose('Body', body, bodies.map(n => ({ value: n.id, label: `${n.name} · ${n.kind}` })), setBody);
   const profileChoice = choose('Profile', profile, profiles.map(n => ({ value: n.id, label: n.name ?? n.kind })), setProfile);
   const isFeature = pending.action.kind === 'feature';
-  const title = pending.action.kind === 'mate' && pending.mate?.existing ? 'Edit mate' : titles[pending.action.kind];
+  const title = pending.action.kind === 'feature' ? `Add ${pending.action.item.label}`
+    : pending.action.kind === 'mate' && pending.mate?.existing ? 'Edit mate' : titles[pending.action.kind];
 
   return <aside className="authoring-panel" aria-label={title}>
     <header><strong>{title}</strong><button onClick={props.onCancel}>Cancel</button></header>
@@ -165,11 +189,15 @@ export function AuthoringPanel(props: Props) {
     {isFeature && <>{bodyChoice}<p>Pick a support face in the viewport, or keep the authored support. Center coordinates are in that support's frame.</p>
       <button disabled={!props.selection?.sourceAddressable || state === 'preparing' || !!preview.current} onClick={() => {
         const field = draftNode?.fields.find(f => ['on', 'face'].includes(f.name.toLowerCase()));
-        if (field && props.selection?.selector) { const result = spliceField(draft, field, props.selection.selector); if ('error' in result) setError(result.error); else { invalidate(); setDraft(result.source); } }
+        if (field && props.selection?.selector) {
+          try { const text = editedDraft([{ field: field.name, value: props.selection.selector }]); invalidate(); setDraft(text); }
+          catch (reason) { setError((reason as Error).message); }
+        }
       }}>Use picked face{props.selection?.selector ? ` · ${props.selection.selector}` : ''}</button>
-      {draftNode?.fields.map(field => <FieldRow key={field.name} field={field} description={null} focus={false} disabled={state === 'preparing'} status={null}
-        onCommit={value => { const result = spliceField(draft, field, value); if ('error' in result) return result.error; invalidate(); setDraft(result.source); return null; }} />)}
     </>}
+    {(isFeature || pending.action.kind === 'base') && (draftNode ? <FieldSet key={draft} fields={draftNode.fields}
+      schema={props.schema?.constructs.find(c => c.id === draftNode.schemaId)} disabled={state === 'preparing'} draftRef={fieldDraft} onDirty={invalidate} />
+      : <p role="status">Preparing field controls…</p>)}
     {pending.action.kind === 'patternEditor' && <PatternEditor source={source} candidate={prepared?.text ?? null} sourceName={sourceName} revision={pending.revision} node={pending.node} outline={outline} runtime={runtime} disabled={state === 'preparing'} onChange={operations => { invalidate(); setPatternOperations(operations); }} />}
     {pending.action.kind === 'pattern' && <>
       {choose('Seed hole', seed, seeds.map(n => ({ value: n.id, label: n.name ?? n.kind })), setSeed)}

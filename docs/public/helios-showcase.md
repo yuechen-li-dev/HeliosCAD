@@ -20,7 +20,7 @@ the native topology projection.
 Open the root page to browse local examples. No account or backend is required for the showcase. Community discovery and saved account projects remain at `/discover` and `/projects`.
 
 1. Open **Mounting plate** for a first model, or choose a composed project.
-2. Use **Graph** to select a body or feature and edit its dimensions. Changes build immediately. **Source** opens Firmament in Monaco; use **Build** or **Ctrl+Enter** after source edits.
+2. Use **Graph** to select a body or feature and edit its dimensions, then **Apply changes**. **Source** opens Firmament in Monaco; use **Build** or **Ctrl+Enter** after source edits. See [Make a part through the graph](graph-modeling.md) for a complete no-code block-to-hole workflow.
 3. Drag the viewport to orbit, Shift-drag to pan, and scroll to zoom. **F** fits the model. Camera presets and authored Scene cameras are available in the viewport.
 4. Use **Files** to browse separate project documents and the compiled hierarchy. **Inspector** shows selected semantic and occurrence data. Clicking a diagnostic navigates to its source when a location is available.
 5. Download the active source with **Save source** or **Ctrl+S**. Local documents live only in the current browser session. Multi-file local editing does not add multi-file cloud persistence.
@@ -46,8 +46,9 @@ are mapped; other construction families can still have unmapped faces.
 The viewport labels the preview explicitly; exports are disabled until you
 **Apply** or **Cancel**. Apply commits one undoable source transaction. A refused
 preview reports the compiler diagnostic and leaves the accepted model intact.
-Existing inline field edits still build immediately; a refused inline draft
-retains the last valid geometry and offers **Revert to last good**.
+Existing node fields collect edits until **Apply changes**; coordinate components
+and dimensions build together. **Discard edits** resets pending values. A refused
+applied draft retains the last valid geometry and offers **Revert to last good**.
 
 Select a body for **Replace base…** or **Pocket…**. Replacing a base retains its
 name and downstream references, and checks whether those features still work.
