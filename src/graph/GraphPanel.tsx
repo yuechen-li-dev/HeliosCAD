@@ -264,7 +264,7 @@ export function GraphPanel(props: Props) {
       </div> : <div>
         {summary ? <><span>{summary.containers.length ? summary.containers.join(', ') : props.outline?.document}</span>
           <small>{count(summary.units, 'authoring step')}, {count(summary.links, 'connection')}. {props.authoring
-            ? 'Double-click the canvas to add; drag from a card’s right edge to connect.' : 'Select a part to see its values; double-click to open its source.'}</small></> : <span>Model graph</span>}
+            ? 'Select a card to edit dimensions or add a hole and edge finish. + Add opens the full catalog.' : 'Select a card to inspect its values.'}</small></> : <span>Model graph</span>}
       </div>}
       {props.authoring && !showAssembly && <button className="graph-add" aria-label="Add a body or feature" onClick={() => setPaletteAt(at => at ? null : { x: 12, y: 8 })}>+ Add</button>}
       {showAssembly && asm?.authoring?.onCreateMate && <button className="graph-add" onClick={asm.authoring.onCreateMate}>+ Mate</button>}

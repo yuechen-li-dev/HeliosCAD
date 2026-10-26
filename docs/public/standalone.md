@@ -11,6 +11,7 @@ Chromium runtime. No developer tools or cloud account are needed to model parts.
 3. Choose **New part**, **New assembly**, or a gallery example. Use the graph or
    Firmament source, then **Build**. Open existing source/workspaces or supported
    STEP parts with **Open file**.
+   For a first part, follow [Make a part through the graph](graph-modeling.md).
 4. Use **Export** for the formats available on that model. **Save source**
    downloads source or a portable workspace. **My projects** stores projects in
    this computer's local database. Saved projects currently support one source

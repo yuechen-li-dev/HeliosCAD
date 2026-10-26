@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
+import { useEffect, useImperativeHandle, useRef, useState, type KeyboardEvent } from 'react';
 import type { Diagnostic, LanguageField, OutlineField, OutlineNode, OutlineParameter, OutlineSpan, SemanticConstructSchema } from '@aetheris/cad';
 import { editorFor, formatQuantity, nudge, parameterizable, parseQuantity, refuseValue, vectorText, type Quantity, type VectorPart } from './fieldEdit';
 import { categoryOf } from './outlineGraph';
@@ -20,6 +20,7 @@ export interface FieldSuggestion { readonly name: string; readonly hint: string;
 type Structural = Promise<string | null>;
 
 interface Props {
+  revision?: number;
   actions?: React.ReactNode;
   node: OutlineNode | null;
   nodes: ReadonlyMap<string, OutlineNode>;
@@ -33,6 +34,7 @@ interface Props {
   buildProblems?: readonly Diagnostic[];
   readOnly: string | null;
   onCommit(node: OutlineNode, field: OutlineField, text: string): string | null;
+  onApplyFields?(node: OutlineNode, values: readonly { field: string; value: string }[]): Structural;
   onAddField(node: OutlineNode, name: string, value: string): Structural;
   onRemoveField(node: OutlineNode, field: OutlineField): Structural;
   onRename(node: OutlineNode, name: string): Structural;
@@ -110,7 +112,8 @@ export function NodeInspector(props: Props) {
     <p className="node-note">This part comes from another file. Double-click it in the graph to open that file and edit it there.</p>
   </aside>;
   if (!node) return <aside className="node-inspector" aria-label="Node inspector">
-    <div className="node-empty"><strong>Nothing selected</strong><p>Select a part in the graph to see and change its values. Changes build right away; the model only updates when the build succeeds.</p></div>
+    <div className="node-empty"><strong>Select a body or feature</strong><p>Click a card to edit its dimensions. Use Add hole or Edge finish to work on a body, or + Add for the full catalog. Apply changes builds your edits together.</p></div>
+    {props.actions}
   </aside>;
 
   const children = node.children.map(id => nodes.get(id)).filter((child): child is OutlineNode => !!child);
@@ -146,7 +149,13 @@ export function NodeInspector(props: Props) {
         status={mine?.field === node.value.name ? mine.status : null} onCommit={text => onCommit(node, node.value!, text)} />
     </div>}
     {(node.fields.length > 0 || (!readOnly && !node.value)) && <div className="node-fields" role="group" aria-label="Values">
-      {node.fields.map(field => <FieldRow key={`${node.id}:${field.name}`} field={field} description={schemaField(field.name)?.description ?? null}
+      {props.onApplyFields && node.fields.length > 0 ? <FieldSet key={JSON.stringify([node.id, props.revision, node.fields.map(f => [f.name, f.text])])} fields={node.fields} schema={schema} disabled={!!readOnly}
+        focusField={focusField} onApply={values => props.onApplyFields!(node, values)} rowActions={field => ({
+          onRemove: () => onRemoveField(node, field), onPromote: (axis, name) => onPromote(node, field, axis, name),
+          defaultParameter: `${node.name ?? node.kind}${field.name[0].toUpperCase()}${field.name.slice(1)}`,
+          onParameter: name => { const id = parameterId(name); if (id) onSelectNode(id); },
+        })} /> : node.fields.map(field => <FieldRow key={`${node.id}:${field.name}`} field={field} description={schemaField(field.name)?.description ?? null}
+        choices={schemaField(field.name)?.choices}
         focus={focusField?.toLowerCase() === field.name.toLowerCase()} disabled={!!readOnly}
         status={mine?.field === field.name ? mine.status : null}
         onCommit={text => onCommit(node, field, text)} onRemove={() => onRemoveField(node, field)}
@@ -237,8 +246,56 @@ function AddField({ suggestions, onAdd }: { suggestions: readonly FieldSuggestio
   </div>;
 }
 
-export function FieldRow({ field, label: shown, description, focus, disabled, status, onCommit, onRemove, onPromote, defaultParameter = '', onParameter = () => {} }: {
+export interface FieldDraft { read(): string | null }
+
+/** Collect all controls before compiling. No blur-time builds or asynchronous outline races. */
+export function FieldSet({ fields, schema, disabled, focusField, draftRef, onApply, onDirty, rowActions }: {
+  fields: readonly OutlineField[]; schema?: SemanticConstructSchema | null; disabled: boolean; focusField?: string | null;
+  draftRef?: React.Ref<{ read(): { field: string; value: string }[] | null }>;
+  onApply?(values: readonly { field: string; value: string }[]): Structural; onDirty?(): void;
+  rowActions?(field: OutlineField): Pick<Parameters<typeof FieldRow>[0], 'onRemove' | 'onPromote' | 'defaultParameter' | 'onParameter'>;
+}) {
+  const handles = useRef(new Map<string, FieldDraft>());
+  const [dirty, setDirty] = useState(false), [epoch, setEpoch] = useState(0);
+  const [error, setError] = useState<string | null>(null);
+  const [applying, setApplying] = useState(false);
+  const read = () => {
+    const values: { field: string; value: string }[] = [];
+    for (const field of fields) {
+      const value = handles.current.get(field.name)?.read();
+      if (value == null) return null;
+      if (value !== field.text) values.push({ field: field.name, value });
+    }
+    return values;
+  };
+  useImperativeHandle(draftRef, () => ({ read }));
+  const apply = async () => {
+    const values = read(); if (!values || !onApply) return;
+    if (!values.length) { setDirty(false); return; }
+    setApplying(true);
+    try { const refused = await onApply(values); setError(refused); if (!refused) setDirty(false); }
+    catch (reason) { setError(reason instanceof Error ? reason.message : String(reason)); }
+    finally { setApplying(false); }
+  };
+  return <div className="field-set" onChange={event => { if ((event.target as HTMLElement).closest('.node-promote')) return; setDirty(true); setError(null); onDirty?.(); }}>
+    {fields.map(field => { const metadata = schema?.fields.find(f => f.name.toLowerCase() === field.name.toLowerCase()); return <FieldRow
+      key={`${epoch}:${field.name}`} field={field} description={metadata?.description ?? null} choices={metadata?.choices}
+      focus={focusField?.toLowerCase() === field.name.toLowerCase()} disabled={disabled || applying} status={null}
+      {...(!dirty ? rowActions?.(field) : {})}
+      draftRef={handle => { if (handle) handles.current.set(field.name, handle); else handles.current.delete(field.name); }} onCommit={() => null} />; })}
+    {onApply && <div className="field-set-actions"><button className="primary" disabled={!dirty || disabled || applying} onClick={() => void apply()}>Apply changes</button>
+      <button disabled={!dirty || disabled || applying} onClick={() => { setEpoch(e => e + 1); setDirty(false); setError(null); }}>Discard edits</button>
+      <small>{dirty ? 'Unapplied edits · builds together when applied' : 'Enter values, then Apply changes'}</small></div>}
+    {schema?.fields.some(f => f.description && fields.some(value => value.name.toLowerCase() === f.name.toLowerCase())) && <details className="field-help"><summary>Field help</summary>
+      {schema.fields.filter(f => f.description && fields.some(value => value.name.toLowerCase() === f.name.toLowerCase())).map(f => <p key={f.id}><b>{f.name}</b> · {f.description}</p>)}
+    </details>}
+    {error && <p role="alert" className="node-error">{error}</p>}
+  </div>;
+}
+
+export function FieldRow({ field, label: shown, description, choices, focus, disabled, status, draftRef, onCommit, onRemove, onPromote, defaultParameter = '', onParameter = () => {} }: {
   field: OutlineField; label?: string; description: string | null; focus: boolean; disabled: boolean;
+  choices?: readonly string[]; draftRef?: React.Ref<FieldDraft>;
   status: GraphEditState['status'] | null; onCommit(text: string): string | null; onRemove?(): Structural;
   onPromote?(axis: number | null, name: string): Structural; defaultParameter?: string; onParameter?(name: string): void;
 }) {
@@ -246,8 +303,37 @@ export function FieldRow({ field, label: shown, description, focus, disabled, st
   const [error, setError] = useState<string | null>(null);
   const [promoting, setPromoting] = useState(false);
   // Only a literal dimension can become a parameter: a whole quantity, or a numeric component of a list.
-  const promotable = !!onPromote && (editor.kind === 'quantity' || (editor.kind === 'vector' && !editor.pointType && editor.parts.some(p => p.kind === 'quantity')));
+  const promotable = !!onPromote && (editor.kind === 'quantity' && !editor.wrapper || (editor.kind === 'vector' && !editor.pointType && editor.parts.some(p => p.kind === 'quantity')));
   const first = useRef<HTMLInputElement>(null);
+  const root = useRef<HTMLDivElement>(null);
+  const isEnd = field.name.toLowerCase() === 'end' && choices?.includes('ThroughAll');
+  const [endMode, setEndMode] = useState(field.text === 'ThroughAll' ? 'ThroughAll' : editor.kind === 'quantity' && editor.wrapper === 'Blind' ? 'Blind' : '__expression');
+  const preset = editorFor({ ...field, text: choices?.find(c => c.startsWith('Blind(')) ?? '' });
+  const depth = editor.kind === 'quantity' && editor.wrapper === 'Blind' ? editor.value : preset.kind === 'quantity' ? preset.value : null;
+  useImperativeHandle(draftRef, () => ({ read: () => {
+    const inputs = [...(root.current?.querySelectorAll<HTMLInputElement | HTMLSelectElement>('input, select') ?? [])];
+    let value = field.text;
+    if (isEnd) {
+      const mode = root.current?.querySelector('select')?.value;
+      if (mode === 'ThroughAll') value = 'ThroughAll';
+      else if (mode === 'Blind' && depth) {
+        const parsed = parseQuantity(root.current?.querySelector('input')?.value ?? '');
+        if (!parsed) { setError('Blind depth needs a finite length.'); return null; }
+        value = `Blind(${formatQuantity({ number: parsed.number, unit: parsed.unit || depth.unit })})`;
+      } else value = root.current?.querySelector<HTMLInputElement>('.node-text')?.value ?? field.text;
+    } else if (editor.kind === 'quantity' || editor.kind === 'vector') {
+      let index = 0;
+      const quantity = (original: Quantity) => {
+        const raw = inputs[index++]?.value ?? ''; const parsed = parseQuantity(raw);
+        if (!parsed) throw new Error(`${field.name} needs a finite number, with an optional unit.`);
+        return { number: parsed.number, unit: parsed.unit || original.unit };
+      };
+      try { value = editor.kind === 'quantity' ? (editor.wrapper ? `${editor.wrapper}(${formatQuantity(quantity(editor.value))})` : formatQuantity(quantity(editor.value)))
+        : vectorText(editor.parts.map(p => p.kind === 'name' ? p : { kind: 'quantity', value: quantity(p.value) }), editor.pointType); }
+      catch (reason) { setError((reason as Error).message); return null; }
+    } else value = root.current?.querySelector<HTMLInputElement>('.node-text')?.value ?? inputs[0]?.value ?? field.text;
+    const refused = refuseValue(field, value); setError(refused); return refused ? null : value;
+  } }));
   // Enter commits and the blur that follows must not commit the same text again
   // before the outline catches up with the new source.
   const pending = useRef<string | null>(null);
@@ -261,7 +347,7 @@ export function FieldRow({ field, label: shown, description, focus, disabled, st
     setError(refused);
   };
   const label = <span className="node-field-label">
-    <label className="node-field-name" title={description ?? undefined} htmlFor={`field-${field.span.start}`}>{shown ?? field.name}</label>
+    <label className="node-field-name" title={description ?? undefined} htmlFor={`field-${field.span.start}`}>{shown ?? (!isEnd && editor.kind === 'quantity' && editor.wrapper === 'Blind' ? 'Blind depth' : field.name)}</label>
     {!disabled && promotable && <button className="node-field-promote" aria-label={`Make ${field.name} a parameter`} title="Make this a named parameter"
       onClick={() => setPromoting(value => !value)}>⇡</button>}
     {!disabled && onRemove && <button className="node-field-remove" aria-label={`Remove ${field.name}`} title={`Remove ${field.name}`}
@@ -275,23 +361,35 @@ export function FieldRow({ field, label: shown, description, focus, disabled, st
     : status === 'failed' ? <small className="node-field-state error">Didn't build</small> : null;
   const rowClass = `node-field${status === 'failed' || error ? ' failed' : ''}${status === 'building' ? ' building' : ''}`;
 
-  if (editor.kind === 'quantity') return <div className={rowClass}>{label}
-    <QuantityInput id={`field-${field.span.start}`} inputRef={first} value={editor.value} disabled={disabled} onCommit={text => commit(text)} />{state}{promote}</div>;
+  const commitInput = draftRef ? () => {} : commit;
+  if (isEnd && depth) return <div ref={root} className={rowClass}>{label}<div className="node-choice">
+    <select id={`field-${field.span.start}`} value={endMode} disabled={disabled} onChange={e => {
+      setEndMode(e.target.value); if (e.target.value === 'ThroughAll') commitInput('ThroughAll');
+    }}><option value="ThroughAll">Through all</option><option value="Blind">Blind · set depth</option><option value="__expression">Other expression…</option></select>
+    {endMode === 'Blind' && <label className="node-end-depth">Blind depth<QuantityInput id={`field-${field.span.start}-depth`} ariaLabel="Blind depth" value={depth} disabled={disabled}
+      onCommit={text => commitInput(`Blind(${text})`)} /></label>}
+    {endMode === '__expression' && <TextInput id={`field-${field.span.start}-expression`} value={field.text} disabled={disabled} onCommit={commitInput} />}
+  </div>{state}</div>;
+  if (choices?.length && editor.kind === 'text') return <div ref={root} className={rowClass}>{label}
+    <ChoiceInput id={`field-${field.span.start}`} value={field.text} choices={choices} disabled={disabled} onCommit={commitInput} />{state}</div>;
+  if (editor.kind === 'quantity') return <div ref={root} className={rowClass}>{label}
+    <QuantityInput id={`field-${field.span.start}`} inputRef={first} value={editor.value} disabled={disabled}
+      onCommit={text => commitInput(editor.wrapper ? `${editor.wrapper}(${text})` : text)} />{state}{promote}</div>;
   if (editor.kind === 'vector') {
     const unit = sharedUnit(editor.parts);
     const firstQuantity = editor.parts.findIndex(p => p.kind === 'quantity');
-    return <div className={rowClass}>{label}
+    return <div ref={root} className={rowClass}>{label}
       <div className="node-vector" role="group" aria-label={field.name}>{editor.parts.map((part, index) => part.kind === 'name'
         ? <button key={index} className="node-parameter-chip" title={`${axes[index]} comes from the parameter ${part.name}`} onClick={() => onParameter(part.name)}>
             <i>{axes[index]}</i>{part.name}</button>
         : <QuantityInput key={index} id={index === firstQuantity ? `field-${field.span.start}` : undefined}
             inputRef={index === firstQuantity ? first : undefined} axis={axes[index]} value={part.value} disabled={disabled} hideUnit={unit !== null}
             onCommit={text => { const next = parseQuantity(text); if (!next) { setError(`${axes[index]} is a number with a unit.`); return; }
-              commit(vectorText(editor.parts.map((item, i) => i === index ? { kind: 'quantity', value: next } : item), editor.pointType)); }} />)}
+              commitInput(vectorText(editor.parts.map((item, i) => i === index ? { kind: 'quantity', value: next } : item), editor.pointType)); }} />)}
         {unit && <span className="node-unit node-vector-unit">{unit}</span>}</div>{state}{promote}</div>;
   }
-  return <div className={rowClass}>{label}
-    <TextInput id={`field-${field.span.start}`} inputRef={first} value={field.text} disabled={disabled} onCommit={commit} />{state}</div>;
+  return <div ref={root} className={rowClass}>{label}
+    <TextInput id={`field-${field.span.start}`} inputRef={first} value={field.text} disabled={disabled} onCommit={commitInput} />{state}</div>;
 }
 
 const sharedUnit = (parts: readonly VectorPart[]) => {
@@ -340,17 +438,18 @@ function MakeReusable({ node, onExtract }: { node: OutlineNode; onExtract(name: 
   </div>;
 }
 
-function QuantityInput({ id, value, axis, disabled, hideUnit, inputRef, onCommit }: {
-  id?: string; value: Quantity; axis?: string; disabled: boolean; hideUnit?: boolean; inputRef?: React.Ref<HTMLInputElement>; onCommit(text: string): void;
+function QuantityInput({ id, value, axis, ariaLabel, disabled, hideUnit, inputRef, onCommit }: {
+  id?: string; value: Quantity; axis?: string; ariaLabel?: string; disabled: boolean; hideUnit?: boolean; inputRef?: React.Ref<HTMLInputElement>; onCommit(text: string): void;
 }) {
   const shown = formatQuantity({ number: value.number, unit: '' });
   const [draft, setDraft] = useState(shown);
+  const cancelled = useRef(false);
   useEffect(() => setDraft(shown), [shown]);
   // A bare number keeps the authored unit; a typed unit replaces it.
-  const finish = () => { const parsed = parseQuantity(draft); if (!parsed) { onCommit(draft); return; } const text = formatQuantity({ number: parsed.number, unit: parsed.unit || value.unit }); if (text !== formatQuantity(value)) onCommit(text); };
+  const finish = () => { if (cancelled.current) { cancelled.current = false; return; } const parsed = parseQuantity(draft); if (!parsed) { onCommit(draft); return; } const text = formatQuantity({ number: parsed.number, unit: parsed.unit || value.unit }); if (text !== formatQuantity(value)) onCommit(text); };
   const onKey = (event: KeyboardEvent<HTMLInputElement>) => {
     if (event.key === 'Enter') { event.preventDefault(); finish(); }
-    else if (event.key === 'Escape') { setDraft(shown); event.currentTarget.blur(); }
+    else if (event.key === 'Escape') { cancelled.current = true; setDraft(shown); event.currentTarget.blur(); }
     else if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
       event.preventDefault();
       const next = nudge(draft, event.key === 'ArrowUp' ? 1 : -1, { shift: event.shiftKey, alt: event.altKey });
@@ -359,7 +458,7 @@ function QuantityInput({ id, value, axis, disabled, hideUnit, inputRef, onCommit
   };
   return <span className="node-quantity">
     {axis && <i>{axis}</i>}
-    <input id={id} ref={inputRef} inputMode="decimal" spellCheck={false} disabled={disabled} value={draft} aria-label={axis}
+    <input id={id} ref={inputRef} inputMode="decimal" spellCheck={false} disabled={disabled} value={draft} aria-label={ariaLabel ?? axis}
       onChange={event => setDraft(event.target.value)} onKeyDown={onKey} onBlur={finish} />
     {value.unit && !hideUnit && <span className="node-unit">{value.unit}</span>}
   </span>;
@@ -367,8 +466,18 @@ function QuantityInput({ id, value, axis, disabled, hideUnit, inputRef, onCommit
 
 function TextInput({ id, value, disabled, inputRef, onCommit }: { id: string; value: string; disabled: boolean; inputRef?: React.Ref<HTMLInputElement>; onCommit(text: string): void }) {
   const [draft, setDraft] = useState(value);
+  const cancelled = useRef(false);
   useEffect(() => setDraft(value), [value]);
   return <input id={id} ref={inputRef} className="node-text" spellCheck={false} disabled={disabled} value={draft}
-    onChange={event => setDraft(event.target.value)} onBlur={() => onCommit(draft)}
-    onKeyDown={event => { if (event.key === 'Enter') { event.preventDefault(); onCommit(draft); } else if (event.key === 'Escape') { setDraft(value); event.currentTarget.blur(); } }} />;
+    onChange={event => setDraft(event.target.value)} onBlur={() => { if (cancelled.current) cancelled.current = false; else onCommit(draft); }}
+    onKeyDown={event => { if (event.key === 'Enter') { event.preventDefault(); onCommit(draft); } else if (event.key === 'Escape') { cancelled.current = true; setDraft(value); event.currentTarget.blur(); } }} />;
+}
+
+function ChoiceInput({ id, value, choices, disabled, onCommit }: { id: string; value: string; choices: readonly string[]; disabled: boolean; onCommit(value: string): void }) {
+  const [custom, setCustom] = useState(!choices.includes(value));
+  return <div className="node-choice"><select id={id} defaultValue={custom ? '__expression' : value} disabled={disabled} onChange={e => {
+    setCustom(e.target.value === '__expression'); if (e.target.value !== '__expression') onCommit(e.target.value);
+  }}>{choices.map(choice => <option key={choice} value={choice}>{choice}</option>)}<option value="__expression">Other expression…</option></select>
+    {custom && <TextInput id={`${id}-expression`} value={value} disabled={disabled} onCommit={onCommit} />}
+  </div>;
 }

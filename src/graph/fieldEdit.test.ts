@@ -47,6 +47,10 @@ describe('field edits', () => {
     expect(editorFor(field('Center', 'Other(0mm, 0mm)', 'call')).kind).toBe('text');
     expect(editorFor(field('Size', '[Width * 2, 40mm]', 'sequence')).kind).toBe('text');
     expect(editorFor(field('Size', '[Width, Depth]', 'sequence')).kind).toBe('text');
+    expect(editorFor(field('End', 'Blind 5mm', 'expression'))).toEqual({ kind: 'quantity', value: { number: 5, unit: 'mm' }, wrapper: 'Blind' });
+    expect(editorFor(field('End', 'Blind(7mm)', 'call'))).toEqual({ kind: 'quantity', value: { number: 7, unit: 'mm' }, wrapper: 'Blind' });
+    expect(editorFor(field('End', 'Blind(Depth)', 'call')).kind).toBe('text');
+    expect(editorFor(field('End', 'ThroughAll', 'reference')).kind).toBe('text');
   });
 
   it('refuses structural text', () => {

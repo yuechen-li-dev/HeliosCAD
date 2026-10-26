@@ -50,7 +50,7 @@ export interface PositionedGraph { readonly units: readonly PositionedUnit[]; re
 export const UNIT_WIDTH = 236;
 export const MAX_ROWS = 8;
 const HEADER = 46;
-const ROW = 21;
+const ROW = 40;
 
 const containers = new Set(['Model', 'model', 'Struct', 'Assembly', 'Subassembly']);
 const categories: Readonly<Record<string, UnitCategory>> = {
@@ -58,7 +58,7 @@ const categories: Readonly<Record<string, UnitCategory>> = {
   Profile: 'sketch', Rect2: 'sketch', Square2: 'sketch', Circle2: 'sketch', Ellipse2: 'sketch', Slot2: 'sketch',
   RoundedRect2: 'sketch', SmoothRoundedRect2: 'sketch', Polygon2: 'sketch', RegularPolygon2: 'sketch', Triangle2: 'sketch',
   Point2: 'sketch', Line2: 'sketch', Path: 'sketch', Plane: 'sketch', Axis: 'sketch', Construction: 'sketch', Points: 'sketch',
-  Compose: 'body', Box: 'body', Cylinder: 'body', Cone: 'body', Sphere: 'body', Torus: 'body', RoundedBox: 'body', Frustum: 'body',
+  Compose: 'body', Box: 'body', Cylinder: 'body', Ellipsoid: 'body', Polyhedron: 'body', Cone: 'body', Sphere: 'body', Torus: 'body', RoundedBox: 'body', Frustum: 'body',
   Extrude: 'body', Revolve: 'body', WireForm: 'body', Sweep: 'body', Loft: 'body', SectionChain: 'body', Panel: 'body', Garment: 'body',
   InlineStep: 'body', Part: 'body',
   Modify: 'modify', EdgeFinish: 'modify', Hole: 'modify', Pattern: 'modify', Mirrored: 'modify', Radial: 'modify', Thread: 'modify',

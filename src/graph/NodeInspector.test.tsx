@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import type { OutlineField, OutlineNode } from '@aetheris/cad';
-import { fieldSuggestions, NodeInspector, startingValue } from './NodeInspector';
+import { FieldSet, fieldSuggestions, NodeInspector, startingValue } from './NodeInspector';
 
 const source = 'Box Plate { Size: [50mm, 40mm, 8mm] Kind: Solid }';
 const field = (name: string, text: string, shape: OutlineField['shape']): OutlineField => {
@@ -17,11 +17,62 @@ const renderInspector = (overrides: Partial<Parameters<typeof NodeInspector>[0]>
   const props = { node: plate, nodes: new Map([[plate.id, plate]]), external: null, schema: null, completion: [], focusField: null, edit: null, problems: [], readOnly: null,
     onCommit: vi.fn(() => null), onAddField: structural(), onRemoveField: structural(), onRename: structural(), onMove: structural(), onDelete: structural(), onPromote: structural(), onExtract: structural(),
     onRevert: vi.fn(), onSelectNode: vi.fn(), onOpenSource: vi.fn(), ...overrides };
-  render(<NodeInspector {...props} />);
-  return props;
+  const view = render(<NodeInspector {...props} />);
+  return { ...props, rerender: view.rerender };
 };
 
 describe('node inspector', () => {
+  it('discards a focused numeric or text edit on Escape without committing on blur', () => {
+    const props = renderInspector();
+    for (const input of [screen.getByLabelText('X'), screen.getByDisplayValue('Solid')]) {
+      input.focus(); fireEvent.change(input, { target: { value: '123' } });
+      fireEvent.keyDown(input, { key: 'Escape' });
+    }
+    expect(props.onCommit).not.toHaveBeenCalled();
+    expect(screen.getByLabelText('X')).toHaveValue('50');
+    expect(screen.getByDisplayValue('Solid')).toBeVisible();
+  });
+
+  it('applies all vector components and other fields atomically, including the focused input', async () => {
+    const apply = vi.fn(async () => null);
+    render(<FieldSet fields={plate.fields} disabled={false} onApply={apply} />);
+    fireEvent.change(screen.getByLabelText('X'), { target: { value: '80' } });
+    fireEvent.blur(screen.getByLabelText('X'));
+    fireEvent.change(screen.getByLabelText('Y'), { target: { value: '60' } });
+    fireEvent.change(screen.getByLabelText('Kind'), { target: { value: 'Different' } });
+    expect(apply).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Apply changes' }));
+    await waitFor(() => expect(apply).toHaveBeenCalledExactlyOnceWith([
+      { field: 'Size', value: '[80mm, 60mm, 8mm]' }, { field: 'Kind', value: 'Different' },
+    ]));
+  });
+
+  it('keeps an invalid draft out of the compiler and can discard every field', () => {
+    const apply = vi.fn(async () => null);
+    render(<FieldSet fields={plate.fields} disabled={false} onApply={apply} />);
+    fireEvent.change(screen.getByLabelText('X'), { target: { value: '' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Apply changes' }));
+    expect(apply).not.toHaveBeenCalled(); expect(screen.getByRole('alert')).toHaveTextContent('finite number');
+    fireEvent.click(screen.getByRole('button', { name: 'Discard edits' }));
+    expect(screen.getByLabelText('X')).toHaveValue('50');
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
+
+  it('edits blind depth as a dimension and preserves the termination constructor', async () => {
+    const apply = vi.fn(async () => null);
+    render(<FieldSet fields={[field('End', 'Blind 5mm', 'expression')]} disabled={false} onApply={apply} />);
+    fireEvent.change(screen.getByLabelText('Blind depth'), { target: { value: '7' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Apply changes' }));
+    await waitFor(() => expect(apply).toHaveBeenCalledWith([{ field: 'End', value: 'Blind(7mm)' }]));
+  });
+
+  it('resets rejected local text when the source revision is restored before an outline refresh', () => {
+    const props = renderInspector({ revision: 1, onApplyFields: vi.fn(async () => null) });
+    fireEvent.change(screen.getByLabelText('X'), { target: { value: '1000' } });
+    props.rerender(<NodeInspector {...props} revision={2} />);
+    expect(screen.getByLabelText('X')).toHaveValue('50');
+    expect(screen.getByRole('button', { name: 'Apply changes' })).toBeDisabled();
+  });
   it('edits point coordinates without requiring constructor syntax or replacing references', () => {
     const center = { ...field('Center', 'Point2(0mm, Offset)', 'call'), span: { start: 20, length: 19 } };
     const hole = { ...plate, kind: 'Hole', fields: [center] };
