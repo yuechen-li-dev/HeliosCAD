@@ -108,7 +108,7 @@ export function ConstructionCanvas({ bounds, shapes, selected, drawing, movable,
       {movable && shapes.map(item => <g key={item.shape.id} className="draft-shape-target" role="button" tabIndex={disabled ? -1 : 0} aria-disabled={disabled} aria-label={`Move ${item.shape.name}`} aria-pressed={item.shape.id === selected}
         onPointerDown={event => { if (event.button === 1) return; begin(event, item); }}
         onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); if (!disabled) onSelect(item.shape.id); } }}>
-        <rect x={item.bounds.x} y={-item.bounds.y - item.bounds.height} width={item.bounds.width} height={item.bounds.height} fill="transparent" stroke={item.shape.id === selected ? '#b78a29' : 'transparent'} strokeWidth="1" strokeDasharray="4 4" vectorEffect="non-scaling-stroke" />
+        <rect x={item.bounds.x} y={-item.bounds.y - item.bounds.height} width={item.bounds.width} height={item.bounds.height} fill="transparent" style={{ stroke: item.shape.id === selected ? 'var(--draft-construction)' : 'transparent' }} strokeWidth="1" strokeDasharray="4 4" vectorEffect="non-scaling-stroke" />
         <title>Drag {item.shape.name}. Soft alignment only; hold Alt to bypass snapping.</title>
       </g>)}
       {moving && <g pointerEvents="none" transform={`translate(${active!.current[0] - moving.shape.center[0]},${-(active!.current[1] - moving.shape.center[1])})`}><rect x={moving.bounds.x} y={-moving.bounds.y - moving.bounds.height} width={moving.bounds.width} height={moving.bounds.height} className="draft-gesture-preview" vectorEffect="non-scaling-stroke" /></g>}

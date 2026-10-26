@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { request } from '../cloud/api';
+import { ApiError, request } from '../cloud/api';
 import { AgentWorkspace, runAgent, type AgentGateway, type AgentTurn } from './agentWorkspace';
 import { cloneProject, type EditableWorkspace, type ProjectSnapshot } from '../app/projectSnapshot';
 import { projectHashes } from './engineeringEvidence';
@@ -14,6 +14,14 @@ const gateway: AgentGateway = { async respond(model, snapshot, requirements, inp
     root: snapshot.root, documentHashes: await projectHashes(snapshot), requirements, referenceIds: snapshot.referenceIds ?? [] }) });
 } };
 const errorText = (error: unknown) => error instanceof Error ? error.message : String(error);
+/** Why AI cannot be used right now: no session (sign in) or no reachable Helios host. */
+type AccessProblem = 'sign-in' | 'local-session' | 'host' | null;
+/** A 401 on the standalone launcher means its local session expired (it has no password sign-in); elsewhere, sign in. */
+async function accessProblem(error: unknown): Promise<AccessProblem> {
+  if (!(error instanceof ApiError && error.status === 401)) return 'host';
+  const status = await request<{ mode: string }>('/__helios/status').catch(() => null);
+  return status?.mode === 'desktop' ? 'local-session' : 'sign-in';
+}
 interface AuthorProvider { id: string; label: string; configured: boolean; credentialVariable: string; models: { id: string; label: string }[] }
 interface LocalSettings { configPath: string; defaultProvider: string; error: string | null }
 interface ConnectionProbe { connected: boolean; message: string; models: { id: string; label: string }[] }
@@ -56,17 +64,19 @@ export function AuthorPanel({ workspace, requirements, onRequirementsChange, onC
   const cancellation = useRef<AbortController | null>(null);
   const provider = mode === 'codex' ? { id: 'codex', label: 'Codex', configured: !!probe?.connected, credentialVariable: '', models: probe?.models ?? [] } : providers.find(p => p.id === providerId);
   const configured = desktop ? pairingReady : !!provider?.configured;
+  const [access, setAccess] = useState<AccessProblem>(null);
+  const [statusAttempt, setStatusAttempt] = useState(0);
   useEffect(() => {
     const abort = new AbortController();
     void request<{ providers: AuthorProvider[]; local?: LocalSettings }>('/api/helios/author/status', { signal: abort.signal }).then(status => {
       if (!status.providers?.length) throw new Error('Provider catalog unavailable.');
-      setProviders(status.providers); setConnection('');
+      setProviders(status.providers); setConnection(''); setAccess(null);
       setLocal(status.local ?? null);
       if (['codex', 'claude-code', 'claude-desktop', 'antigravity'].includes(status.local?.defaultProvider ?? '')) setMode(status.local!.defaultProvider);
       else if (status.local?.defaultProvider) { const p = status.providers.find(p => p.id === status.local!.defaultProvider); if (p) { setProviderId(p.id); setModel(p.models[0].id); } }
-    }).catch(() => { if (!abort.signal.aborted) setConnection('AI host unavailable. Connect your local Helios host and sign in to use AI.'); });
+    }).catch(async error => { const problem = await accessProblem(error); if (!abort.signal.aborted) { setAccess(problem); setConnection(''); } });
     return () => { abort.abort(); cancellation.current?.abort(); };
-  }, []);
+  }, [statusAttempt]);
   useEffect(() => { setTranscript([]); setCandidate(null); setAnswer(''); setOutcome(''); setError(''); setReviewPackage(null); }, [workspace.id, restoredRevision]);
   function changeModel(providerId: string, model: string) {
     setProviderId(providerId); setModel(model);
@@ -96,7 +106,7 @@ export function AuthorPanel({ workspace, requirements, onRequirementsChange, onC
         }
         setSettingsMessage(result.message);
       }
-    } catch (error) { if (mode === 'codex') setProbe(null); setSettingsMessage(errorText(error)); }
+    } catch (error) { if (mode === 'codex') setProbe(null); setSettingsMessage(errorText(error)); if (error instanceof ApiError && error.status === 401) setAccess(await accessProblem(error)); }
     finally { setSettingsBusy(false); }
   }
   async function apply(next: NonNullable<typeof candidate>) {
@@ -147,6 +157,14 @@ export function AuthorPanel({ workspace, requirements, onRequirementsChange, onC
   return <section className="author-panel" aria-label="AI Author">
     <div className="panel-heading">AI author</div>
     <div className="author-body">
+      {access && <div className="author-access" role="status">
+        {access === 'local-session'
+          ? <p>Your local Helios session has expired. Restart Helios from its launcher, then select Retry.</p>
+          : access === 'sign-in'
+            ? <p>Sign in to use AI. <a href="/projects?signin=1" target="_blank" rel="noopener">Sign in</a> opens a new tab, so this document stays open here; then select Retry.</p>
+          : <p>AI needs the Helios host. Run the standalone Helios app, or start Leviathan for source-workspace development. <a href="https://github.com/yuechen-li-dev/HeliosCAD/blob/main/docs/public/ai-connections.md" target="_blank" rel="noopener">Setup</a></p>}
+        <button onClick={() => setStatusAttempt(value => value + 1)}>Retry</button>
+      </div>}
       <p role="status">{activity || connection || (desktop ? `${desktopLabel(mode)} · native chat and subscription. ${pairingReady ? 'Pairing ready; start a task to grant candidate access.' : 'Prepare or renew your desktop connection below.'}` : mode === 'codex' ? (probe?.connected ? 'Codex · ChatGPT subscription' : 'Test the Codex connection. Sign in with ChatGPT in Codex first.') : configured ? `${provider?.label} · ${local ? 'API usage · local credentials' : 'server credentials'}` : local ? 'Configure this provider in helios.toml, then reload connections.' : `Configure ${provider?.credentialVariable} on the host. Keys stay out of source and chat.`)}</p>
       {local && <>
         <label>Connection<select aria-label="AI connection" value={mode} disabled={!!activity || settingsBusy} onChange={e => {

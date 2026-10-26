@@ -2,10 +2,10 @@ import 'fake-indexeddb/auto';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { AuthorPanel } from './AuthorPanel';
-import { request } from '../cloud/api';
+import { ApiError, request } from '../cloud/api';
 import { authorStatus } from '../test/authorStatus';
 
-vi.mock('../cloud/api', async () => ({ request: vi.fn().mockResolvedValue((await import('../test/authorStatus')).authorStatus()) }));
+vi.mock('../cloud/api', async importOriginal => ({ ...await importOriginal<typeof import('../cloud/api')>(), request: vi.fn().mockResolvedValue((await import('../test/authorStatus')).authorStatus()) }));
 describe('AI author presentation', () => {
   it('prepares native desktop access without claiming a provider login or selecting its model', async () => {
     vi.mocked(request).mockResolvedValueOnce({ ...authorStatus(), local: { configPath: '/local/helios.toml', defaultProvider: 'antigravity', error: null } });
@@ -78,5 +78,17 @@ describe('AI author presentation', () => {
     expect(screen.getByText(/Configure GEMINI_API_KEY/)).toBeVisible();
     expect(screen.getByLabelText('Engineering intent')).toHaveValue('Make a plate');
     expect(screen.getByRole('button', { name: 'Run agent' })).toBeDisabled();
+  });
+  it('turns an expired session into a sign-in step that keeps this document open', async () => {
+    vi.mocked(request).mockResolvedValueOnce({ ...authorStatus(), local: { configPath: '/local/helios.toml', defaultProvider: 'claude-code', error: null } });
+    render(<AuthorPanel workspace={{ id: 'signin', snapshot: vi.fn(), apply: vi.fn() }} requirements="" onRequirementsChange={vi.fn()} onCheckpoint={vi.fn()} restoredRevision={0} onBusyChange={vi.fn()} />);
+    await screen.findByLabelText('AI connection');
+    fireEvent.click(screen.getByText('AI connection settings'));
+    vi.mocked(request).mockRejectedValueOnce(new ApiError(401, 'unauthorized')).mockRejectedValueOnce(new ApiError(404, 'not_found'));
+    fireEvent.click(screen.getByRole('button', { name: 'Prepare desktop connection' }));
+    const link = await screen.findByRole('link', { name: 'Sign in' });
+    expect(link).toHaveAttribute('href', '/projects?signin=1');
+    expect(link).toHaveAttribute('target', '_blank');
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeInTheDocument();
   });
 });

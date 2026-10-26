@@ -40,6 +40,7 @@ import { poseCoverage } from '../viewport/pose';
 import type { ExportFormat } from '@aetheris/cad';
 import { ExportPicker } from './ExportPicker';
 import { importedProject, isStep, packProject, sourceFiles, unpackProject } from './localProject';
+import { registerRecoverableSource } from './crashRecovery';
 import { PmiAuthor } from '../inspector/PmiAuthor';
 import { AuthoringPanel, type AuthoringAction, type PendingAuthoring } from '../graph/AuthoringPanel';
 
@@ -96,6 +97,12 @@ export function HeliosApp({ project, initialWorkspace, chooseBase = false, onSho
   const savedSources = useRef<Record<string,string>>({ ...initialWorkspace?.documents, [initialName]: initialSource });
   const [projectFileNames, setProjectFileNames] = useState<string[]>(Object.keys(initialWorkspace?.documents ?? {}));
   runtime.setProjectContext?.(projectRoot.current, projectDocuments.current);
+  // The crash screen reads the latest source through this registry, after the editor has unmounted.
+  const recoveryState = useRef({ source, sourceName }); recoveryState.current = { source, sourceName };
+  useEffect(() => registerRecoverableSource(() => ({
+    root: projectRoot.current ?? recoveryState.current.sourceName,
+    documents: { ...projectDocuments.current, [recoveryState.current.sourceName]: recoveryState.current.source },
+  })), []);
   const sourcePanel = useRef<SourcePanelHandle>(null);
   const [historyState, setHistoryState] = useState({ undo: false, redo: false });
   const [pendingAuthoring, setPendingAuthoring] = useState<PendingAuthoring | null>(chooseBase ? { action: { kind: 'base' }, node: null, revision: 0 } : null);

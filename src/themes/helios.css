@@ -35,6 +35,16 @@
   --gold: #c99843;
   --gold-ink: #e2b661;
   --gold-wash: rgba(201, 152, 67, .16);
+  /* IntelliDraft canvas and workspace. */
+  --draft-bg: var(--panel-bg); --draft-intro-bg: var(--panel-elevated); --draft-ink: var(--text-primary); --draft-muted: var(--text-secondary);
+  --draft-rule: var(--border); --draft-rule-soft: #232c27; --draft-control-bg: var(--control-bg); --draft-control-border: var(--border-strong);
+  --draft-dot: #2b342f; --draft-axis: #3b463f; --draft-focus: var(--gold);
+  --draft-primary-bg: var(--accent); --draft-primary-ink: var(--accent-contrast); --draft-pressed-bg: var(--gold-wash); --draft-pressed-border: var(--gold);
+  --draft-construction: #c99843; --draft-construction-label: #e2b661; --draft-label-halo: var(--panel-bg);
+  --draft-profile: #e9e4d6; --draft-hover: #6cc2ad; --draft-span: #b98a3a;
+  --draft-guide: #e070b8; --draft-guide-label: #f39ad0;
+  --draft-preview-fill: rgba(201, 152, 67, .18); --draft-preview-stroke: #d6a348;
+  --draft-card-border: #6d5a35; --draft-card-ink: #b9a77f; --draft-error: var(--error); --draft-backdrop: rgba(0, 0, 0, .45);
 }
 
 /* Apollonia: ink on paper, gold for whatever is active or selected. Gold is
@@ -67,6 +77,15 @@
   --control-bg: #ffffff;
   --topbar: #ffffff;
   --shadow: rgba(17, 17, 17, .10);
+  --draft-bg: #fafaf7; --draft-intro-bg: #f1f0e7; --draft-ink: #242424; --draft-muted: #68685d;
+  --draft-rule: #d6d5cd; --draft-rule-soft: #e5dfd1; --draft-control-bg: #ffffff; --draft-control-border: #b8b8aa;
+  --draft-dot: #dddddd; --draft-axis: #dddddd; --draft-focus: #987321;
+  --draft-primary-bg: #2e423e; --draft-primary-ink: #ffffff; --draft-pressed-bg: #efe2bb; --draft-pressed-border: #ad7b22;
+  --draft-construction: #ad7b22; --draft-construction-label: #855b0c; --draft-label-halo: #fafaf7;
+  --draft-profile: #243e49; --draft-hover: #1d655a; --draft-span: #bf8e27;
+  --draft-guide: #cb3d96; --draft-guide-label: #a12672;
+  --draft-preview-fill: #e5c77533; --draft-preview-stroke: #916b16;
+  --draft-card-border: #b4934f; --draft-card-ink: #75684b; --draft-error: #9d2920; --draft-backdrop: rgba(0, 0, 0, .2);
 }
 
 * { box-sizing: border-box; }
@@ -154,11 +173,21 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .viewport-error { border-color: #b56c56; }
 .viewport-status button { display: block; margin-top: 8px; padding: 5px 10px; cursor: pointer; font-weight: 500; }
 .viewport-error-actions { display: flex; gap: 6px; }
+.viewport-error-actions button { min-height: 30px; padding: 5px 10px; background: var(--control-bg); color: var(--text-primary); border: 1px solid var(--border-strong); border-radius: var(--radius-control); cursor: pointer; }
+.viewport-error-actions button:hover { border-color: var(--accent); }
 
 /* The WebGL renderer, when this device cannot run WebGPU: it fills the same cell, so the camera's
    aspect (and with it every framing) matches the WebGPU viewport. */
-.viewport-fallback { position: relative; display: grid; min-width: 0; min-height: 0; }
-.viewport-fallback > .viewport-shell { min-height: 0; }
+/* three-telos measurement controls take their colours from the active Helios theme. */
+.viewport-pane {
+  --telos-measurement-font: var(--type-ui)/1.5 var(--font-family); --telos-measurement-color: var(--text-primary);
+  --telos-measurement-background: var(--panel-elevated); --telos-measurement-button-background: var(--control-bg);
+  --telos-measurement-border: var(--border-strong);
+}
+.viewport-fallback { position: relative; display: grid; grid-template: minmax(0, 1fr) / minmax(0, 1fr); width: 100%; height: 100%; min-width: 0; min-height: 0; }
+.viewport-fallback > .viewport-shell { min-height: 0; height: 100%; }
+button.viewport-renderer-note { appearance: none; }
+button.viewport-renderer-note:hover { color: var(--text-primary); border-color: var(--text-secondary); }
 .viewport-renderer-note {
   position: absolute; right: 12px; bottom: 10px; z-index: 2;
   padding: 2px 8px; border: 1px solid var(--border); border-radius: 999px;
@@ -515,3 +544,12 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .field-help { padding: 4px; color: var(--text-secondary); font-size: var(--type-caption); }
 .field-help p { line-height: 1.5; margin: 6px 0; }
 .node-end-depth { color: var(--text-secondary); font-size: var(--type-caption); }
+
+/* Shown instead of a blank page when rendering fails. */
+.crash-screen { box-sizing: border-box; min-height: 100%; display: flex; flex-direction: column; justify-content: center; gap: 14px; padding: 32px max(32px, calc((100% - 640px) / 2)); background: var(--app-bg); color: var(--text-primary); font: var(--type-body)/1.6 var(--font-family); }
+.crash-screen h1 { margin: 0; font-size: var(--type-heading); font-weight: 600; }
+.crash-screen p { margin: 0; color: var(--text-secondary); }
+.crash-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.crash-actions button { min-height: 34px; padding: 6px 14px; background: var(--control-bg); color: var(--text-primary); border: 1px solid var(--border-strong); border-radius: var(--radius-control); cursor: pointer; }
+.crash-actions .crash-primary { background: var(--accent); color: var(--accent-contrast); border-color: var(--accent); }
+.crash-screen pre { max-height: 240px; overflow: auto; padding: 10px; background: var(--panel-bg); border: 1px solid var(--border); font: var(--type-caption)/1.5 var(--font-mono); white-space: pre-wrap; }

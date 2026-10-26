@@ -93,9 +93,19 @@ export function Viewport(props: Props) {
     {!!props.model?.mesh.annotations?.length && <aside className="pmi-legend" aria-label="PMI annotations"><strong>PMI · mm</strong>{props.model.mesh.annotations.map(item => <div key={item.id}><span>{item.name}</span> {item.text}</div>)}<small>Gold marks the referenced surface.</small></aside>}
   </div>;
 }
+/** An explicit "Use WebGL" choice is remembered per browser; the automatic probe result is not. */
+const RENDERER_CHOICE_KEY = "helios.viewport.renderer";
+const CHOSEN_WEBGL = "You chose WebGL for this browser.";
+function readRendererChoice(): string | undefined {
+  try { return localStorage.getItem(RENDERER_CHOICE_KEY) === "webgl" ? CHOSEN_WEBGL : undefined; } catch { return undefined; }
+}
+function writeRendererChoice(webgl: boolean) {
+  try { if (webgl) localStorage.setItem(RENDERER_CHOICE_KEY, "webgl"); else localStorage.removeItem(RENDERER_CHOICE_KEY); } catch { /* storage unavailable */ }
+}
+
 function ViewportRenderer(props: Props) {
   const [generation, setGeneration] = useState(0);
-  const [fallback, setFallback] = useState<string | null | undefined>(undefined);
+  const [fallback, setFallback] = useState<string | null | undefined>(readRendererChoice);
   useEffect(() => { let live = true; void probeWebGpu().then(reason => { if (live) setFallback(current => current ?? reason); }); return () => { live = false; }; }, []);
   if (fallback === undefined) return <section className="viewport-shell" aria-label="3D viewport" aria-busy="true"><div className="viewport-status" role="status">Preparing viewport…</div></section>;
   if (fallback !== null)
@@ -104,7 +114,10 @@ function ViewportRenderer(props: Props) {
         <Suspense fallback={<div className="viewport-status" role="status">Preparing the WebGL viewport…</div>}>
           <LegacyViewport {...props} />
         </Suspense>
-        <small className="viewport-renderer-note" title={`Drawing with WebGL. ${fallback}`} aria-label={`Drawing with WebGL. ${fallback}`}>WebGL</small>
+        {fallback.startsWith(CHOSEN_WEBGL)
+          ? <button type="button" className="viewport-renderer-note" title="Drawing with WebGL by your choice. Click to try WebGPU again."
+              onClick={() => { writeRendererChoice(false); setFallback(undefined); void probeWebGpu().then(reason => setFallback(current => current ?? reason)); }}>WebGL</button>
+          : <small className="viewport-renderer-note" title={`Drawing with WebGL. ${fallback}`} aria-label={`Drawing with WebGL. ${fallback}`}>WebGL</small>}
       </div>
     );
   return (
@@ -112,7 +125,7 @@ function ViewportRenderer(props: Props) {
       key={generation}
       {...props}
       onRetry={() => setGeneration((value) => value + 1)}
-      onUnavailable={reason => setFallback(reason)}
+      onUnavailable={reason => { if (reason.startsWith(CHOSEN_WEBGL)) writeRendererChoice(true); setFallback(reason); }}
     />
   );
 }
@@ -410,7 +423,7 @@ function TelosViewport(props: Props & { onRetry(): void; onUnavailable(reason: s
               </details>
               <div className="viewport-error-actions">
                 <button onClick={props.onRetry}>Restart viewport</button>
-                <button onClick={() => props.onUnavailable(`WebGPU stopped (${diagnostic}).`)}>Use WebGL</button>
+                <button onClick={() => props.onUnavailable(`${CHOSEN_WEBGL} WebGPU stopped (${diagnostic}).`)}>Use WebGL</button>
               </div>
             </>
           )}

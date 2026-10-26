@@ -100,6 +100,13 @@ button, a { transition: background-color 100ms, border-color 100ms, color 100ms;
 .agent-answer { white-space: pre-wrap; line-height: 1.6; font-size: var(--type-ui); }
 .author-body [role="alert"] { color: var(--warning); border-left: 2px solid currentColor; padding-left: 8px; }
 .author-body details button { margin: 6px; }
+/* Action buttons in the AI panel (settings, desktop pairing) use the panel's control style in every theme. */
+.author-body button { display: inline-flex; align-items: center; min-height: 30px; margin: 4px 6px 4px 0; padding: 5px 10px; background: var(--control-bg); color: var(--text-primary); border: 1px solid var(--border-strong); border-radius: var(--radius-control); cursor: pointer; }
+.author-body button:hover:not(:disabled) { border-color: var(--accent); }
+.author-body button:disabled { opacity: .5; cursor: default; }
+.author-access { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; padding: 10px 12px; border: 1px solid var(--border-strong); border-radius: var(--radius-card); background: var(--panel-elevated); }
+.author-access p { margin: 0; color: var(--text-primary); }
+.author-access a { color: var(--accent); }
 .utility-dock { grid-template-rows: auto minmax(0, 1fr); }
 .utility-dock > .dock-tabs { flex-wrap: wrap; min-height: 32px; height: auto; overflow-x: visible; }
 .utility-dock > .dock-tabs button { min-height: 32px; }
