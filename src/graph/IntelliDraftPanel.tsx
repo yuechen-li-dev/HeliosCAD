@@ -1,18 +1,18 @@
-import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
 import type { DraftOperation, DraftSpan, DraftTrace, LanguageEdit, SketchEditRequest, SketchProjection, SketchShape } from '@aetheris/cad';
 import { sketchCurvePoints } from '@aetheris/three-telos';
 import type { WebSdkCadRuntime } from '../sdk/CadRuntime';
 import { ConstructionShapeList } from './ConstructionShapeList';
 import { ConstructionShapes } from './ConstructionShapes';
 import { ConstructionCanvas, type CanvasShape, type StrokePoint } from './ConstructionCanvas';
-import { STROKE_KINDS, alignedNeighbours, explainRefusal, freshName, nameStem, predictedBounds, shapeLabel, traceClosure, translation, type AlignedNeighbour } from './draftGeometry';
+import { ALIGNMENTS, STROKE_KINDS, alignOffset, areaAt, areasOf, endMarks, type Area, alignedNeighbours, explainRefusal, freshName, nameStem, predictedBounds, shapeLabel, traceClosure, translation, type AlignedNeighbour } from './draftGeometry';
 import './IntelliDraftPanel.css';
 
 const blank = 'Model DraftPart {\n  units: mm\n}\n';
 const DOCUMENT = 'intellidraft.firmament';
 type Tool = 'Layout' | 'Shapes' | 'Rectangle' | 'Trace' | 'Extrude' | 'Point' | 'Line' | 'Circle' | 'Path' | 'Line step' | 'Arc step';
 type Dimension = { owner: string; field: string; value: number; unit: string };
-type Change = { control: string; value: number };
+type Change = { control: string; value: number; expression?: string };
 type Problem = { text: string; detail?: string };
 type AlignPrompt = { shape: SketchShape; changes: Change[]; neighbours: AlignedNeighbour[] };
 type DimensionEdit = { shape: SketchShape; control: SketchShape['controls'][number]; draft: string; left: number; top: number };
@@ -114,7 +114,18 @@ export function IntelliDraftPanel({ runtime, initialSource = blank, document = D
   // Line2 and Circle2 guides own spans too: lines between named points, arcs between points on a circle.
   const selectable = spans.filter(s => shownShapes.some(shape => shape.id === s.owner) || !shapes.some(shape => shape.id === s.owner) && !hidden.has(s.owner));
   const pickedSpans = spans.filter(span => trace.some(t => t.reference === span.reference && t.from === span.from && t.to === span.to));
-  const closure = traceClosure(trace, spans, span => sketchCurvePoints(span.curve).map(p => [p[0], p[1]] as const));
+  const spanPoints = (span: DraftSpan) => sketchCurvePoints(span.curve).map(p => [p[0], p[1]] as const);
+  const closure = traceClosure(trace, spans, spanPoints);
+  // Enclosed areas and loose ends of what is drawn, for one-click tracing and for showing why an
+  // outline will not close. Read from the compiler's spans; the trace is still checked by it.
+  const areas = useMemo(() => areasOf(selectable, spanPoints), [view, hidden]); // eslint-disable-line react-hooks/exhaustive-deps
+  const ends = useMemo(() => endMarks(selectable, spanPoints), [view, hidden]); // eslint-disable-line react-hooks/exhaustive-deps
+  const snapCurves = useMemo(() => guides.map(c => ({ name: c.name, kind: c.kind, points: sketchCurvePoints(c).map(p => [p[0], p[1]] as const), center: c.center ? [c.center[0], c.center[1]] as const : null, radius: c.radius })), [view, hidden]); // eslint-disable-line react-hooks/exhaustive-deps
+  const [hoverArea, setHoverArea] = useState<Area | null>(null);
+  const traceArea = (area: Area) => {
+    const parent = elements.find(e => e.id === area.spans[0]?.owner)?.parent; if (parent) setOwner(parent);
+    setTrace(area.spans.map(span => ({ reference: span.reference, from: span.from, to: span.to, connect: true })));
+  };
   const firstPoint = from || points[0]?.name || '', secondPoint = to || points[1]?.name || points[0]?.name || '';
   const profile = elements.find(e => e.kind === 'Profile'), body = elements.find(e => e.kind === 'Extrude');
   const usedNames = new Set(elements.map(e => e.name));
@@ -237,7 +248,8 @@ export function IntelliDraftPanel({ runtime, initialSource = blank, document = D
   /** Size edits that move an edge another shape is lined up with ask once whether to bring it along. */
   const applyShapeChanges = (shape: SketchShape, changes: Change[]) => {
     if (!changes.length || alignPrompt) return;
-    const resizes = changes.some(change => !shape.controls.find(c => c.id === change.control)?.label.startsWith('Center'));
+    // An expression's value is the compiler's to work out, so there is nothing to predict alignment from.
+    const resizes = changes.every(change => change.expression === undefined) && changes.some(change => !shape.controls.find(c => c.id === change.control)?.label.startsWith('Center'));
     const before = predictedBounds(shape), after = predictedBounds(shape, new Map(changes.map(c => [c.control, c.value])));
     const owner = canvasShapes.find(c => c.shape.id === shape.id)?.owner;
     const others = canvasShapes.filter(c => c.owner === owner && c.shape.id !== shape.id)
@@ -253,6 +265,8 @@ export function IntelliDraftPanel({ runtime, initialSource = blank, document = D
     void transact(dimensionRequest(alignPrompt.shape, [...alignPrompt.changes, ...extra]));
   };
 
+  // One-shot alignment: the selected shape (the second pick) moves; the one it aligns to stays.
+  const [alignWith, setAlignWith] = useState('');
   const removeShape = (shape: SketchShape) => {
     if (busy || pendingDimensions) return;
     // Rectangles drawn here own generated Static inputs; remove those too unless another shape uses them.
@@ -316,6 +330,15 @@ export function IntelliDraftPanel({ runtime, initialSource = blank, document = D
   }
   const selectedCanvas = canvasShapes.find(c => c.shape.id === selected?.id);
   const showDimensions = !!selectedCanvas && (tool === 'Shapes' || drawing) && !pendingDimensions;
+  const alignTargets = selectedCanvas ? canvasShapes.filter(c => c.shape.id !== selectedCanvas.shape.id && c.owner === selectedCanvas.owner) : [];
+  const alignTarget = alignTargets.find(t => t.shape.id === alignWith) ?? alignTargets[0];
+  const alignMovable = !!selected && ['Center X', 'Center Y'].every(label => selected.controls.some(c => c.label === label && c.editable));
+  const alignSelected = (how: Parameters<typeof alignOffset>[2]) => {
+    if (!selected || !selectedCanvas || !alignTarget) return;
+    const offset = alignOffset(predictedBounds(selected) ?? selectedCanvas.bounds, predictedBounds(alignTarget.shape) ?? alignTarget.bounds, how);
+    const changes = translation(selected, offset);
+    if (changes.length) void transact(dimensionRequest(selected, changes));
+  };
 
   const keyDown = (event: ReactKeyboardEvent<HTMLDialogElement>) => {
     event.stopPropagation();
@@ -353,7 +376,7 @@ export function IntelliDraftPanel({ runtime, initialSource = blank, document = D
   const hint = drawing && drawKind === 'Arc' ? 'Drag from the arc centre to its start, then click its end. Points snap to named points.'
     : drawing && drawKind === 'Axis2' ? 'Drag through two points on the axis. Axis2 is a reference direction; it is not traced.'
     : drawing && drawKind === 'Line2' ? 'Drag from one end to the other. Ends snap to named points; Alt draws freely.'
-    : drawing ? `Drag to draw a ${shapeLabel(drawKind).toLowerCase()}. Esc returns to select.` : tool === 'Shapes' ? 'Drag a shape to move it. Pink guides line shapes up; Alt moves freely.' : tool === 'Trace' ? 'Click edges in order around the outline you want.' : 'Middle-drag to pan.';
+    : drawing ? `Drag to draw a ${shapeLabel(drawKind).toLowerCase()}. Esc returns to select.` : tool === 'Shapes' ? 'Drag a shape to move it. Pink guides line shapes up; Alt moves freely.' : tool === 'Trace' ? 'Click inside an area to trace it, or click edges in order around the outline.' : 'Middle-drag to pan.';
 
   return <dialog ref={dialog} tabIndex={-1} className="intellidraft" aria-label="IntelliDraft" onKeyDown={keyDown} onCancel={e => { e.preventDefault(); cancel(); }}>
     <header><strong>IntelliDraft</strong><span>Draw → Trace → Extrude</span>
@@ -402,6 +425,13 @@ export function IntelliDraftPanel({ runtime, initialSource = blank, document = D
             : <button type="button" disabled={busy || pendingDimensions || !runtime.edit} onClick={() => setRenaming(selected.id)}>Rename {selected.name}</button>}
           <button type="button" disabled={busy || pendingDimensions || !runtime.edit} title="Delete · Del" onClick={() => removeShape(selected)}>Delete {selected.name}</button>
         </div>
+        {alignTargets.length > 0 && <div className="draft-align-to">
+          <label>Align {selected.name} to<select aria-label={`Align ${selected.name} to`} value={alignTarget?.shape.id ?? ''} disabled={busy || pendingDimensions} onChange={e => setAlignWith(e.target.value)}>
+            {alignTargets.map(t => <option key={t.shape.id} value={t.shape.id}>{t.shape.name}</option>)}</select></label>
+          <div role="group" aria-label="Alignment">{ALIGNMENTS.map(a => <button type="button" key={a.id} disabled={busy || pendingDimensions || !alignMovable} title={`Move ${selected.name} so its ${a.label.toLowerCase()} line up with ${alignTarget?.shape.name}; ${alignTarget?.shape.name} stays put`}
+            onClick={() => alignSelected(a.id)}>{a.label}</button>)}</div>
+          {!alignMovable && <small>{selected.name}'s position is driven by an expression.</small>}
+        </div>}
         <ConstructionShapes construction={{ ...construction, shapes }} selected={selected.id} onSource={onSource} busy={busy || !!alignPrompt} revision={index}
           onRelated={id => { setDrawKind('Rect2'); setTool('Rectangle'); setReference(id); setName(freshLegacy('notch')); }}
           onDimensions={changes => applyShapeChanges(selected, changes)} onParameter={(id, value) => void apply({ action: 'parameter', parent: id, value })} onPending={setPendingDimensions} />
@@ -423,7 +453,8 @@ export function IntelliDraftPanel({ runtime, initialSource = blank, document = D
         <label>Name<input aria-label="Construction name" value={name} disabled={busy} onChange={e => setName(e.target.value)} required /></label>
         {ownerChoice}
         {selectedOwner?.kind === 'Struct' && <>
-          <p className={closure.closed ? 'draft-closure closed' : 'draft-closure'} role="note">{!closure.known ? `${trace.length} ${trace.length === 1 ? 'entry' : 'entries'} in the boundary · checked when you use it.` : closure.closed ? `Outline closed ✓${trace.some(t => t.wholeLoop) ? '' : ` · ${trace.length} edges`}` : trace.length ? `Open · ${trace.length} ${trace.length === 1 ? 'edge' : 'edges'} so far. Keep clicking edges around the outline.` : 'Click edges on the canvas in order around the outline you want.'}</p>
+          <p className={closure.closed ? 'draft-closure closed' : 'draft-closure'} role="note">{!closure.known ? `${trace.length} ${trace.length === 1 ? 'entry' : 'entries'} in the boundary · checked when you use it.` : closure.closed ? `Outline closed ✓${trace.some(t => t.wholeLoop) ? '' : ` · ${trace.length} edges`}` : trace.length ? `Open · ${trace.length} ${trace.length === 1 ? 'edge' : 'edges'} so far. Keep clicking edges around the outline.` : 'Click inside an area on the canvas, or its edges in order.'}</p>
+          {ends.length > 0 && <p className="draft-end-legend"><span className="open">●</span> open end · <span className="untied">◇</span> held by position only</p>}
           {!!trace.length && <button className="draft-primary" disabled={busy || closure.known && !closure.closed}>{profile ? 'Replace outline' : 'Use this outline'}</button>}
           {wholeOutlineShape && <button type="button" disabled={busy} onClick={() => setTrace([{ reference: wholeOutlineShape.name, wholeLoop: true }])} title={`Use the whole outline of ${wholeOutlineShape.name}`}>{wholeOutlineShape.kind === 'Rect2' ? 'Use whole rectangle outline' : 'Use whole shape outline'}</button>}
           {wholeOutlineShape && <small>Whole outline uses {wholeOutlineShape.name}. Select another shape in the list to change it.</small>}
@@ -477,7 +508,9 @@ export function IntelliDraftPanel({ runtime, initialSource = blank, document = D
     </aside>
     <ConstructionCanvas bounds={{ x: minX - margin, y: -maxY - margin, width: maxX - minX + margin * 2, height: maxY - minY + margin * 2 }} shapes={canvasShapes}
       autoFit={!fresh} fitRequest={fitRequest}
-      stroke={stroking ? drawKind === 'Arc' ? 'arc' : drawKind === 'Axis2' ? 'axis' : 'segment' : undefined} snapPoints={points} onStroke={drawStroke}
+      stroke={stroking ? drawKind === 'Arc' ? 'arc' : drawKind === 'Axis2' ? 'axis' : 'segment' : undefined} snapPoints={points} snapCurves={snapCurves} onStroke={drawStroke}
+      onArea={tool === 'Trace' ? at => { const area = areaAt(areas, at); if (area) traceArea(area); } : undefined}
+      onHover={tool === 'Trace' ? at => { const area = at ? areaAt(areas, at) : null; setHoverArea(previous => previous?.polygon === area?.polygon ? previous : area); } : undefined}
       revision={index} selected={selected?.id ?? ''} drawKind={drawKind} drawing={drawing && !reference} movable={tool === 'Shapes'} disabled={busy || pendingDimensions || !!alignPrompt}
       onSelect={id => { setSelectedShape(id); setDimensionEdit(null); }} onDraw={rect => void apply(drawKind === 'Rect2' ? { action: 'rectangle', parent: selectedOwner?.id, name, ...rect } : {
         action: 'shape', kind: drawKind, parent: selectedOwner?.id, name, ...rect,
@@ -504,13 +537,8 @@ export function IntelliDraftPanel({ runtime, initialSource = blank, document = D
         {!layouts.length && <label className="draft-plane">Plane<select aria-label="Drawing plane" value={plane} disabled={busy} onChange={e => setPlane(e.target.value)}><option>XY</option><option>XZ</option><option>YZ</option></select></label>}
       </>}
       overlay={<>
-        {dimensionEdit && <form className="draft-dimension-input" style={{ left: dimensionEdit.left, top: dimensionEdit.top }}
-          onSubmit={e => { e.preventDefault(); const value = Number(dimensionEdit.draft.replace(/mm$/i, '').trim()); setDimensionEdit(null);
-            if (Number.isFinite(value) && value !== dimensionEdit.control.value) applyShapeChanges(dimensionEdit.shape, [{ control: dimensionEdit.control.id, value }]); }}>
-          <input aria-label={`${dimensionEdit.control.label} of ${dimensionEdit.shape.name}`} autoFocus inputMode="decimal" value={dimensionEdit.draft}
-            onChange={e => setDimensionEdit({ ...dimensionEdit, draft: e.target.value })} onBlur={() => setDimensionEdit(null)}
-            onKeyDown={e => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); setDimensionEdit(null); } }} /><span>mm</span>
-        </form>}
+        {dimensionEdit && <DimensionInput edit={dimensionEdit} parameters={elements.filter(e => e.kind === 'Static' && e.name !== dimensionEdit.control.parameter).map(e => e.name)}
+          onClose={() => setDimensionEdit(null)} onApply={change => { const edit = dimensionEdit; setDimensionEdit(null); applyShapeChanges(edit.shape, [change]); }} />}
         {alignPrompt && <div className="draft-align-prompt" role="dialog" aria-label="Aligned shapes">
           <p>{alignPrompt.neighbours.flatMap(n => n.reasons).slice(0, 3).join('. ')}.</p>
           <div>
@@ -530,6 +558,10 @@ export function IntelliDraftPanel({ runtime, initialSource = blank, document = D
           onEdit={(control, anchor) => setDimensionEdit({ shape: selectedCanvas!.shape, control, draft: String(control.value), left: anchor.left, top: anchor.top })} />}
       </>}>
       <line x1={minX - margin} x2={maxX + margin} y1={0} y2={0} style={{ stroke: 'var(--draft-axis)' }} strokeWidth={scale * .6} /><line x1={0} x2={0} y1={-maxY - margin} y2={-minY + margin} style={{ stroke: 'var(--draft-axis)' }} strokeWidth={scale * .6} />
+      {tool === 'Trace' && hoverArea && <polygon className="draft-area-hover" points={hoverArea.polygon.map(p => `${p[0]},${-p[1]}`).join(' ')} pointerEvents="none" />}
+      {(tool === 'Trace' || drawing && strokeGuides.length > 0) && ends.map(end => end.kind === 'open'
+        ? <circle key={'end:' + end.at.join()} className="draft-end open" cx={end.at[0]} cy={-end.at[1]} r={scale * .9} vectorEffect="non-scaling-stroke"><title>Open end at {end.names.join(', ')}: nothing continues from here, so no outline can run through it.</title></circle>
+        : <rect key={'end:' + end.at.join()} className="draft-end untied" x={end.at[0] - scale * .8} y={-end.at[1] - scale * .8} width={scale * 1.6} height={scale * 1.6} transform={`rotate(45 ${end.at[0]} ${-end.at[1]})`} vectorEffect="non-scaling-stroke"><title>{end.names.join(' and ')} meet only by position: the outline closes here now, but moving one side would open it.</title></rect>)}
       {tool === 'Trace' && closure.closed && closure.polygon.length > 2 && <polygon className="draft-closed-fill" points={closure.polygon.map(p => `${p[0]},${-p[1]}`).join(' ')} pointerEvents="none" />}
       {polylines.map(item => {
         const isSelected = item.construction && (tool === 'Shapes' || drawing) && (pickedGuide ? item.curve.name === pickedGuide : !!selected && ownsCurve(selected, item.curve.name));
@@ -573,7 +605,16 @@ function DimensionAnnotations({ item, scale, disabled, onEdit }: {
     const box = event.currentTarget.getBoundingClientRect(), host = event.currentTarget.closest('.draft-canvas')!.getBoundingClientRect();
     onEdit(control, { left: box.left - host.left + box.width / 2, top: box.top - host.top + box.height / 2 });
   };
-  const text = (control: SketchShape['controls'][number]) => `${control.label === 'Radius' ? 'R ' : control.label === 'Diameter' ? 'Ø ' : ''}${Number(control.value.toFixed(3))}`;
+  // Driven values read in parentheses, as on a drawing: they are reference dimensions here.
+  const text = (control: SketchShape['controls'][number]) => {
+    const value = `${control.label === 'Radius' ? 'R ' : control.label === 'Diameter' ? 'Ø ' : control.label === 'Corner extent' ? 'C ' : ''}${Number(control.value.toFixed(3))}`;
+    return control.editable ? value : `(${value})`;
+  };
+  // An arrowhead at `tip`, pointing away from `from`, sized to the zoom.
+  const arrow = (tip: readonly [number, number], from: readonly [number, number]) => {
+    const dx = tip[0] - from[0], dy = tip[1] - from[1], d = Math.hypot(dx, dy) || 1, ux = dx / d, uy = dy / d, l = scale * 1.1, w = scale * .42;
+    return <path className="draft-arrow" d={`M ${tip[0]} ${tip[1]} L ${tip[0] - ux * l - uy * w} ${tip[1] - uy * l + ux * w} L ${tip[0] - ux * l + uy * w} ${tip[1] - uy * l - ux * w} Z`} />;
+  };
   return <g className="draft-dimensions">{shape.controls.filter(c => !c.label.startsWith('Center') && c.label !== 'Rotation').map(control => {
     const label = `${control.label} of ${shape.name}: ${text(control)} mm${control.editable ? '' : ` (driven by ${control.authored})`}`;
     const target = control.editable && !disabled
@@ -581,20 +622,24 @@ function DimensionAnnotations({ item, scale, disabled, onEdit }: {
       : { 'aria-label': label };
     const cls = control.editable ? 'draft-dimension' : 'draft-dimension driven';
     if (control.label === 'Radius' || control.label === 'Diameter' || control.label === 'Corner extent') {
-      const cx = b.x + b.width, cy = b.y + b.height;
+      // A leader from the outline's top-right toward the label, arrow on the outline.
+      const cx = b.x + b.width, cy = b.y + b.height, tip = [cx - b.width * .15, -(cy - b.height * .15)] as const, end = [cx + gap, -(cy + gap)] as const;
       return <g key={control.id} className={cls} {...target}><title>{label}</title>
-        <line x1={cx - b.width * .15} y1={-(cy - b.height * .15)} x2={cx + gap} y2={-(cy + gap)} vectorEffect="non-scaling-stroke" />
-        <text x={cx + gap + scale * .4} y={-(cy + gap)} fontSize={font}>{text(control)}</text></g>;
+        <line x1={tip[0]} y1={tip[1]} x2={end[0]} y2={end[1]} vectorEffect="non-scaling-stroke" />{arrow(tip, end)}
+        <line x1={end[0]} y1={end[1]} x2={end[0] + font * 2.6} y2={end[1]} vectorEffect="non-scaling-stroke" />
+        <text x={end[0] + scale * .4} y={end[1] - scale * .4} fontSize={font}>{text(control)}</text></g>;
     }
     if (vertical(control.label)) {
-      const lx = b.x + b.width + gap, y0 = -(b.y), y1 = -(b.y + b.height);
+      const lx = b.x + b.width + gap, y0 = -(b.y), y1 = -(b.y + b.height), edge = b.x + b.width + scale * .5;
       return <g key={control.id} className={cls} {...target}><title>{label}</title>
-        <line x1={lx} x2={lx} y1={y0} y2={y1} vectorEffect="non-scaling-stroke" /><line x1={lx - tick} x2={lx + tick} y1={y0} y2={y0} vectorEffect="non-scaling-stroke" /><line x1={lx - tick} x2={lx + tick} y1={y1} y2={y1} vectorEffect="non-scaling-stroke" />
+        <line className="draft-extension" x1={edge} x2={lx + tick} y1={y0} y2={y0} vectorEffect="non-scaling-stroke" /><line className="draft-extension" x1={edge} x2={lx + tick} y1={y1} y2={y1} vectorEffect="non-scaling-stroke" />
+        <line x1={lx} x2={lx} y1={y0} y2={y1} vectorEffect="non-scaling-stroke" />{arrow([lx, y0], [lx, (y0 + y1) / 2])}{arrow([lx, y1], [lx, (y0 + y1) / 2])}
         <text x={lx + scale * .8} y={(y0 + y1) / 2 + font * .35} fontSize={font}>{text(control)}</text></g>;
     }
-    const ly = -(b.y - gap), x0 = b.x, x1 = b.x + b.width;
+    const ly = -(b.y - gap), x0 = b.x, x1 = b.x + b.width, edge = -(b.y) + scale * .5;
     return <g key={control.id} className={cls} {...target}><title>{label}</title>
-      <line x1={x0} x2={x1} y1={ly} y2={ly} vectorEffect="non-scaling-stroke" /><line x1={x0} x2={x0} y1={ly - tick} y2={ly + tick} vectorEffect="non-scaling-stroke" /><line x1={x1} x2={x1} y1={ly - tick} y2={ly + tick} vectorEffect="non-scaling-stroke" />
+      <line className="draft-extension" x1={x0} x2={x0} y1={edge} y2={ly + tick} vectorEffect="non-scaling-stroke" /><line className="draft-extension" x1={x1} x2={x1} y1={edge} y2={ly + tick} vectorEffect="non-scaling-stroke" />
+      <line x1={x0} x2={x1} y1={ly} y2={ly} vectorEffect="non-scaling-stroke" />{arrow([x0, ly], [(x0 + x1) / 2, ly])}{arrow([x1, ly], [(x0 + x1) / 2, ly])}
       <text x={(x0 + x1) / 2} y={ly + font * 1.15} fontSize={font} textAnchor="middle">{text(control)}</text></g>;
   })}</g>;
 }
@@ -661,4 +706,38 @@ function ProfileOpening({ references, disabled, onAdd }: {
       {field('Opening diameter', diameter, setDiameter)}
       <button className="draft-primary" disabled={disabled}>Add opening</button>
     </form></details>;
+}
+
+/**
+ * Typing a dimension on the canvas: a number (mm optional), or an expression over parameters
+ * (`rect1Width / 2`), which goes into source as an explicit relationship. Parameter names
+ * complete as you type; Tab or Enter takes the highlighted one.
+ */
+function DimensionInput({ edit, parameters, onApply, onClose }: {
+  edit: DimensionEdit; parameters: readonly string[]; onApply(change: Change): void; onClose(): void;
+}) {
+  const [draft, setDraft] = useState(edit.draft), [active, setActive] = useState(0);
+  const word = /[A-Za-z_]\w*$/.exec(draft)?.[0] ?? '';
+  const suggestions = word ? parameters.filter(name => name.toLowerCase().startsWith(word.toLowerCase()) && name !== word).slice(0, 6) : [];
+  const take = (name: string) => { setDraft(draft.slice(0, draft.length - word.length) + name); setActive(0); };
+  const submit = () => {
+    const text = draft.trim(), number = Number(text.replace(/\s*mm$/i, ''));
+    onClose();
+    if (!text) return;
+    if (Number.isFinite(number)) { if (number !== edit.control.value) onApply({ control: edit.control.id, value: number }); }
+    else onApply({ control: edit.control.id, value: edit.control.value, expression: text });
+  };
+  return <form className="draft-dimension-input" style={{ left: edit.left, top: edit.top }} onSubmit={e => { e.preventDefault(); submit(); }}>
+    <input aria-label={`${edit.control.label} of ${edit.shape.name}`} autoFocus value={draft} spellCheck={false}
+      aria-autocomplete="list" aria-expanded={suggestions.length > 0}
+      onChange={e => { setDraft(e.target.value); setActive(0); }} onBlur={onClose}
+      onKeyDown={e => {
+        if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); onClose(); }
+        else if (suggestions.length && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) { e.preventDefault(); setActive(i => (i + (e.key === 'ArrowDown' ? 1 : suggestions.length - 1)) % suggestions.length); }
+        else if (suggestions.length && (e.key === 'Tab' || e.key === 'Enter')) { e.preventDefault(); take(suggestions[active]); }
+      }} /><span>mm</span>
+    {suggestions.length > 0 && <ul role="listbox" aria-label="Parameters">{suggestions.map((name, i) =>
+      <li key={name} role="option" aria-selected={i === active} onMouseDown={e => { e.preventDefault(); take(name); }}>{name}</li>)}</ul>}
+    <small>A number, or an expression such as {parameters[0] ?? 'width'} / 2</small>
+  </form>;
 }

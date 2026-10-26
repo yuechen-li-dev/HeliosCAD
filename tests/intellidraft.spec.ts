@@ -25,7 +25,7 @@ async function advanced(p: Locator, tool: string) {
 }
 async function layout(p: Locator) { await advanced(p, 'Layout'); await act(p, 'Add Layout'); }
 const select = (p: Locator) => p.getByRole('button', { name: 'Select and move', exact: true }).click();
-/** Type a new shape's dimensions in "Add by dimensions"; the section closes again so it never shadows the inspector. */
+/** Type a new shape's dimensions in "Add by dimensions". */
 async function addShape(p: Locator, fields: Record<string, number | string>, button = 'Add Rectangle') {
   const section = p.getByText('Add by dimensions', { exact: true });
   if (!await p.getByLabel('New center X', { exact: true }).isVisible()) await section.click();
@@ -33,7 +33,8 @@ async function addShape(p: Locator, fields: Record<string, number | string>, but
     if (label === 'name') await p.getByLabel('Construction name', { exact: true }).fill(String(value));
     else await p.getByLabel(label, { exact: true }).fill(String(value));
   }
-  await act(p, button); await section.click();
+  // Adding a shape closes the section again (the drawing tool stays active).
+  await act(p, button); await expect(p.getByLabel('New center X', { exact: true })).toHaveCount(0);
 }
 async function span(p: Locator, edge: string, from: string, to: string) {
   const name = `Add span ${edge} from ${from} to ${to}`;
@@ -179,7 +180,7 @@ test('two retained rectangles produce an L through canvas tracing and stay relat
   await expect(panel(page).getByRole('button', { name: 'Build and use part', exact: true })).toBeDisabled();
   await panel(page).getByRole('button', { name: 'Discard notchWall edit', exact: true }).click();
   // The rejected edit keeps the candidate's accepted values and geometry.
-  await expect(panel(page).getByLabel('notchWall')).toHaveValue('10');
+  await expect(panel(page).getByLabel('notchWall', { exact: true })).toHaveValue('10');
   await qualify(page, 'rectangles-l-revised', 'rectangles-l-revised.firmament');
 });
 
@@ -384,4 +385,48 @@ test('the line menu declares an Axis2 and the rounded menu draws a SmoothRounded
   await p.getByRole('button', { name: 'Trace', exact: true }).click(); await act(p, 'Use whole shape outline'); await act(p, 'Use this outline'); await act(p, 'Extrude Profile');
   await p.getByRole('button', { name: 'Build and use part', exact: true }).click(); await expect(p).toHaveCount(0);
   await expect(page.locator('.status-ready')).toContainText('Ready');
+});
+
+test('one click inside an area traces it; ends that only meet by position are marked', async ({ page }) => {
+  await start(page); const p = panel(page);
+  await addShape(p, { name: 'outer', 'New width': 60, 'New height': 40, 'New center X': 0, 'New center Y': 0 });
+  await addShape(p, { name: 'notch', 'New width': 20, 'New height': 20, 'New center X': 20, 'New center Y': 10 });
+  await p.getByRole('button', { name: 'Trace', exact: true }).click();
+  await expect(p.locator('.draft-end.untied')).not.toHaveCount(0);
+  await expect(p.locator('.draft-end-legend')).toContainText('held by position only');
+  await clickAt(page, p, [-10, -5]);
+  await expect(p.getByText('Outline closed ✓ · 6 edges')).toBeVisible();
+  await page.screenshot({ path: resolve(output, 'area-trace.png') });
+  await act(p, 'Use this outline'); await act(p, 'Extrude Profile');
+  await p.getByRole('button', { name: 'Build and use part', exact: true }).click(); await expect(p).toHaveCount(0);
+  await expect(page.locator('.status-ready')).toContainText('Ready');
+});
+
+test('align moves the second pick; a dimension can be typed as an expression with completion', async ({ page }) => {
+  await start(page); const p = panel(page);
+  await addShape(p, { name: 'outer', 'New width': 60, 'New height': 40, 'New center X': 0, 'New center Y': 0 });
+  await addShape(p, { name: 'notch', 'New width': 20, 'New height': 20, 'New center X': -5, 'New center Y': -3 });
+  await act(p, 'Right edges'); await act(p, 'Top edges');
+  await p.getByText('Placement', { exact: true }).click();
+  await expect(p.getByLabel('Center X', { exact: true })).toHaveValue('20'); await expect(p.getByLabel('Center Y', { exact: true })).toHaveValue('10');
+  await p.getByRole('button', { name: 'Edit Height of notch', exact: true }).locator('text').click();
+  const field = p.getByRole('textbox', { name: 'Height of notch', exact: true });
+  await field.fill(''); await field.pressSequentially('outerH');
+  await expect(p.getByRole('listbox', { name: 'Parameters' })).toContainText('outerHeight');
+  await page.keyboard.press('Tab'); await field.pressSequentially(' / 2'); await page.keyboard.press('Enter');
+  await expect(p.getByRole('status')).not.toContainText('Checking with compiler'); await expect(p.getByRole('alert')).toHaveCount(0);
+  await expect(p.getByLabel('Height', { exact: true })).toHaveValue('20');
+  await expect(p.locator('.draft-dimension.driven text')).toHaveText('(20)');
+  await p.getByRole('button', { name: 'Build and use part', exact: true }).isDisabled();
+  await act(p, 'Undo'); await expect(p.locator('.draft-dimension.driven')).toHaveCount(0);
+});
+
+test('drawing snaps to midpoints and lines up with named points, with a visible reason', async ({ page }) => {
+  await start(page); const p = panel(page);
+  await addShape(p, { name: 'outer', 'New width': 60, 'New height': 40, 'New center X': 0, 'New center Y': 0 });
+  await p.getByRole('button', { name: 'Draw line', exact: true }).click();
+  const at = await canvasPosition(p, .3, 20.2); await page.mouse.move(at.x, at.y);
+  await expect(p.locator('.draft-snap-glyph text')).toHaveText('midpoint of outer.Top');
+  await stroke(page, p, [.3, 20.2], [.2, -19.8]);
+  await expect(p.getByRole('region', { name: 'Lines, arcs and axes' }).getByRole('listitem')).toHaveCount(1);
 });

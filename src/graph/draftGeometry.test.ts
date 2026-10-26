@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { DraftSpan, SketchShape } from '@aetheris/cad';
-import { alignedNeighbours, arcEnd, explainRefusal, freshName, predictedBounds, snap, snapStep, traceClosure, translation, type Point } from './draftGeometry';
+import { alignOffset, alignedNeighbours, arcEnd, areaAt, areasOf, endMarks, explainRefusal, inferSnap, freshName, predictedBounds, snap, snapStep, traceClosure, translation, type Point } from './draftGeometry';
 
 const rect = (id: string, cx: number, cy: number, w: number, h: number, editable = true): SketchShape => ({
   id, name: id, kind: 'Rect2', center: [cx, cy], controls: [
@@ -95,5 +95,54 @@ describe('arc ends', () => {
   it('follows the cursor freely with Alt', () => {
     const [x, y] = arcEnd([0, 0], [10, 0], [3, 4], 15, true);
     expect([x, y].map(v => Number(v.toFixed(9)))).toEqual([6, 8]);
+  });
+});
+
+describe('areas and ends', () => {
+  const seg = (ref: string, from: string, to: string, a: Point, b: Point): DraftSpan => ({ id: `${ref}:${from}:${to}`, owner: 'o', reference: ref, from, to,
+    curve: { id: ref, name: ref, kind: 'Line', points: [a, b], center: null, radius: 0, startAngle: 0, sweep: 0, minorRadius: 0, rotation: 0 } });
+  const pts = (s: DraftSpan) => s.curve.points.map(p => [p[0], p[1]] as const);
+  // Two squares side by side sharing an edge, plus a dangling tail.
+  const spans = [
+    seg('b1', 'p0', 'p1', [0, 0], [1, 0]), seg('m', 'p1', 'p4', [1, 0], [1, 1]), seg('t1', 'p4', 'p5', [1, 1], [0, 1]), seg('l', 'p5', 'p0', [0, 1], [0, 0]),
+    seg('b2', 'p1', 'p2', [1, 0], [2, 0]), seg('r', 'p2', 'p3', [2, 0], [2, 1]), seg('t2', 'p3', 'p4', [2, 1], [1, 1]),
+    seg('tail', 'p3', 'p9', [2, 1], [3, 2]),
+  ];
+  it('finds each enclosed area and the one around a point', () => {
+    const areas = areasOf(spans, pts);
+    expect(areas.map(a => a.area).sort()).toEqual([1, 1]);
+    expect(areaAt(areas, [1.5, .5])!.spans.map(s => s.reference).sort()).toEqual(['b2', 'm', 'r', 't2']);
+    expect(areaAt(areas, [5, 5])).toBeNull();
+  });
+  it('marks open ends and ends held only by position', () => {
+    const marks = endMarks([...spans, seg('x', 'q0', 'q1', [0, 1], [-1, 2])], pts);
+    expect(marks.filter(m => m.kind === 'open').map(m => m.at)).toEqual([[3, 2], [-1, 2]]);
+    expect(marks.find(m => m.kind === 'untied')!.names.sort()).toEqual(['p5', 'q0']);
+  });
+});
+
+describe('snap inference', () => {
+  const points = [{ name: 'a', x: 0, y: 0 }, { name: 'b', x: 10, y: 0 }, { name: 'c', x: 10, y: 10 }];
+  const curves = [{ name: 'edge', kind: 'Line', points: [[0, 0], [10, 0]] as Point[] }, { name: 'rim', kind: 'Circle', points: [] as Point[], center: [30, 0] as Point, radius: 5 }];
+  it('prefers named points, then midpoints, then curves', () => {
+    expect(inferSnap([10.2, .1], .5, 1, { points, curves })).toMatchObject({ kind: 'point', name: 'b', at: [10, 0] });
+    expect(inferSnap([5.1, .2], .5, 1, { points, curves })).toMatchObject({ kind: 'midpoint', at: [5, 0] });
+    expect(inferSnap([3.3, .2], .5, 1, { points, curves })).toMatchObject({ kind: 'on', label: 'on edge' });
+    expect(inferSnap([30, 5.3], .5, 1, { points, curves }).at.map(v => Number(v.toFixed(9)))).toEqual([30, 5]);
+  });
+  it('lines up with points and the stroke start, and crosses two alignments', () => {
+    expect(inferSnap([20.3, 9.8], .5, 1, { points, curves: [] })).toMatchObject({ kind: 'horizontal', at: [20, 10], label: 'level with c' });
+    expect(inferSnap([.2, 9.8], .5, 1, { points, curves: [] })).toMatchObject({ kind: 'aligned', at: [0, 10] });
+    expect(inferSnap([3.3, 20.4], .5, 1, { points: [], curves: [], from: [3.5, 0] })).toMatchObject({ kind: 'vertical', at: [3.5, 20] });
+    expect(inferSnap([3.3, 20.4], .5, 1, { points: [], curves: [] })).toMatchObject({ kind: 'grid', at: [3, 20] });
+  });
+});
+
+describe('one-shot alignment', () => {
+  const target = { x: -30, y: -20, width: 60, height: 40 }, moving = { x: 0, y: 0, width: 20, height: 10 };
+  it('moves only the second pick, by the gap between the chosen edges or centres', () => {
+    expect(alignOffset(moving, target, 'right')).toEqual([10, 0]);
+    expect(alignOffset(moving, target, 'top')).toEqual([0, 10]);
+    expect(alignOffset(moving, target, 'center')).toEqual([-10, -5]);
   });
 });

@@ -1,15 +1,15 @@
 import { useEffect, useRef, useState, type ReactNode, type PointerEvent } from 'react';
 import type { SketchShape } from '@aetheris/cad';
-import { arcEnd, snap, snapStep } from './draftGeometry';
+import { arcEnd, inferSnap, snap, snapStep, type Snap, type SnapCurve } from './draftGeometry';
 
 type Point = [number, number];
 export type CanvasBounds = { x: number; y: number; width: number; height: number };
 export type CanvasShape = { shape: SketchShape; bounds: CanvasBounds; owner: string };
 type Alignment = { axis: 'x' | 'y'; value: number; label: string };
-type Gesture = { pointer: number; start: Point; current: Point; shape?: CanvasShape; pan?: CanvasBounds; guides: Alignment[]; step: number; startName?: string; currentName?: string };
+type Gesture = { pointer: number; start: Point; current: Point; shape?: CanvasShape; pan?: CanvasBounds; guides: Alignment[]; step: number; startName?: string; currentName?: string; snap?: Snap };
 export type DrawnRectangle = { x: number; y: number; width: number; height: number };
 /** A picked stroke point: grid-snapped coordinates, or an existing named point it snapped onto. */
-export type StrokePoint = { at: Point; name?: string };
+export type StrokePoint = { at: Point; name?: string; snap?: Snap };
 export type StrokeKind = 'segment' | 'axis' | 'arc';
 type ArcStage = { center: StrokePoint; start: StrokePoint; end: StrokePoint | null };
 
@@ -36,7 +36,7 @@ const rectangle = (a: Point, b: Point): DrawnRectangle => ({ x: clean((a[0] + b[
 
 /** Pointer interaction over compiler-projected construction. Drag previews are disposable SVG
  * transforms. Only pointer-up submits dimensions to the existing compiler edit transaction. */
-export function ConstructionCanvas({ bounds, shapes, selected, drawing, movable, disabled, children, onSelect, onDraw, onMove, onPoint, hint, revision, drawKind = 'Rect2', autoFit = true, fitRequest = 0, header, overlay, layer, stroke, snapPoints = [], onStroke }: {
+export function ConstructionCanvas({ bounds, shapes, selected, drawing, movable, disabled, children, onSelect, onDraw, onMove, onPoint, hint, revision, drawKind = 'Rect2', autoFit = true, fitRequest = 0, header, overlay, layer, stroke, snapPoints = [], snapCurves = [], onStroke, onArea, onHover }: {
   bounds: CanvasBounds; shapes: CanvasShape[]; selected: string; drawing: boolean; movable: boolean; disabled: boolean;
   children: ReactNode; onSelect(id: string): void; onDraw(rectangle: DrawnRectangle): void;
   onMove(shape: SketchShape, center: Point): void; onPoint?(point: Point): void; hint: string; revision: number; drawKind?: string;
@@ -46,11 +46,16 @@ export function ConstructionCanvas({ bounds, shapes, selected, drawing, movable,
   layer?: (scale: number) => ReactNode;
   /** Line and axis strokes are one drag; an arc drags centre → start, then clicks where it ends. */
   stroke?: StrokeKind; snapPoints?: readonly { name: string; x: number; y: number }[]; onStroke?(points: StrokePoint[]): void;
+  /** Curves drawing may snap onto (midpoints, on-curve). */
+  snapCurves?: readonly SnapCurve[];
+  /** A click on empty canvas, in world coordinates (tracing picks the area under it). */
+  onArea?(point: Point): void; onHover?(point: Point | null): void;
 }) {
   const svg = useRef<SVGSVGElement>(null), gesture = useRef<Gesture | null>(null), fitted = useRef(!autoFit);
   const [camera, setCamera] = useState<CanvasBounds>(bounds), [active, setActive] = useState<Gesture | null>(null);
   const [notice, setNotice] = useState('');
   const [arcStage, setArcStage] = useState<ArcStage | null>(null);
+  const [hover, setHover] = useState<Snap | null>(null);
   useEffect(() => setArcStage(null), [stroke, revision, disabled]);
   const [pixels, setPixels] = useState(0);
   useEffect(() => { gesture.current = null; setActive(null); }, [revision, disabled]);
@@ -72,11 +77,12 @@ export function ConstructionCanvas({ bounds, shapes, selected, drawing, movable,
     const point = new DOMPoint(event.clientX, event.clientY).matrixTransform(matrix.inverse());
     return [point.x, -point.y];
   };
-  // Named points win over the grid within a few pixels, so strokes join existing construction exactly.
-  const pick = (event: { clientX: number; clientY: number; altKey: boolean }, gridStep: number): StrokePoint => {
+  // Named points, midpoints, curves and alignment win over the grid within a few pixels, so drawing
+  // joins existing construction exactly. Alt draws freely on the fine grid.
+  const pick = (event: { clientX: number; clientY: number; altKey: boolean }, gridStep: number, from?: Point | null): StrokePoint => {
     const raw = position(event), reach = 8 / Math.abs(svg.current!.getScreenCTM()!.a);
-    const near = event.altKey ? undefined : snapPoints.map(p => ({ p, d: Math.hypot(p.x - raw[0], p.y - raw[1]) })).filter(c => c.d <= reach).sort((a, b) => a.d - b.d)[0]?.p;
-    return near ? { at: [near.x, near.y], name: near.name } : { at: [snap(raw[0], gridStep), snap(raw[1], gridStep)] };
+    const found = event.altKey ? inferSnap(raw, reach, gridStep, { points: [], curves: [] }) : inferSnap(raw, reach, gridStep, { points: snapPoints, curves: snapCurves, from });
+    return { at: [found.at[0], found.at[1]], name: found.kind === 'point' ? found.name : undefined, snap: found.kind === 'grid' ? undefined : found };
   };
   const arcFinish = (stage: ArcStage, event: { clientX: number; clientY: number; altKey: boolean }): StrokePoint => {
     const named = pick(event, step), radius = Math.hypot(stage.start.at[0] - stage.center.at[0], stage.start.at[1] - stage.center.at[1]);
@@ -93,8 +99,8 @@ export function ConstructionCanvas({ bounds, shapes, selected, drawing, movable,
         onStroke?.([arcStage.center, arcStage.start, end]); return;
       }
       svg.current!.setPointerCapture(event.pointerId);
-      const first = pick(event, stepFor(event));
-      change({ pointer: event.pointerId, start: first.at, current: first.at, startName: first.name, guides: [], step: stepFor(event) }); return;
+      const first = pick(event, stepFor(event)); setHover(null);
+      change({ pointer: event.pointerId, start: first.at, current: first.at, startName: first.name, guides: [], step: stepFor(event), snap: first.snap }); return;
     }
     if (shape) {
       onSelect(shape.shape.id);
@@ -106,7 +112,7 @@ export function ConstructionCanvas({ bounds, shapes, selected, drawing, movable,
     event.preventDefault(); event.stopPropagation(); setNotice(''); svg.current!.focus();
     svg.current!.setPointerCapture(event.pointerId);
     const gestureStep = stepFor(event), raw = position(event);
-    const start: Point = shape ? raw : [snap(raw[0], gestureStep), snap(raw[1], gestureStep)];
+    const start: Point = shape || event.button === 1 ? raw : pick(event, gestureStep).at; setHover(null);
     change({ pointer: event.pointerId, start, current: start, shape, pan: event.button === 1 ? camera : undefined, guides: [], step: gestureStep });
   };
   const update = (event: PointerEvent<SVGElement>) => {
@@ -118,8 +124,9 @@ export function ConstructionCanvas({ bounds, shapes, selected, drawing, movable,
       setCamera(current => ({ ...current, x: current.x - event.movementX / matrix.a, y: current.y - event.movementY / matrix.d })); return;
     }
     const gestureStep = event.altKey ? 0.1 : previous.step;
-    if (stroke && !previous.shape) { const next = pick(event, gestureStep); change({ ...previous, current: next.at, currentName: next.name }); return; }
-    let current: Point = [snap(p[0], gestureStep), snap(p[1], gestureStep)], guides: Alignment[] = [];
+    if (stroke && !previous.shape) { const next = pick(event, gestureStep, previous.start); change({ ...previous, current: next.at, currentName: next.name, snap: next.snap }); return; }
+    let current: Point = [snap(p[0], gestureStep), snap(p[1], gestureStep)], guides: Alignment[] = [], picked: Snap | undefined;
+    if (!previous.shape) { const next = pick(event, gestureStep, previous.start); current = next.at; picked = next.snap; }
     if (previous.shape) {
       const shape = previous.shape, center = shape.shape.center;
       current = [snap(center[0] + p[0] - previous.start[0], gestureStep), snap(center[1] + p[1] - previous.start[1], gestureStep)];
@@ -128,7 +135,7 @@ export function ConstructionCanvas({ bounds, shapes, selected, drawing, movable,
       const alignment = alignPlacement(moving, shapes.filter(s => s.shape.id !== shape.shape.id && s.owner === shape.owner), 7 / Math.abs(matrix.a), event.altKey);
       current = [clean(current[0] + alignment.offset[0]), clean(current[1] + alignment.offset[1])]; guides = alignment.guides;
     }
-    change({ ...previous, current, guides });
+    change({ ...previous, current, guides, snap: picked });
   };
   const finish = (event: PointerEvent<SVGElement>) => {
     const final = gesture.current; if (!final || final.pointer !== event.pointerId) return;
@@ -162,10 +169,22 @@ export function ConstructionCanvas({ bounds, shapes, selected, drawing, movable,
     <div className="draft-canvas-tools"><button type="button" disabled={!!active} title="Fit construction · F" onClick={() => setCamera(bounds)}>Fit construction</button><button type="button" aria-label="Zoom in construction" disabled={!!active} onClick={() => zoom(.8)}>+</button><button type="button" aria-label="Zoom out construction" disabled={!!active} onClick={() => zoom(1.25)}>−</button></div>
     <svg ref={svg} role="group" tabIndex={-1} aria-label="Construction and Profile preview" className={drawing ? 'drawing' : ''}
       viewBox={`${camera.x} ${camera.y} ${camera.width} ${camera.height}`} onPointerDown={event => begin(event)} onPointerUp={finish}
-      onPointerMove={event => { if (arcStage && !gesture.current) setArcStage({ ...arcStage, end: arcFinish(arcStage, event) }); else update(event); }}
+      onPointerMove={event => {
+        if (arcStage && !gesture.current) setArcStage({ ...arcStage, end: arcFinish(arcStage, event) });
+        else if (gesture.current) update(event);
+        else {
+          if (drawing && !disabled) setHover(pick(event, stepFor(event)).snap ?? null);
+          onHover?.(position(event));
+        }
+      }}
+      onPointerLeave={() => { setHover(null); onHover?.(null); }}
       onPointerCancel={() => change(null)} onLostPointerCapture={() => { if (gesture.current) change(null); }}
       onKeyDown={event => { if (event.key === 'Escape' && (gesture.current || arcStage)) { event.preventDefault(); event.stopPropagation(); change(null); setArcStage(null); setNotice(''); } }}
-      onClick={event => { if (!onPoint || disabled) return; const p = position(event), s = stepFor(event); onPoint([snap(p[0], s), snap(p[1], s)]); }}>
+      onClick={event => {
+        if (disabled) return;
+        if (onArea) onArea(position(event));
+        if (onPoint) { const p = position(event), s = stepFor(event); onPoint([snap(p[0], s), snap(p[1], s)]); }
+      }}>
       <defs><pattern id="draft-grid" patternUnits="userSpaceOnUse" x={0} y={0} width={shownStep} height={shownStep}>
         <circle cx={0} cy={0} r={1 / pixelsPerMillimetre} className="draft-grid-dot" /><circle cx={shownStep} cy={0} r={1 / pixelsPerMillimetre} className="draft-grid-dot" />
         <circle cx={0} cy={shownStep} r={1 / pixelsPerMillimetre} className="draft-grid-dot" /><circle cx={shownStep} cy={shownStep} r={1 / pixelsPerMillimetre} className="draft-grid-dot" />
@@ -196,6 +215,7 @@ export function ConstructionCanvas({ bounds, shapes, selected, drawing, movable,
         <circle cx={arcStage.center.at[0]} cy={-arcStage.center.at[1]} r={Math.hypot(arcStage.start.at[0] - arcStage.center.at[0], arcStage.start.at[1] - arcStage.center.at[1])} className="draft-axis-preview" vectorEffect="non-scaling-stroke" />
         {arcStage.end && <path className="draft-gesture-preview" fill="none" vectorEffect="non-scaling-stroke" d={arcPath(arcStage.center.at, arcStage.start.at, arcStage.end.at)} />}
       </g>}
+      {(() => { const shown = active && !active.pan && !active.shape ? active.snap : arcStage ? arcStage.end?.snap : hover; return shown ? <SnapGlyph snap={shown} scale={scale} /> : null; })()}
       {active?.guides.map(guide => <g key={guide.axis} pointerEvents="none" className="draft-alignment-guide">
         {guide.axis === 'x' ? <line x1={guide.value} x2={guide.value} y1={camera.y} y2={camera.y + camera.height} vectorEffect="non-scaling-stroke" /> : <line x1={camera.x} x2={camera.x + camera.width} y1={-guide.value} y2={-guide.value} vectorEffect="non-scaling-stroke" />}
         <text x={guide.axis === 'x' ? guide.value + scale : camera.x + scale} y={guide.axis === 'x' ? camera.y + 8 * scale : -guide.value - scale} fontSize={scale * 1.7}>{guide.label}</text>
@@ -217,4 +237,18 @@ function strokeText(kind: StrokeKind, a: Point, b: Point, onto?: string) {
   const length = Number(Math.hypot(b[0] - a[0], b[1] - a[1]).toFixed(3)), angle = Number((Math.atan2(b[1] - a[1], b[0] - a[0]) * 180 / Math.PI).toFixed(1));
   const text = kind === 'arc' ? `R ${length} mm` : `${length} mm at ${angle}°`;
   return onto ? `${text} · on ${onto}` : text;
+}
+
+/** Where a click will land and why: a marker for the snap kind, dashed alignment guides and a label. */
+function SnapGlyph({ snap: found, scale }: { snap: Snap; scale: number }) {
+  const [x, y] = found.at, r = scale * .9;
+  const marker = found.kind === 'point' ? <rect x={x - r} y={-y - r} width={r * 2} height={r * 2} />
+    : found.kind === 'midpoint' ? <path d={`M ${x} ${-y - r * 1.2} L ${x + r * 1.1} ${-y + r * .8} L ${x - r * 1.1} ${-y + r * .8} Z`} />
+    : found.kind === 'on' ? <circle cx={x} cy={-y} r={r} />
+    : <path d={`M ${x - r} ${-y} L ${x + r} ${-y} M ${x} ${-y - r} L ${x} ${-y + r}`} />;
+  return <g className={`draft-snap-glyph snap-${found.kind}`} pointerEvents="none">
+    {found.guides.map(([a, b], i) => <line key={i} x1={a[0]} y1={-a[1]} x2={b[0]} y2={-b[1]} className="draft-snap-guide" vectorEffect="non-scaling-stroke" />)}
+    {marker}
+    <text x={x + r * 1.6} y={-y - r * 1.4} fontSize={scale * 1.6}>{found.label}</text>
+  </g>;
 }

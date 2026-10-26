@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { Fragment, useEffect, useState } from 'react';
 import type { DraftConstruction, SketchShape } from '@aetheris/cad';
 import { shapeLabel } from './draftGeometry';
 
@@ -32,13 +32,14 @@ export function ConstructionShapes({ construction, selected, onRelated, onDimens
 function ShapeDimensions({ shape, busy, onApply, onDirty, onSource }: { shape: SketchShape; busy: boolean; onApply(changes: { control: string; value: number }[]): void; onDirty(dirty: boolean): void; onSource?(span: { start: number; length: number }): void }) {
   const [values, setValues] = useState<Record<string, number>>({});
   const changes = shape.controls.filter(c => c.editable && values[c.id] !== undefined && values[c.id] !== c.value).map(c => ({ control: c.id, value: values[c.id] }));
-  const controlField = (control: SketchShape['controls'][number]) => <label key={control.id}>{control.label} ({control.unit})<input aria-label={control.label} type="number" step="any" disabled={busy} readOnly={!control.editable} value={Number.isNaN(values[control.id]) ? '' : values[control.id] ?? control.value} onChange={e => {
+  // Notes sit beside the label, not in it, so a field's name stays just its dimension.
+  const controlField = (control: SketchShape['controls'][number]) => <Fragment key={control.id}><label>{control.label} ({control.unit})<input aria-label={control.label} type="number" step="any" disabled={busy} readOnly={!control.editable} value={Number.isNaN(values[control.id]) ? '' : values[control.id] ?? control.value} onChange={e => {
       const next = { ...values, [control.id]: e.target.valueAsNumber }; setValues(next);
       onDirty(shape.controls.some(c => c.editable && next[c.id] !== undefined && next[c.id] !== c.value));
-    }} required />
+    }} required /></label>
       {!control.editable && <small>Driven by {control.authored}{onSource && <> · <button type="button" className="draft-link" onClick={() => onSource(control.span)}>Edit source</button></>}</small>}
       {control.editable && control.parameter && !control.parameter.startsWith(shape.name) && <small>Edits the shared parameter {control.parameter}</small>}
-    </label>;
+    </Fragment>;
   return <form onSubmit={event => { event.preventDefault(); onApply(changes); }}><h3>{shape.name} <small>{shapeLabel(shape.kind)}</small></h3>
     {shape.controls.filter(c => !c.label.startsWith('Center')).map(controlField)}
     <details><summary>Placement</summary>{shape.controls.filter(c => c.label.startsWith('Center')).map(controlField)}</details>
