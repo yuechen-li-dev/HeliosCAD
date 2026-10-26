@@ -24,7 +24,6 @@ import { ResizeHandle } from './ResizeHandle';
 import { WorkspaceStatus } from './WorkspaceStatus';
 import { useTheme } from '../themes/useTheme';
 import { GraphPanel, type GraphSelection } from '../graph/GraphPanel';
-import { SketchPanel } from '../graph/SketchPanel';
 import { IntelliDraftPanel } from '../graph/IntelliDraftPanel';
 import { NodeInspector, type GraphEditState } from '../graph/NodeInspector';
 import { outlineNode, spliceField } from '../graph/fieldEdit';
@@ -50,8 +49,8 @@ export function HeliosApp({ project, initialWorkspace, chooseBase = false, onSho
   const [runtime] = useState(() => new WebSdkCadRuntime());
   const [buildClient] = useState(() => new AetherisWorkerClient(runtime));
   const [editorMode, setEditorMode] = useState<'graph' | 'source'>(() => chooseBase ? 'graph' : readEditorMode());
-  const [sketch, setSketch] = useState<{ node: string | null } | null>(null);
-  const [intelliDraft, setIntelliDraft] = useState<{ revision: number; source?: string } | null>(null);
+  const [intelliDraft, setIntelliDraft] = useState<{ revision: number; source?: string; node?: string | null } | null>(null);
+  const openIntelliDraftRef = useRef<(node?: string | null) => void>(() => {});
   const shellLayout = useShellLayout(editorMode);
   const [model, setModel] = useState<ModelSession | null>(null);
   const [showConcepts, setShowConcepts] = useState(false);
@@ -62,8 +61,9 @@ export function HeliosApp({ project, initialWorkspace, chooseBase = false, onSho
   const initialSource = initialWorkspace?.documents[initialName] ?? project?.source ?? bracketSource;
   const [source, setSource] = useState(initialSource);
   const [sourceName, setSourceName] = useState(initialName);
-  useEffect(() => setSketch(null), [sourceName]);
   const [workspaceTitle, setWorkspaceTitle] = useState(initialWorkspace?.title ?? project?.name ?? 'Mounting plate');
+  // One name for the part everywhere: the Model (or Assembly) it declares; the file keeps its own name.
+  const partName = /\b(?:Model|Assembly)\s+([A-Za-z_]\w*)\s*\{/.exec(source)?.[1] ?? workspaceTitle;
   const [openingExample, setOpeningExample] = useState<string | null>(null);
   const [examplesOpen, setExamplesOpen] = useState(false);
   const [welcomeHint, setWelcomeHint] = useState(() => !localStorage.getItem('helios-workflow-understood'));
@@ -87,7 +87,7 @@ export function HeliosApp({ project, initialWorkspace, chooseBase = false, onSho
   const [displayMode, setDisplayMode] = useState<DisplayMode>('shaded');
   const [selectionMode, setSelectionMode] = useState<'face' | 'edge'>('face');
   const [viewMode, setViewMode] = useState<ViewMode>('perspective');
-  const [viewCommand, setViewCommand] = useState('fit');
+  const [viewCommand, setViewCommand] = useState('iso-0'); // Parts open in an isometric view; fit follows each new model.
   const [runtimeName, setRuntimeName] = useState('WASM');
   const [lastTiming, setLastTiming] = useState<{ label: string; milliseconds: number } | null>(null);
   const [phaseTiming, setPhaseTiming] = useState<string | null>(null);
@@ -123,7 +123,11 @@ export function HeliosApp({ project, initialWorkspace, chooseBase = false, onSho
     live.code === item.code && live.source?.start === item.source?.start))];
   // The displayed model is older than a source that failed to build: show it as a ghost.
   const ghosted = !!model && displayRevision !== sourceRevision && buildStarted === null && diagnostics.some(item => item.severity === 'error');
-  const pushOutput = (message: string) => setOutputEvents(events => [...events.slice(-79), message]);
+  const pushOutput = (message: string) => {
+    setOutputEvents(events => [...events.slice(-79), message]);
+    // A refusal is something the person must read: show the Output dock rather than log it unseen.
+    if (/\brefused\b/i.test(message)) shellLayout.setBottomOpen(true);
+  };
   const namedView = (view: 'front' | 'top' | 'right' | 'iso') => {
     setViewMode(view === 'iso' ? 'perspective' : 'orthographic');
     setViewCommand(`${view}-${Date.now()}`);
@@ -282,12 +286,26 @@ export function HeliosApp({ project, initialWorkspace, chooseBase = false, onSho
     return () => { current = false; clearTimeout(timer); };
   }, [editorMode, source, sourceName, sourceRevision]);
   // Reopen the draft over an existing Profile. Asked fresh: the graph outline is only kept in graph mode.
-  const openIntelliDraft = async () => {
+  // Opens over the document's Profiles (any part, not only drafts made here), or a new draft without one.
+  const openIntelliDraft = async (node: string | null = null) => {
+    if (busy || buildStarted !== null) return;
     setPendingAuthoring(null);
     const revision = sourceRevision, text = source;
     const nodes = await runtime.outline(text, sourceName, String(revision)).then(o => o.nodes).catch(() => outline?.nodes ?? []);
-    setIntelliDraft({ revision, source: nodes.some(n => n.kind === 'Profile') ? text : undefined });
+    setIntelliDraft({ revision, source: nodes.some(n => n.kind === 'Profile') ? text : undefined, node });
   };
+  openIntelliDraftRef.current = node => void openIntelliDraft(node ?? null);
+  const newIntelliDraft = () => { if (!busy && buildStarted === null) { setPendingAuthoring(null); setIntelliDraft({ revision: sourceRevision }); } };
+  // A part made or reshaped in IntelliDraft is framed once its new geometry arrives.
+  const fitOnNextModel = useRef(false);
+  useEffect(() => { if (fitOnNextModel.current && model) { fitOnNextModel.current = false; setViewCommand(`fit-${Date.now()}`); } }, [model?.revision]); // eslint-disable-line react-hooks/exhaustive-deps
+  // The bottom dock stays a status strip until a build reports an error; then it opens on its own once.
+  const errorCount = shownDiagnostics.filter(item => item.severity === 'error').length;
+  const openedForErrors = useRef(0);
+  useEffect(() => {
+    if (errorCount > openedForErrors.current && !shellLayout.bottomOpen) shellLayout.setBottomOpen(true);
+    openedForErrors.current = errorCount;
+  }, [errorCount]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { try { localStorage.setItem('helios-editor-mode', editorMode); } catch { /* per-viewer convenience only */ } }, [editorMode]);
   // Geometry or tree selection highlights the unit, and row, that declares it. A selection the
   // graph itself made is not echoed back: the entity found for a container is often a child.
@@ -325,7 +343,7 @@ export function HeliosApp({ project, initialWorkspace, chooseBase = false, onSho
     if (unit?.category === 'external') { if (unit.document in projectDocuments.current) switchFile(unit.document); return; }
     const node = graph.nodes.get(row?.id ?? unitId);
     if (node && ['Profile', 'Rect2', 'Circle2', 'Slot2', 'RoundedRect2'].includes(node.kind)) {
-      setSketch({ node: node.id }); return;
+      openIntelliDraftRef.current(node.id); return;
     }
     const span = row?.span ?? unit?.span;
     if (!span) return;
@@ -537,7 +555,7 @@ export function HeliosApp({ project, initialWorkspace, chooseBase = false, onSho
         reason: outline?.nodes.some(n => n.kind === 'Hole') ? undefined : 'Add a hole first.' },
       { id: 'extrude', label: 'Extrude…', description: 'Turn a Profile into a body, or edit its extrusion.', run: () => beginAuthoring({ kind: 'extrude' }),
         reason: outline?.nodes.some(n => n.kind === 'Profile') ? undefined : 'Start a sketch-based part first.' },
-      { id: 'sketch', label: 'New sketch-based part…', description: 'Start from an editable 2D profile and extrusion.', run: () => newSketch('Rect2') },
+      { id: 'sketch', label: 'New IntelliDraft part…', description: 'Draw a 2D profile, trace it and extrude it.', run: newIntelliDraft },
       { id: 'placement', label: 'Place component…', description: 'Edit translation and rotation relative to the parent.', run: () => beginAuthoring({ kind: 'placement' }), reason: assemblyGraph ? undefined : 'Open an assembly first.' },
       { id: 'mate', label: 'Edit mate…', description: 'Edit frame endpoints while retaining the mate name, contract and options.', run: () => {
         const joint = assemblyGraph?.joints.find(j => j.id === inspectedId);
@@ -717,23 +735,9 @@ export function HeliosApp({ project, initialWorkspace, chooseBase = false, onSho
     const closest = candidates.sort((a, b) => (a.source?.length ?? Infinity) - (b.source?.length ?? Infinity))[0];
     if (closest && (closest.id !== selectedEntityId || selectedFaceId)) select(closest.id);
   };
-  const newSketch = (shape: string) => {
-      if (busy || buildStarted !== null) { pushOutput('Wait for the current build before starting a sketch part.'); return; }
-      if (dirtyFiles.size && !confirm('Start a separate sketch part and replace this working document? Save source or create a Version control checkpoint first to keep unsaved edits.')) return;
-      void (async () => {
-        try {
-          const edit = await runtime.sketchEdit('Model SketchPart {\n    units: mm\n}\n', { kind: 'create', node: 'SketchPart', shape }, 'sketch.firmament', '0');
-          projectRoot.current = null; projectDocuments.current = {}; setProjectFileNames([]); setWorkspaceTitle('Sketch part');
-          await open(edit.text, 'sketch.firmament'); setSketch({ node: null });
-        } catch (error) { pushOutput(`Sketch refused · ${error instanceof Error ? error.message : String(error)}`); }
-      })();
-  };
   const paletteCommands: PaletteCommand[] = [
-    { id: 'new-sketch', label: 'New sketch part', detail: 'Open a rectangle profile with editable dimensions', run: () => newSketch('Rect2') },
-    ...([['Circle2', 'circle'], ['Slot2', 'slot'], ['RoundedRect2', 'rounded rectangle']] as const).map(([shape, name]) => ({
-      id: `new-sketch-${shape}`, label: `New ${name} sketch part`, detail: 'Open a dimension-driven profile and extrusion', run: () => newSketch(shape),
-    })),
-    { id: 'edit-sketch', label: 'Edit sketch', detail: 'Open the Profile workspace', run: () => setSketch({ node: null }) },
+    { id: 'new-sketch', label: 'New IntelliDraft part', detail: 'Draw a profile, trace it and extrude it', run: newIntelliDraft },
+    { id: 'edit-sketch', label: 'Edit profile in IntelliDraft', detail: "Edit this part's Profile dimensions and construction", run: () => void openIntelliDraft() },
     { id: 'insert-box', label: 'Insert Box', detail: 'Insert a 30 × 20 × 10 mm Box inside Model', run: addBox },
     ...(['Helix', 'Loft'] as const).flatMap(kind => {
       const entry = semanticSchema?.constructs.find(item => item.id === kind)?.entry;
@@ -754,7 +758,7 @@ export function HeliosApp({ project, initialWorkspace, chooseBase = false, onSho
   return <div className={`helios-app${project ? ' cloud-mode' : ''}`}>
     <header className="topbar">
       <button className="brand" onClick={() => project ? location.assign('/') : onShowcase ? onShowcase() : setExamplesOpen(true)} aria-label="Helios home"><span className="helios-symbol">H</span><div><strong>HELIOS</strong><small>by Aetheris</small></div></button>
-      <div className="workspace-identity"><strong>{workspaceTitle}</strong><small>{project ? 'Saved project' : 'Local workspace'} · Firmament</small></div>
+      <div className="workspace-identity"><strong title={partName}>{partName}</strong><small>{sourceName} · {project ? 'Saved project' : 'Local workspace'}</small></div>
       <nav className="workspace-tabs" aria-label="Workspace"><button aria-label="Undo" title="Undo · Ctrl+Z" disabled={!historyState.undo || !!busy || !!pendingAuthoring} onClick={() => void runHistory('undo')}>↶</button><button aria-label="Redo" title="Redo · Ctrl+Shift+Z" disabled={!historyState.redo || !!busy || !!pendingAuthoring} onClick={() => void runHistory('redo')}>↷</button><button onClick={() => setExamplesOpen(true)}>Examples</button><button onClick={() => fileInput.current?.click()}>Open file</button><button onClick={() => fileInput.current?.click()} title="Import a supported canonical STEP part as immutable geometry">Import STEP</button><button title="Download source, or a portable workspace with all imported assets · Ctrl+S" onClick={() => onSave ? void save() : downloadSource()}>{!onSave && Object.keys(projectDocuments.current).length > 1 ? 'Save workspace' : 'Save source'}</button><button className="build-action" disabled={buildStarted !== null || !!busy || !!pendingAuthoring} title="Build project · Ctrl+Enter" onClick={() => void rebuildSource()}>{buildStarted !== null ? `Building · ${elapsedSeconds.toFixed(1)} s` : 'Build'}</button><ExportPicker formats={model?.exportFormats ?? []} disabled={!model || !!busy || buildStarted !== null || !!pendingAuthoring} open={exportOpen} onOpen={setExportOpen} onExport={exportSelected} /></nav>
       <div className="toolbar">
         <LocalHostControl />
@@ -785,9 +789,8 @@ export function HeliosApp({ project, initialWorkspace, chooseBase = false, onSho
       }} />
     </header>
     {project && <div className="cloud-project-bar"><button onClick={() => { if (saveState === 'Saved' || confirm('Leave this project with unsaved source?')) onBack?.(); }}>← Discover</button><strong>{project.name}</strong><span className="cloud-save-state" role="status">{saveState}</span><div className="cloud-editor-actions"><button className="cloud-save" onClick={() => void save()}>Save</button>{onPublish && <button onClick={() => { setPublishState(''); setPublishOpen(true); }}>Publish</button>}<button onClick={() => downloadText(source, sourceName)}>Download source</button>{onSignOut && <button onClick={() => { if (saveState === 'Saved' || confirm('Sign out with unsaved source?')) onSignOut(); }}>Sign out</button>}</div></div>}
-    <main className={`workspace ${shellLayout.utilityOpen ? '' : 'utility-collapsed'} ${shellLayout.bottomOpen ? '' : 'bottom-collapsed'}`} ref={shellLayout.ref} style={shellLayout.style}>
-      <div className={`workbench${sketch ? ' sketch-open' : ''}`}>
-        <div className="editor-pane" inert={!!sketch}>
+    <main className={`workspace ${shellLayout.utilityOpen ? '' : 'utility-collapsed'} ${shellLayout.bottomOpen ? '' : 'bottom-collapsed'}`} ref={shellLayout.ref}>
+        <div className="editor-pane" style={shellLayout.place('editor')}>
         <div className="editor-mode"><div className="segmented" role="tablist" aria-label="Editing view">
           <button role="tab" aria-selected={editorMode === 'graph'} className={editorMode === 'graph' ? 'active' : ''} onClick={() => setEditorMode('graph')}>Graph</button>
           <button role="tab" disabled={!!pendingAuthoring} aria-selected={editorMode === 'source'} className={editorMode === 'source' ? 'active' : ''} onClick={() => setEditorMode('source')}>Source</button>
@@ -799,7 +802,7 @@ export function HeliosApp({ project, initialWorkspace, chooseBase = false, onSho
             {pendingAuthoring && outline ? <AuthoringPanel pending={pendingAuthoring} source={source} sourceName={sourceName} outline={outline} palette={palette} schema={semanticSchema}
               runtime={runtime} assembly={assemblyGraph} jointKinds={jointKinds} selection={previewModel ? null : selectedSelection}
               documents={projectDocuments.current} root={projectRoot.current ?? sourceName} onCancel={() => setPendingAuthoring(null)}
-              onPreview={setPreviewModel} onSketch={() => { setPendingAuthoring(null); newSketch('Rect2'); }}
+              onPreview={setPreviewModel} onSketch={newIntelliDraft}
               onInspect={id => { setPendingAuthoring(null); selectGraphNode(id); }}
               onApply={(result, label) => {
                 if (pendingAuthoring.revision !== sourceRevisionRef.current) { pushOutput('Source changed; prepare the edit again.'); setPendingAuthoring(null); return; }
@@ -825,19 +828,21 @@ export function HeliosApp({ project, initialWorkspace, chooseBase = false, onSho
         <SourcePanel ref={sourcePanel} onHistoryState={setHistoryState} onHistoryApplied={value => { setGraphEdit(null); void submitBuild(value, sourceName, sourceRevisionRef.current); }} disabled={!!busy} fileName={sourceName} dirty={dirtyFiles.has(sourceName)} source={source} diagnostics={shownDiagnostics.filter(item => !item.source || item.source.source === sourceName)} runtime={runtime} model={model} selectedSelector={selectedSelection?.selector} theme={theme} onSourceChange={value => editSource(value)} onCursorChange={onSourceCursor} onRebuild={() => void rebuildSource()} onLiveDiagnostics={setLiveDiagnostics} onLanguageError={error => { setDiagnostics([toDiagnostic(error, 'FIRMAMENT-FORMAT')]); pushOutput(`Format refused · ${error instanceof Error ? error.message : String(error)}`); }} onDiagnosticClick={diagnostic => { if (diagnostic.source) setSelectedEntityId(null); }} />
         </div>
         </div>
-        <ResizeHandle axis="horizontal" label="Resize source and viewport" value={shellLayout.editorPercent} onResize={shellLayout.resizeEditor} />
-        <div className={`viewport-pane${ghosted ? ' ghosted' : ''}`}>
-        {previewModel && <div className="authoring-preview-banner" role="status">Preview · source unchanged · Apply or Cancel</div>}
-        <div className="viewport-toolbar" inert={!!sketch || !!intelliDraft}>
-          <button title="Named construction geometry, Paths and traced Profiles" disabled={!!busy || buildStarted !== null} onClick={() => void openIntelliDraft()}>IntelliDraft</button>
-          <button title="Edit a Profile with source-owned dimensions" disabled={!!busy || buildStarted !== null} onClick={() => setSketch({ node: null })}>Sketch</button>
+        <ResizeHandle axis="horizontal" label="Resize source and viewport" value={shellLayout.editorPercent} onResize={shellLayout.resizeEditor} style={shellLayout.splitter} />
+        <div className={`viewport-pane${ghosted ? ' ghosted' : ''}`} style={shellLayout.place('viewport')}>
+        <div className={`viewport-toolbar${shellLayout.toolbarStacked ? ' stacked' : ''}`} inert={!!intelliDraft} style={shellLayout.place('toolbar')}>
+          <div className="toolbar-tools"><button title="Draw, dimension and trace Profiles" disabled={!!busy || buildStarted !== null} onClick={() => void openIntelliDraft()}>IntelliDraft</button>
           <button title="Show retained geometric Concept Structs as gold wireframes; disabled when none are available" aria-pressed={showConcepts}
-            disabled={!model?.mesh.definitions.some(d => d.concepts?.length) && !model?.mesh.occurrences.some(o => o.concepts?.length)} onClick={() => setShowConcepts(value => !value)}>Concepts</button>
-          <div><button title="Front view" onClick={() => namedView('front')}>Front</button><button title="Top view" onClick={() => namedView('top')}>Top</button><button title="Right view" onClick={() => namedView('right')}>Right</button><button title="Isometric view" onClick={() => namedView('iso')}>Iso</button><button title="Fit model · F" onClick={() => setViewCommand(`fit-${Date.now()}`)}>Fit</button><button title="Fit selection" disabled={!selectedEntityId} onClick={() => setViewCommand(`fitselection-${Date.now()}`)}>Fit selection</button></div>
-          <div><select aria-label="Display mode" value={displayMode} onChange={event => setDisplayMode(event.target.value as DisplayMode)}><option value="shaded">Shaded</option><option value="edges">Shaded with edges</option><option value="wireframe">Wireframe</option></select><button aria-label="Selection mode" title="Switch face or edge selection" onClick={() => { setSelectionMode(value => value === 'face' ? 'edge' : 'face'); setDisplayMode('edges'); }}>{selectionMode === 'face' ? 'Faces' : 'Edges'}</button><button title="Toggle camera projection" onClick={() => setViewMode(value => value === 'perspective' ? 'orthographic' : 'perspective')}>{viewMode === 'perspective' ? 'Perspective' : 'Orthographic'}</button></div>
+            disabled={!model?.mesh.definitions.some(d => d.concepts?.length) && !model?.mesh.occurrences.some(o => o.concepts?.length)} onClick={() => setShowConcepts(value => !value)}>Concepts</button></div>
+          <div className="toolbar-views"><button title="Front view" onClick={() => namedView('front')}>Front</button><button title="Top view" onClick={() => namedView('top')}>Top</button><button title="Right view" onClick={() => namedView('right')}>Right</button><button title="Isometric view" onClick={() => namedView('iso')}>Iso</button><button title="Fit model · F" onClick={() => setViewCommand(`fit-${Date.now()}`)}>Fit</button><button title="Fit selection" disabled={!selectedEntityId} onClick={() => setViewCommand(`fitselection-${Date.now()}`)}>Fit selection</button></div>
+          <div className="toolbar-display"><select aria-label="Display mode" value={displayMode} onChange={event => setDisplayMode(event.target.value as DisplayMode)}><option value="shaded">Shaded</option><option value="edges">Shaded with edges</option><option value="wireframe">Wireframe</option></select><button aria-label="Selection mode" title="Switch face or edge selection" onClick={() => { setSelectionMode(value => value === 'face' ? 'edge' : 'face'); setDisplayMode('edges'); }}>{selectionMode === 'face' ? 'Faces' : 'Edges'}</button><button title="Toggle camera projection" onClick={() => setViewMode(value => value === 'perspective' ? 'orthographic' : 'perspective')}>{viewMode === 'perspective' ? 'Perspective' : 'Orthographic'}</button></div>
         </div>
-        <Viewport measurementDisabledReason={previewModel ? 'Apply or cancel the preview before measuring.' : sketch ? 'Close the sketch workspace before measuring the built solid.' : busy || displayRevision !== sourceRevision ? "Build the current source successfully before measuring." : undefined} showConcepts={showConcepts} pose={previewModel ? null : pose} busyMessage={busy === 'Worker failed' ? null : busy} errorMessage={shownDiagnostics.some(item => item.severity === 'error') ? (model ? 'Build failed. The last valid model remains visible; see Problems for details.' : 'Build needs attention. See Problems for the compiler diagnostic.') : null} model={previewModel ?? model} selectedEntityId={previewModel ? null : selectedEntityId} selectedTopologyId={previewModel ? null : selectedFaceId} theme={theme} displayMode={displayMode} viewMode={viewMode} viewCommand={previewModel ? `fit-preview-${previewModel.id}` : viewCommand} selectionMode={selectionMode} onSelect={previewModel ? () => {} : select} captureRef={capturePreview} />
-        {intelliDraft && <IntelliDraftPanel key={intelliDraft.source === undefined ? 'new' : 'existing'} runtime={runtime} initialSource={intelliDraft.source}
+        <div className="viewport-stage" style={shellLayout.place('stage')}>
+        {previewModel && <div className="authoring-preview-banner" role="status">Preview · source unchanged · Apply or Cancel</div>}
+        <Viewport measurementDisabledReason={previewModel ? 'Apply or cancel the preview before measuring.' : busy || displayRevision !== sourceRevision ? "Build the current source successfully before measuring." : undefined} showConcepts={showConcepts} pose={previewModel ? null : pose} busyMessage={busy === 'Worker failed' ? null : busy} errorMessage={shownDiagnostics.some(item => item.severity === 'error') ? (model ? 'Build failed. The last valid model remains visible; see Problems for details.' : 'Build needs attention. See Problems for the compiler diagnostic.') : null} model={previewModel ?? model} selectedEntityId={previewModel ? null : selectedEntityId} selectedTopologyId={previewModel ? null : selectedFaceId} theme={theme} displayMode={displayMode} viewMode={viewMode} viewCommand={previewModel ? `fit-preview-${previewModel.id}` : viewCommand} selectionMode={selectionMode} onSelect={previewModel ? () => {} : select} captureRef={capturePreview} />
+        {intelliDraft && <IntelliDraftPanel key={intelliDraft.source === undefined ? 'new' : `existing:${intelliDraft.node ?? ''}`} runtime={runtime} initialSource={intelliDraft.source}
+          document={intelliDraft.source === undefined ? undefined : sourceName} initialNode={intelliDraft.node ?? null}
+          onSource={intelliDraft.source === undefined ? undefined : span => { setIntelliDraft(null); setEditorMode('source'); navigateSource({ source: sourceName, ...span, line: 1, column: 1 }); }}
           onNew={() => setIntelliDraft({ revision: sourceRevision })} onClose={() => setIntelliDraft(null)} onCommit={async candidate => {
           if (busy || buildStarted !== null) throw new Error('Wait for the current build to finish.');
           if (sourceRevisionRef.current !== intelliDraft.revision) throw new Error('The working document changed. Cancel this draft and start again to avoid replacing newer work.');
@@ -847,6 +852,7 @@ export function HeliosApp({ project, initialWorkspace, chooseBase = false, onSho
               throw new Error(result.diagnostics.map(d => `${d.code}: ${d.message}`).join('\n') || 'The compiler did not admit this part.');
           } finally { await result.model?.dispose(); }
           if (sourceRevisionRef.current !== intelliDraft.revision) throw new Error('The working document changed during compilation. Your draft is retained.');
+          fitOnNextModel.current = true;
           if (intelliDraft.source !== undefined) {
             applyGraphChange({ start: 0, length: source.length, before: source, replacement: candidate, next: candidate }, { nodeId: '', field: null, label: 'Updated IntelliDraft construction', warnings: [] });
             setIntelliDraft(null); return;
@@ -855,37 +861,13 @@ export function HeliosApp({ project, initialWorkspace, chooseBase = false, onSho
           projectRoot.current = null; projectDocuments.current = {}; setProjectFileNames([]); setWorkspaceTitle('IntelliDraft part');
           await open(candidate, 'intellidraft.firmament'); setIntelliDraft(null);
         }} />}
-        {sketch && <SketchPanel revision={sourceRevision} node={sketch.node} callbacks={{
-          project: node => runtime.sketch(source, node, sourceName, String(sourceRevision)),
-          preview: async request => {
-            const revision = sourceRevisionRef.current;
-            const edit = await runtime.sketchEdit(source, request, sourceName, String(revision));
-            const view = await runtime.sketch(edit.text, request.node ?? null, sourceName, String(revision));
-            if (sourceRevisionRef.current !== revision) throw new Error('The source changed. Reload the sketch before dragging.');
-            return view;
-          },
-          apply: async request => {
-            if (busy || buildStarted !== null) return 'Wait for the current build to finish.';
-            const revision = sourceRevisionRef.current, original = source;
-            const result = await runtime.sketchEdit(original, request, sourceName, String(revision));
-            if (sourceRevisionRef.current !== revision) return 'The source changed while the sketch edit was prepared. Try again.';
-            if (!result.changed) return null;
-            applyGraphChange({ start: result.edit.start, length: result.edit.length,
-              before: original.slice(result.edit.start, result.edit.start + result.edit.length), replacement: result.edit.replacement, next: result.text },
-              { nodeId: request.node ?? result.nodes.at(-1) ?? '', field: null, label: 'Updated sketch', warnings: result.warnings });
-            return null;
-          },
-          source: span => { setSketch(null); setEditorMode('source'); navigateSource({ source: sourceName, ...span, line: 1, column: 1 }); },
-          close: () => setSketch(null),
-          createPart: () => newSketch('Rect2'),
-        }} />}
         {model?.motions?.length ? <MotionStrip clips={model.motions} revision={model.revision} onPose={setPose}
           sample={(motion, t) => runtime.sampleMotion(motion, t)} coverage={next => poseCoverage(model.mesh, next)} /> : null}
-        <div className="viewport-caption"><span>{model?.name ?? workspaceTitle}</span><span>{previewModel ? 'Preview · source unchanged' : ghosted ? 'Last good model · the current draft does not build' : displayRevision !== sourceRevision && model ? 'Last valid model · source changed' : model ? 'Compiled geometry' : 'Waiting for geometry'}</span></div>
         {welcomeHint && <div className="workflow-hint"><span><b>{editorMode === 'graph' ? 'Select → Edit → Apply' : 'Source → Build → Geometry'}</b> {editorMode === 'graph' ? 'Select the body to add holes or finish edges. Preview new features, then Apply.' : 'Edit on the left. Ctrl+Enter builds.'} Drag to orbit; scroll to zoom.</span><button aria-label="Dismiss workflow hint" onClick={() => { setWelcomeHint(false); localStorage.setItem('helios-workflow-understood', '1'); }}>×</button></div>}
         </div>
-      </div>
-      <aside className="utility-dock" aria-label="Utility panel">
+        <div className="viewport-caption" style={shellLayout.place('caption')}><span>{partName}</span><span>{previewModel ? 'Preview · source unchanged' : ghosted ? 'Last good model · the current draft does not build' : displayRevision !== sourceRevision && model ? 'Last valid model · source changed' : model ? 'Compiled geometry' : 'Waiting for geometry'}</span></div>
+        </div>
+      <aside className="utility-dock" aria-label="Utility panel" style={shellLayout.place('utility')} hidden={!shellLayout.utilityOpen}>
         <div className="dock-tabs" role="tablist" aria-label="Utilities">{([['files', 'Files'], ['inspector', 'Inspector'], ['examples', 'Examples'], ['llm', 'AI Author'], ['version-control', 'Version Control']] as const).map(([id, label]) => <button key={id} role="tab" aria-selected={utilityTab.kind === id} className={utilityTab.kind === id ? 'active' : ''} onClick={() => setUtilityTab({ kind: id })}>{label}</button>)}</div>
         <div className="utility-content">
           {matchKind(utilityTab, {
@@ -921,7 +903,7 @@ export function HeliosApp({ project, initialWorkspace, chooseBase = false, onSho
             }} />
         </div>
       </aside>
-      <div className="bottom-region"><ResizeHandle axis="vertical" label="Resize bottom panel" value={shellLayout.bottomPixels} onResize={shellLayout.resizeBottom} /><BottomDock collapsed={!shellLayout.bottomOpen} onToggle={() => shellLayout.setBottomOpen(value => !value)} diagnostics={shownDiagnostics} busy={busy} sourceName={sourceName} sourceRevision={sourceRevision} displayRevision={displayRevision} lastTiming={lastTiming} events={phaseTiming ? [...outputEvents, phaseTiming] : outputEvents} onDiagnosticClick={diagnostic => { if (diagnostic.source) navigateSource(diagnostic.source); }} /></div>
+      <div className="bottom-region" style={shellLayout.place('bottom')}><ResizeHandle axis="vertical" label="Resize bottom panel" value={shellLayout.bottomPixels} onResize={shellLayout.resizeBottom} /><BottomDock collapsed={!shellLayout.bottomOpen} onToggle={() => shellLayout.setBottomOpen(value => !value)} diagnostics={shownDiagnostics} busy={busy} sourceName={sourceName} sourceRevision={sourceRevision} displayRevision={displayRevision} lastTiming={lastTiming} events={phaseTiming ? [...outputEvents, phaseTiming] : outputEvents} onDiagnosticClick={diagnostic => { if (diagnostic.source) navigateSource(diagnostic.source); }} /></div>
     </main>
     <WorkspaceStatus busy={busy ?? (workerFailed ? 'Worker failed' : null)} elapsed={elapsedSeconds} runtimeName={runtimeName} model={model} sourceRevision={sourceRevision} displayRevision={displayRevision} diagnostics={shownDiagnostics} timing={lastTiming} theme={theme} viewMode={viewMode} onRestart={() => { void buildClient.restart().then(() => submitBuild(source, sourceName)).catch(error => setDiagnostics([toDiagnostic(error, 'HELIOS-WORKER-RESTART')])); }} />
     {paletteOpen && <CommandPalette commands={paletteCommands} onClose={() => setPaletteOpen(false)} />}

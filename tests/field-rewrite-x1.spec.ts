@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { replaceEditorSource } from './editor';
+import { pickNearCenter, replaceEditorSource } from './editor';
 
 test('Hole Diameter Inspector edit rewrites Monaco source and rebuilds the wall', async ({ page }) => {
   await page.goto('/discover');
@@ -47,12 +47,7 @@ test('Hole Diameter Inspector edit rewrites Monaco source and rebuilds the wall'
   await expect(page.locator('.view-lines')).toContainText('Diameter: 12mm /* keep */');
   await expect(page.locator('.status-ready')).toContainText('Ready', { timeout: 120_000 });
   await page.getByRole('button', { name: 'Iso', exact: true }).click();
-  const canvas = page.locator('.viewport-canvas canvas');
-  let wallPicked = false;
-  for (const [x, y] of [[382, 132], [380, 135], [385, 134], [382, 138], [377, 133], [389, 133]]) {
-    await canvas.click({ position: { x, y } });
-    if ((await page.locator('.inspector').textContent())?.includes('face(H.Wall)')) { wallPicked = true; break; }
-  }
+  let wallPicked = await pickNearCenter(page, async () => !!(await page.locator('.inspector').textContent())?.includes('face(H.Wall)'));
   expect(wallPicked).toBe(true);
   await page.getByRole('button', { name: 'Reference Hole Wall in Source' }).click();
   await expect(page.locator('.view-lines')).toContainText('Target: face(H.Wall) Value: 12mm');

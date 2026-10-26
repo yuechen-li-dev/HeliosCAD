@@ -227,6 +227,9 @@ function TelosViewport(props: Props & { onRetry(): void; onUnavailable(reason: s
     if (modelKey.current !== key) {
       modelKey.current = key;
       current.fit();
+      // The first frame may still be sizing the canvas or uploading the scene; frame the model
+      // again once both have settled, so a newly opened part is never shown from inside a face.
+      requestAnimationFrame(() => requestAnimationFrame(() => { if (modelKey.current === key) { current.fit(); current.invalidate(); } }));
     }
     const view = value.viewMode + ":" + value.viewCommand;
     if (viewKey.current !== view) {

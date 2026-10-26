@@ -111,16 +111,37 @@ function rowsOf(node: OutlineNode, nodes: ReadonlyMap<string, OutlineNode>): Gra
   return node.fields.map(field => ({ id: `${node.id}#${field.name}`, label: field.name, detail: compact(field.text), span: field.span }));
 }
 
+/**
+ * Statics that only exist to drive one declaration's field, named after it (`rect1Width` for
+ * `rect1`, as IntelliDraft writes them). They stay in Parameters but do not get their own card.
+ */
+const GENERATED_SUFFIX = /^(CenterX|CenterY|Width|Height|Radius|Diameter|Length|Rotation|CornerExtent)\d*$/;
+export function generatedStatics(outline: LanguageOutline) {
+  const nodes = new Map(outline.nodes.map(n => [n.id, n] as const));
+  const consumers = new Map<string, Set<string>>();
+  for (const edge of outline.edges) if (!edge.toDocument) consumers.set(edge.to, (consumers.get(edge.to) ?? new Set()).add(edge.from));
+  const folded = new Map<string, string>();
+  for (const node of outline.nodes) {
+    if (node.kind !== 'Static' || !node.name) continue;
+    const users = [...consumers.get(node.id) ?? []].map(id => nodes.get(id)).filter((n): n is OutlineNode => !!n);
+    if (users.length === 1 && users[0].name && node.name.length > users[0].name.length && node.name.startsWith(users[0].name)
+      && GENERATED_SUFFIX.test(node.name.slice(users[0].name.length))) folded.set(node.id, users[0].id);
+  }
+  return folded;
+}
+
 export function buildPartGraph(outline: LanguageOutline): PartGraph {
   const nodes = new Map(outline.nodes.map(n => [n.id, n] as const));
   const unitOf = new Map<string, string>();
   const units: GraphUnit[] = [];
+  const folded = generatedStatics(outline);
 
   const claim = (node: OutlineNode, unit: string) => {
     unitOf.set(node.id, unit);
     for (const id of node.children) { const child = nodes.get(id); if (child) claim(child, unit); }
   };
   const visit = (node: OutlineNode, container: string | null) => {
+    if (folded.has(node.id)) return;
     if (opens(node, nodes)) {
       const path = container ? `${container} / ${node.name ?? node.kind}` : (node.name ?? node.kind);
       for (const id of node.children) { const child = nodes.get(id); if (child) visit(child, path); }
@@ -132,6 +153,8 @@ export function buildPartGraph(outline: LanguageOutline): PartGraph {
     claim(node, node.id);
   };
   for (const node of outline.nodes) if (node.parentId === null) visit(node, null);
+  // A folded Static belongs to the card of the declaration it drives, so no wire is drawn to it.
+  for (const [id, user] of folded) { const unit = unitOf.get(user); if (unit) unitOf.set(id, unit); }
 
   const links = new Map<string, GraphLink>();
   for (const edge of outline.edges) {

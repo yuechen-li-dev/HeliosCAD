@@ -185,7 +185,7 @@ export function AuthoringPanel(props: Props) {
       {choose('Base shape', base, bases.map(i => ({ value: i.id, label: i.label })), setBase)}
       <p>Existing features and references remain. Preview checks their compatibility with the replacement.</p>
       {bodies.find(n => n.id === body)?.kind.toLowerCase() !== base && <p>Changing kind replaces the base fields with catalog defaults. Original base fields: {bodies.find(n => n.id === body)?.fields.map(f => `${f.name}: ${f.text}`).join('; ') || 'none'}. Review Source change before Apply.</p>}
-      <button onClick={props.onSketch}>New sketch-based part…</button></>}
+      <button onClick={props.onSketch}>New IntelliDraft part…</button></>}
     {isFeature && <>{bodyChoice}<p>Pick a support face in the viewport, or keep the authored support. Center coordinates are in that support's frame.</p>
       <button disabled={!props.selection?.sourceAddressable || state === 'preparing' || !!preview.current} onClick={() => {
         const field = draftNode?.fields.find(f => ['on', 'face'].includes(f.name.toLowerCase()));

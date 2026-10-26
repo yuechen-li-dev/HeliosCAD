@@ -3,7 +3,7 @@ import type { LanguageOutline } from '@aetheris/cad';
 import chimera from './fixtures/chimera.outline.json';
 import atlas from './fixtures/atlas.outline.json';
 import spacer from './fixtures/spacer.outline.json';
-import { buildPartGraph, layoutPartGraph, unitAtSpan, UNIT_WIDTH } from './outlineGraph';
+import { buildPartGraph, generatedStatics, layoutPartGraph, unitAtSpan, UNIT_WIDTH } from './outlineGraph';
 
 const links = (outline: unknown) => buildPartGraph(outline as LanguageOutline).links.map(l => `${l.from} -> ${l.to} [${l.label}]`).sort();
 
@@ -76,5 +76,16 @@ describe('part graph from the compiler outline', () => {
     expect(unitAtSpan(graph, pilot.span.start + 3)).toBe('MotorMount/Modify:Body');
     const model = outline.nodes.find(n => n.id === 'MotorMount')!;
     expect(unitAtSpan(graph, model.span.start)).toBeNull();
+  });
+});
+
+describe('generated Statics', () => {
+  const node = (id: string, kind: string, name: string) => ({ id, kind, name, variant: null, modifiers: [], occurrence: false, parentId: null, order: 0,
+    span: { start: 0, length: 0 }, nameSpan: null, schemaId: null, parameters: [], fields: [], children: [] });
+  const edge = (from: string, to: string) => ({ from, to, kind: 'reference', via: 'field:Size', member: null, span: { start: 0, length: 0 }, ambiguous: false, toDocument: null });
+  it('folds a Static named after the one declaration it drives, and keeps shared or hand-named ones', () => {
+    const outline = { nodes: [node('r', 'Rect2', 'rect1'), node('w', 'Static', 'rect1Width'), node('t', 'Static', 'thickness'), node('s', 'Static', 'rect1Size'), node('o', 'Rect2', 'other')],
+      edges: [edge('r', 'w'), edge('r', 't'), edge('r', 's'), edge('o', 's')] } as unknown as LanguageOutline;
+    expect([...generatedStatics(outline).keys()]).toEqual(['w']);
   });
 });

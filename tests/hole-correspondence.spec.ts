@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { replaceEditorSource } from './editor';
+import { pickNearCenter, replaceEditorSource } from './editor';
 
 test('through-hole wall selector copies into a valid PMI use site', async ({ page, context }) => {
   await context.grantPermissions(['clipboard-read', 'clipboard-write']);
@@ -20,12 +20,7 @@ test('through-hole wall selector copies into a valid PMI use site', async ({ pag
   await expect(page.locator('.status-ready')).toContainText('Ready', { timeout: 120_000 });
   await expect(page.locator('.statusbar')).toContainText('No problems');
   await page.getByRole('button', { name: 'Iso', exact: true }).click();
-  const canvas = page.locator('.viewport-canvas canvas');
-  let wallPicked = false;
-  for (const [x, y] of [[382, 132], [380, 135], [385, 134], [382, 138], [377, 133], [389, 133]]) {
-    await canvas.click({ position: { x, y } });
-    if ((await page.locator('.inspector').textContent())?.includes('material:hole:Body.H:wall')) { wallPicked = true; break; }
-  }
+  let wallPicked = await pickNearCenter(page, async () => !!(await page.locator('.inspector').textContent())?.includes('material:hole:Body.H:wall'));
   expect(wallPicked).toBe(true);
   await expect(page.locator('.entity-hero')).toContainText('Hole');
   await expect(page.locator('.inspector')).toContainText('SEMANTIC FIELDS');
@@ -46,11 +41,7 @@ test('through-hole wall selector copies into a valid PMI use site', async ({ pag
   await expect(page.locator('.status-ready')).toContainText('Ready', { timeout: 120_000 });
   await expect(page.locator('.statusbar')).toContainText('No problems');
   await page.getByRole('button', { name: 'Iso', exact: true }).click();
-  wallPicked = false;
-  for (const [x, y] of [[382, 132], [380, 135], [385, 134], [382, 138], [377, 133], [389, 133]]) {
-    await canvas.click({ position: { x, y } });
-    if ((await page.locator('.inspector').textContent())?.includes('material:hole:Body.H:wall')) { wallPicked = true; break; }
-  }
+  wallPicked = await pickNearCenter(page, async () => !!(await page.locator('.inspector').textContent())?.includes('material:hole:Body.H:wall'));
   expect(wallPicked).toBe(true);
   await page.getByRole('button', { name: 'Copy Selector' }).click();
   const selector = await page.evaluate(() => navigator.clipboard.readText());

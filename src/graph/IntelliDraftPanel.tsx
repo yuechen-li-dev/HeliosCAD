@@ -24,25 +24,33 @@ type DrawTool = { kind: string; label: string; short: string; key: string; group
 const DRAW_TOOLS: readonly DrawTool[] = [
   { kind: 'Line2', label: 'line', short: 'Line', key: 'l', group: 'line', option: 'Line · Line2' },
   { kind: 'Axis2', label: 'axis', short: 'Axis', key: 'l', group: 'line', option: 'Axis · Axis2' },
-  { kind: 'Arc', label: 'arc', short: 'Arc', key: 'a', group: 'arc' },
-  { kind: 'Rect2', label: 'rectangle', short: 'Rect', key: 'r', group: 'rect' }, { kind: 'Circle2', label: 'circle', short: 'Circle', key: 'c', group: 'circle' },
+  { kind: 'Rect2', label: 'rectangle', short: 'Rect', key: 'r', group: 'rect' },
+  { kind: 'Circle2', label: 'circle', short: 'Circle', key: 'c', group: 'circle', option: 'Circle · Circle2' },
+  { kind: 'Arc', label: 'arc', short: 'Arc', key: 'a', group: 'circle', option: 'Arc · Arc2' },
   { kind: 'Ellipse2', label: 'ellipse', short: 'Ellipse', key: 'e', group: 'ellipse' }, { kind: 'Slot2', label: 'slot', short: 'Slot', key: 's', group: 'slot' },
   { kind: 'RoundedRect2', label: 'rounded rectangle', short: 'Rounded', key: 'u', group: 'rounded', option: 'Rounded · RoundedRect2' },
   { kind: 'SmoothRoundedRect2', label: 'smooth rounded rectangle', short: 'Smooth', key: 'u', group: 'rounded', option: 'Smooth (squircle) · SmoothRoundedRect2' },
 ];
 const TOOL_GROUPS = [...new Set(DRAW_TOOLS.map(t => t.group))];
-const GUIDE_KINDS = new Set(['Line2', 'Axis2', 'Circle2']);
+const GUIDE_KINDS = new Set(['Line2', 'Arc2', 'Axis2', 'Circle2']);
 
 /** Source is the construction model. The browser selects compiler-resolved entities and stages
  * ordinary source transactions; it neither solves constraints nor evaluates engineering geometry. */
-export function IntelliDraftPanel({ runtime, initialSource = blank, onCommit, onClose, onNew }: {
+export function IntelliDraftPanel({ runtime, initialSource = blank, document = DOCUMENT, initialNode = null, onCommit, onClose, onNew, onSource }: {
   runtime: Runtime; initialSource?: string;
+  /** The open document's name, so compiler spans and diagnostics point at the real file. */
+  document?: string;
+  /** A Profile (or a shape it consumes) to open on; defaults to the document's first Profile. */
+  initialNode?: string | null;
   onCommit(source: string): Promise<void>; onClose(): void; onNew?(): void;
+  /** Leave the draft and show a driven value's expression in the source editor. */
+  onSource?(span: { start: number; length: number }): void;
 }) {
   const fresh = initialSource === blank;
   const [history, setHistory] = useState([initialSource]), [index, setIndex] = useState(0);
   const source = history[index];
   const [view, setView] = useState<SketchProjection | null>(null);
+  const [node, setNode] = useState<string | null>(initialNode);
   const [busy, setBusy] = useState(false), [problem, setProblem] = useState<Problem | null>(null);
   const [pendingDimensions, setPendingDimensions] = useState(false);
   const [tool, setTool] = useState<Tool>(fresh ? 'Rectangle' : 'Shapes'), [name, setName] = useState(fresh ? 'rect1' : 'layout');
@@ -63,7 +71,7 @@ export function IntelliDraftPanel({ runtime, initialSource = blank, onCommit, on
   const [addOpen, setAddOpen] = useState(false), [fitRequest, setFitRequest] = useState(0);
   const [alignPrompt, setAlignPrompt] = useState<AlignPrompt | null>(null), [dimensionEdit, setDimensionEdit] = useState<DimensionEdit | null>(null);
   const [renaming, setRenaming] = useState<string | null>(null);
-  const [variant, setVariant] = useState<Record<string, string>>({ line: 'Line2', rounded: 'RoundedRect2' });
+  const [variant, setVariant] = useState<Record<string, string>>({ line: 'Line2', circle: 'Circle2', rounded: 'RoundedRect2' });
   const [pickedGuide, setPickedGuide] = useState('');
   const dialog = useRef<HTMLDialogElement>(null), mounted = useRef(true);
   const inspector = useRef<HTMLElement>(null);
@@ -74,19 +82,25 @@ export function IntelliDraftPanel({ runtime, initialSource = blank, onCommit, on
   }, []);
   useEffect(() => {
     let current = true;
-    void runtime.sketch(source, null, DOCUMENT, String(index)).then(result => {
+    void runtime.sketch(source, node, document, String(index)).then(result => {
       if (!current) return;
       setView(result); setProblem(null);
       if (index === 0 && !fresh) setTool('Shapes');
     }).catch(e => { if (current) report(e); });
     return () => { current = false; };
-  }, [source, index, runtime, fresh]);
+  }, [source, index, runtime, fresh, node, document]);
 
   const construction = view?.construction, elements = construction?.elements ?? [];
   const layouts = elements.filter(e => e.kind === 'Struct'), paths = elements.filter(e => e.kind === 'Path');
   const selectedOwner = elements.find(e => e.id === owner) ?? layouts[0] ?? paths[0];
   // A Circle2 centred on a named point is the arc tool's guide circle, not a placed shape.
-  const shapes = (construction?.shapes ?? []).filter(s => !(s.kind === 'Circle2' && !s.controls.some(c => c.label === 'Center X')));
+  const constructionShapes = (construction?.shapes ?? []).filter(s => !(s.kind === 'Circle2' && !s.controls.some(c => c.label === 'Center X')));
+  // Shapes the open Profile consumes outside any layout (code-authored parts) are edited through the
+  // Profile itself, the way the old Sketch workspace did.
+  const profileShapes = (view?.shapes ?? []).filter(s => !constructionShapes.some(c => c.id === s.id));
+  const shapes = [...constructionShapes, ...profileShapes];
+  const dimensionRequest = (shape: { id: string }, changes: Change[]): SketchEditRequest =>
+    profileShapes.some(p => p.id === shape.id) ? { kind: 'dimensions', node: view?.node, changes } : { kind: 'constructionDimensions', changes };
   const shownShapes = shapes.filter(shape => !hidden.has(shape.id));
   const rectangles = shownShapes.filter(shape => shape.kind === 'Rect2');
   const selected = shapes.find(s => s.id === selectedShape) ?? (tool === 'Rectangle' ? undefined : shapes[0]);
@@ -137,7 +151,7 @@ export function IntelliDraftPanel({ runtime, initialSource = blank, onCommit, on
     try {
       let text = source, last: LanguageEdit | null = null;
       for (const step of steps) { last = await step(text, last); text = last.text; }
-      const projection = await runtime.sketch(text, null, DOCUMENT, String(index + 1));
+      const projection = await runtime.sketch(text, node, document, String(index + 1));
       const diagnostic = [...projection.diagnostics, ...(projection.construction?.diagnostics ?? [])].find(d => d.severity === 'error' || d.severity === 'fatal');
       if (diagnostic) throw new Error(`${diagnostic.code}: ${diagnostic.message}`);
       if (!mounted.current) return null;
@@ -147,11 +161,11 @@ export function IntelliDraftPanel({ runtime, initialSource = blank, onCommit, on
     finally { if (mounted.current) setBusy(false); }
   };
   const sketchStep = (request: SketchEditRequest | ((previous: LanguageEdit | null) => SketchEditRequest)): Step =>
-    (text, previous) => runtime.sketchEdit(text, typeof request === 'function' ? request(previous) : request, DOCUMENT, String(index));
+    (text, previous) => runtime.sketchEdit(text, typeof request === 'function' ? request(previous) : request, document, String(index));
   const transact = (request: SketchEditRequest) => transactSteps([sketchStep(request)]);
   const editStep = (operation: Parameters<NonNullable<Runtime['edit']>>[1][number], refuseWarnings = false): Step => async text => {
     if (!runtime.edit) throw new Error('This runtime cannot edit declarations.');
-    const edit = await runtime.edit(text, [operation], DOCUMENT, String(index));
+    const edit = await runtime.edit(text, [operation], document, String(index));
     if (refuseWarnings && edit.warnings.length) throw new Error(edit.warnings.join(' '));
     return edit;
   };
@@ -188,7 +202,7 @@ export function IntelliDraftPanel({ runtime, initialSource = blank, onCommit, on
     const pointName = (suffix: string) => { let value = own + suffix; for (let n = 2; taken.has(value); n++) value = own + suffix + n; taken.add(value); return value; };
     let parent: string | undefined = selectedOwner?.kind === 'Struct' ? selectedOwner.id : layouts[0]?.id;
     const op = (make: () => DraftOperation): Step => (text, previous) => {
-      void previous; return runtime.sketchEdit(text, { kind: 'construction', construction: make() }, DOCUMENT, String(index));
+      void previous; return runtime.sketchEdit(text, { kind: 'construction', construction: make() }, document, String(index));
     };
     const steps: Step[] = [];
     if (!parent) steps.push(async (text, previous) => {
@@ -202,8 +216,9 @@ export function IntelliDraftPanel({ runtime, initialSource = blank, onCommit, on
     if (drawKind === 'Axis2') steps.push(op(() => ({ action: 'axis', parent, name: own, x: a.at[0], y: a.at[1], directionX: clean(b.at[0] - a.at[0]), directionY: clean(b.at[1] - a.at[1]) })));
     else if (drawKind === 'Line2') { const start = ensure(a, 'Start'), end = ensure(b, 'End'); steps.push(op(() => ({ action: 'line', parent, name: own, from: start, to: end }))); }
     else {
-      const center = ensure(a, 'Center'), radius = Math.hypot(b.at[0] - a.at[0], b.at[1] - a.at[1]);
-      steps.push(op(() => ({ action: 'circle', parent, name: own, from: center, radius }))); ensure(b, 'Start'); ensure(c, 'End');
+      // Arc2: counter-clockwise from its start to its end around a named centre.
+      const center = ensure(a, 'Center'), start = ensure(b, 'Start'), end = ensure(c, 'End');
+      steps.push(op(() => ({ action: 'arc', parent, name: own, reference: center, from: start, to: end })));
     }
     void transactSteps(steps).then(edit => { if (edit) { setPickedGuide(own); setName(freshName(nameStem(drawKind), taken)); } });
   };
@@ -229,13 +244,13 @@ export function IntelliDraftPanel({ runtime, initialSource = blank, onCommit, on
       .map(c => ({ shape: c.shape, bounds: predictedBounds(c.shape) ?? c.bounds }));
     const neighbours = resizes && before && after ? alignedNeighbours(shape, before, after, others) : [];
     if (neighbours.length) { setAlignPrompt({ shape, changes, neighbours }); return; }
-    void transact({ kind: 'constructionDimensions', changes });
+    void transact(dimensionRequest(shape, changes));
   };
   const resolveAlignment = (moveToo: boolean) => {
     if (!alignPrompt) return;
     const extra = moveToo ? alignPrompt.neighbours.flatMap(n => translation(n.shape, n.offset)) : [];
     setAlignPrompt(null);
-    void transact({ kind: 'constructionDimensions', changes: [...alignPrompt.changes, ...extra] });
+    void transact(dimensionRequest(alignPrompt.shape, [...alignPrompt.changes, ...extra]));
   };
 
   const removeShape = (shape: SketchShape) => {
@@ -287,7 +302,10 @@ export function IntelliDraftPanel({ runtime, initialSource = blank, onCommit, on
   const ownsCurve = (shape: { name: string }, curveName: string) => curveName === shape.name || curveName.startsWith(shape.name + '.');
   const canvasShapes: CanvasShape[] = shownShapes.flatMap(shape => {
     const vertices = polylines.filter(p => p.construction && ownsCurve(shape, p.curve.name)).flatMap(p => p.points);
-    if (!vertices.length) return [];
+    if (!vertices.length) {
+      const predicted = predictedBounds(shape);
+      return predicted ? [{ shape, owner: elements.find(e => e.id === shape.id)?.parent ?? '', bounds: predicted }] : [];
+    }
     const xs = vertices.map(p => p[0]), ys = vertices.map(p => p[1]);
     return [{ shape, owner: elements.find(e => e.id === shape.id)?.parent ?? '', bounds: { x: Math.min(...xs), y: Math.min(...ys), width: Math.max(...xs) - Math.min(...xs), height: Math.max(...ys) - Math.min(...ys) } }];
   });
@@ -311,7 +329,7 @@ export function IntelliDraftPanel({ runtime, initialSource = blank, onCommit, on
     }
     if (event.altKey || busy) return;
     const draw = DRAW_TOOLS.find(t => t.key === event.key.toLowerCase());
-    if (draw) { event.preventDefault(); chooseDraw(variant[draw.group] ?? draw.kind); return; }
+    if (draw) { event.preventDefault(); chooseDraw(draw.key === 'a' ? 'Arc' : variant[draw.group] ?? draw.kind); return; }
     switch (event.key) {
       case 'v': case 'V': event.preventDefault(); choose('Shapes'); return;
       case 't': case 'T': if (shapes.length || paths.length || guides.length) { event.preventDefault(); choose('Trace'); } return;
@@ -345,6 +363,9 @@ export function IntelliDraftPanel({ runtime, initialSource = blank, onCommit, on
     <div className="draft-body"><aside ref={inspector}>
       <nav className="draft-steps" aria-label="Construction workflow">{([['Shapes', 'Draw'], ['Trace', 'Trace'], ['Extrude', 'Extrude']] as const).map(([t, label], i) => <button key={t} aria-pressed={tool === t || t === 'Shapes' && drawing}
         disabled={busy || pendingDimensions || t === 'Trace' && !shapes.length && !paths.length && !guides.length || t === 'Extrude' && !profile} onClick={() => choose(t)}><span aria-hidden="true">{i + 1}</span> {label}</button>)}</nav>
+      {(view?.profiles.length ?? 0) > 1 && <label className="draft-profile-choice">Profile<select aria-label="Profile" value={view?.node ?? ''} disabled={busy || pendingDimensions}
+        onChange={e => { setNode(e.target.value); setSelectedShape(''); }}>{view!.profiles.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select></label>}
+      {view?.frame && view.frame.name !== 'XY' && <small className="draft-frame">Plane {view.frame.name} · normal ({view.frame.normal.map(n => Number(n.toFixed(3))).join(', ')})</small>}
 
       {drawing && !reference && <section className="draft-new-shape" aria-label="Next shape">
         <label>Name<input aria-label="Construction name" value={name} disabled={busy} onChange={e => setName(e.target.value)} required /></label>
@@ -368,7 +389,7 @@ export function IntelliDraftPanel({ runtime, initialSource = blank, onCommit, on
       {!!(strokeGuides.length) && (tool === 'Shapes' || drawing) && <section className="draft-guides" aria-label="Lines, arcs and axes">
         <h3>Lines, arcs and axes ({strokeGuides.length})</h3>
         <ul>{strokeGuides.map(g => <li key={g.id}><button type="button" aria-pressed={pickedGuide === g.name} disabled={busy} onClick={() => setPickedGuide(pickedGuide === g.name ? '' : g.name)}>
-          <b>{g.name}</b><small>{g.kind === 'Circle2' ? 'Arc circle · Circle2' : g.kind === 'Axis2' ? 'Axis · Axis2' : 'Line · Line2'}</small></button>
+          <b>{g.name}</b><small>{({ Circle2: 'Guide circle · Circle2', Arc2: 'Arc · Arc2', Axis2: 'Axis · Axis2', Line2: 'Line · Line2' } as Record<string, string>)[g.kind] ?? g.kind}</small></button>
           <button type="button" aria-label={`Delete ${g.name}`} title="Delete · Del" disabled={busy || pendingDimensions || !runtime.edit} onClick={() => removeGuide(g)}>×</button></li>)}</ul>
       </section>}
 
@@ -381,7 +402,7 @@ export function IntelliDraftPanel({ runtime, initialSource = blank, onCommit, on
             : <button type="button" disabled={busy || pendingDimensions || !runtime.edit} onClick={() => setRenaming(selected.id)}>Rename {selected.name}</button>}
           <button type="button" disabled={busy || pendingDimensions || !runtime.edit} title="Delete · Del" onClick={() => removeShape(selected)}>Delete {selected.name}</button>
         </div>
-        <ConstructionShapes construction={construction} selected={selected.id} busy={busy || !!alignPrompt} revision={index}
+        <ConstructionShapes construction={{ ...construction, shapes }} selected={selected.id} onSource={onSource} busy={busy || !!alignPrompt} revision={index}
           onRelated={id => { setDrawKind('Rect2'); setTool('Rectangle'); setReference(id); setName(freshLegacy('notch')); }}
           onDimensions={changes => applyShapeChanges(selected, changes)} onParameter={(id, value) => void apply({ action: 'parameter', parent: id, value })} onPending={setPendingDimensions} />
       </>}
@@ -444,6 +465,8 @@ export function IntelliDraftPanel({ runtime, initialSource = blank, onCommit, on
       {profile && !body && tool === 'Extrude' && <form onSubmit={e => { e.preventDefault(); void apply({ action: 'extrude', parent: profile.id, name: freshLegacy('body'), length: height }); }}><h3>Extrude {profile.name}</h3>{numberField('Extrusion depth', height, setHeight)}<button className="draft-primary" disabled={busy}>Extrude Profile</button></form>}
       {tool === 'Extrude' && body && <p>The outline is extruded. Edit shapes in Draw, then Build and use part.</p>}
 
+      {!!view?.openingReferences.length && view.node && <ProfileOpening references={view.openingReferences} disabled={busy || pendingDimensions}
+        onAdd={opening => void transact({ kind: 'opening', node: view.node, ...opening })} />}
       <details className="construction-advanced"><summary>Advanced: points, lines and Paths</summary><nav aria-label="Construction tools">{(['Layout', 'Point', 'Line', 'Circle', 'Path'] as const).map(t => <button key={t} disabled={busy} aria-pressed={tool === t} onClick={() => choose(t)}>{t}</button>)}</nav>
         {construction?.frames?.map(({ owner: id, frame }) => <small key={id}>{frame.name}: local X ({frame.x.join(', ')}), Y ({frame.y.join(', ')}), normal ({frame.normal.join(', ')})</small>)}</details>
       <details><summary>Advanced construction objects and dimensions</summary>{elements.filter(e => !['Model', 'Struct', 'Profile', 'Static'].includes(e.kind) && !shapes.some(shape => shape.id === e.id)).map(e => <div className="draft-object" key={e.id}><b>{e.name} · {e.kind}</b>
@@ -461,7 +484,7 @@ export function IntelliDraftPanel({ runtime, initialSource = blank, onCommit, on
         ...(drawKind === 'Slot2' ? { width: Math.max(rect.width, rect.height), height: Math.min(rect.width, rect.height), turn: rect.height > rect.width ? 90 : 0 } : {}),
         radius: Math.min(rect.width, rect.height) / (drawKind === 'Circle2' ? 2 : drawKind === 'SmoothRoundedRect2' ? 4 : 8),
       })}
-      onMove={(shape, center) => void transact({ kind: 'constructionDimensions', changes: shape.controls.filter(c => c.label === 'Center X' || c.label === 'Center Y').map(c => ({ control: c.id, value: center[c.label === 'Center X' ? 0 : 1] })) })}
+      onMove={(shape, center) => void transact(dimensionRequest(shape, shape.controls.filter(c => c.label === 'Center X' || c.label === 'Center Y').map(c => ({ control: c.id, value: center[c.label === 'Center X' ? 0 : 1] }))))}
       onPoint={tool === 'Point' ? point => { setX(point[0]); setY(point[1]); } : undefined}
       hint={hint}
       header={<>
@@ -618,4 +641,24 @@ function nearestSpan(spans: readonly DraftSpan[], at: readonly [number, number],
   const ranked = spans.map(span => ({ span, d: distance(span) })).filter(c => c.d <= reach).sort((a, b) => a.d - b.d);
   if (!ranked.length) return undefined;
   return (ranked.find(c => c.d - ranked[0].d < reach / 3 && touches(c.span)) ?? ranked[0]).span;
+}
+
+const ANCHORS = ['BottomLeft', 'BottomRight', 'TopRight', 'TopLeft', 'Center', 'Left', 'Right', 'Bottom', 'Top'] as const;
+/** A circular opening that follows a rectangle anchor through shared inputs (from the Sketch workspace). */
+function ProfileOpening({ references, disabled, onAdd }: {
+  references: readonly { id: string; name: string }[]; disabled: boolean;
+  onAdd(opening: { reference: string; anchor: string; x: number; y: number; diameter: number }): void;
+}) {
+  const [reference, setReference] = useState(references[0]?.id ?? ''), [anchor, setAnchor] = useState<string>('BottomLeft');
+  const [x, setX] = useState(8), [y, setY] = useState(8), [diameter, setDiameter] = useState(4);
+  const field = (label: string, value: number, update: (n: number) => void, off = false) => <label>{label} (mm)<input aria-label={label} type="number" step="any" min="0" required disabled={disabled || off} value={Number.isNaN(value) ? '' : value} onChange={e => update(e.target.valueAsNumber)} /></label>;
+  return <details className="draft-opening"><summary>Add circular opening</summary>
+    <form onSubmit={e => { e.preventDefault(); onAdd({ reference: reference || references[0].id, anchor, x, y, diameter }); }}>
+      <small>Follows a rectangle anchor through shared inputs. Insets are inward from its edges.</small>
+      <label>Rectangle<select aria-label="Opening reference" value={reference} disabled={disabled} onChange={e => setReference(e.target.value)}>{references.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}</select></label>
+      <label>Anchor<select aria-label="Opening anchor" value={anchor} disabled={disabled} onChange={e => setAnchor(e.target.value)}>{ANCHORS.map(a => <option key={a} value={a}>{a.replace(/([a-z])([A-Z])/g, '$1 $2')}{['Left', 'Right', 'Bottom', 'Top'].includes(a) ? ' midpoint' : ''}</option>)}</select></label>
+      <div className="draft-pair">{field('X inset', x, setX, ['Center', 'Top', 'Bottom'].includes(anchor))}{field('Y inset', y, setY, ['Center', 'Left', 'Right'].includes(anchor))}</div>
+      {field('Opening diameter', diameter, setDiameter)}
+      <button className="draft-primary" disabled={disabled}>Add opening</button>
+    </form></details>;
 }

@@ -100,7 +100,7 @@ test('named points and lines trace an L, edit upstream, reject a broken trace, u
   await p.getByRole('button', { name: 'Extrude', exact: true }).click(); await act(p, 'Extrude Profile');
   await page.screenshot({ path: resolve(output, 'l-construction.png') });
   const source = await qualify(page, 'named-lines-l', 'named-lines-l.firmament');
-  expect(source).toContain('from: a'); expect(source).toContain('bottom |> right |> ledge |> upright |> top |> left |> Close');
+  expect(source).toContain('from: a'); expect(source.replace(/\s+/g, ' ')).toContain('bottom |> right |> ledge |> upright |> top |> left |> Close');
   await page.getByRole('button', { name: 'IntelliDraft', exact: true }).click();
   await panel(page).getByText('Advanced construction objects and dimensions', { exact: true }).click();
   await expect(panel(page).getByRole('button', { name: 'Edit point b', exact: true })).toBeVisible();
@@ -344,7 +344,7 @@ test('line and arc tools draft a door outline that traces by clicking in any ord
   await stroke(page, p, [-20, 0], [20, 0]);
   // Later strokes start and end on the named points already drawn, so the outline joins exactly.
   await stroke(page, p, [20, 0], [20, 20]); await stroke(page, p, [-20, 20], [-20, 0]);
-  await page.keyboard.press('a');
+  await page.keyboard.press('a'); await expect(p.getByRole('button', { name: 'Draw arc', exact: true })).toHaveAttribute('aria-pressed', 'true');
   await stroke(page, p, [0, 20], [20, 20]);
   await clickAt(page, p, [-20, 21]);
   await expect(p.getByRole('status')).not.toContainText('Checking with compiler'); await expect(p.getByRole('alert')).toHaveCount(0);
@@ -352,7 +352,7 @@ test('line and arc tools draft a door outline that traces by clicking in any ord
   await expect(guides.getByRole('listitem')).toHaveCount(4);
   await page.screenshot({ path: resolve(output, 'line-arc-door-construction.png') });
   await p.getByRole('button', { name: 'Trace', exact: true }).click();
-  // Clockwise, starting on the left; the bottom click sits where the guide circle touches the line.
+  // Clockwise, starting on the left: picks need no particular order or direction.
   for (const at of [[-20, 10], [0, 40], [20, 10], [5, 0]] as [number, number][]) await clickAt(page, p, at);
   await expect(p.getByText('Outline closed ✓ · 4 edges')).toBeVisible();
   await act(p, 'Use this outline'); await act(p, 'Extrude Profile');
@@ -361,7 +361,7 @@ test('line and arc tools draft a door outline that traces by clicking in any ord
   const download = page.waitForEvent('download'); await page.getByRole('button', { name: 'Save source', exact: true }).click();
   const sourcePath = resolve(output, 'line-arc-door.firmament'); await (await download).saveAs(sourcePath);
   const source = await readFile(sourcePath, 'utf8');
-  expect(source).toContain('Line2 line2 { from: line1End; to: line2End }'); expect(source).toContain('Circle2 arc1 { center: arc1Center; radius: 20mm }');
+  expect(source).toContain('Line2 line2 { from: line1End; to: line2End }'); expect(source).toContain('Arc2 arc1 { center: arc1Center; from: line2End; to: line3Start }');
   expect(source).toMatch(/arc1 from line2End to line3Start/);
   const validation = JSON.parse(execFileSync('dotnet', [cli, 'validate', sourcePath, '--json'], { encoding: 'utf8' }));
   expect(validation.firmamentV2Validation.status).toBe('valid');

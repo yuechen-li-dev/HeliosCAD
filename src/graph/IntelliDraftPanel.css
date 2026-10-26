@@ -122,3 +122,7 @@
 .draft-guides small { color:var(--draft-muted); font-size:11px }
 .intellidraft .draft-guides li>button:last-child { min-height:28px; width:28px; padding:0 }
 .draft-axes { user-select:none }
+.draft-profile-choice { display:flex; flex-direction:column; gap:3px; padding:8px 0 }
+.draft-frame { display:block; color:var(--draft-muted); padding-bottom:6px }
+.intellidraft .draft-link { min-height:0; padding:0; border:0; background:none; color:var(--draft-focus); text-decoration:underline; cursor:pointer; font-size:inherit }
+.draft-opening { padding:8px 0; border-bottom:1px solid var(--draft-rule) }

@@ -160,6 +160,19 @@ function Canvas({ outline, error, diagnostics, selection, theme, onSelect, onOpe
       labelBgPadding: [4, 2] as [number, number], labelBgBorderRadius: 3 };
   }), [laid, selection]);
 
+  // Refit when the pane is resized (the workbench splitter, the dock): the view was framed for another size.
+  useEffect(() => {
+    const element = host.current; if (!element) return;
+    let last = { width: element.clientWidth, height: element.clientHeight }, frame = 0;
+    const observer = new ResizeObserver(() => {
+      const next = { width: element.clientWidth, height: element.clientHeight };
+      if (Math.abs(next.width - last.width) < 24 && Math.abs(next.height - last.height) < 24) return;
+      last = next; cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => void flow.fitView({ padding: 0.08, minZoom: 0.7, maxZoom: 1.1, duration: 0 }));
+    });
+    observer.observe(element);
+    return () => { observer.disconnect(); cancelAnimationFrame(frame); };
+  }, [flow, host]);
   // Fit when the set of units changes, not on every field edit.
   useEffect(() => {
     if (!structure || structure === fitted) return;
