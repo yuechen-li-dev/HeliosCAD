@@ -21,9 +21,10 @@ Your existing desktop client keeps its chat, login, model selection and subscrip
 1. In **AI Author → Connection**, choose **Claude Code · project workspace**, **Claude Desktop · local MCP**, or **Antigravity · native desktop chat** to match the client you are actually using.
 2. Expand **AI connection settings** and select **Prepare desktop connection**. This creates a temporary, local MCP capability; it does not claim to have authenticated your provider account.
 3. Select **Copy MCP configuration** and add the `helios` server in your native client, preserving other server entries. Configure the client before starting the task so setup time does not consume the task budget.
-4. Enter the requested change in Helios and select **Start desktop task**. A recovery checkpoint is saved before candidate access is granted.
-5. Select **Copy desktop task prompt** and send it in your native chat. It asks the agent to read `task_context`, use the Helios tools, build, and call `finish_task`.
-6. Review the host outcome in Helios. A successfully built candidate is applied automatically only if **Apply changes after a successful build** is selected.
+4. Check the connection line under the client choice. It reads **connected ✓** once your client has called the Helios server with this pairing.
+5. Select **Start desktop task**. Typing the request in Helios is optional: you can leave the box empty and ask in your native chat instead. A recovery checkpoint is saved before candidate access is granted.
+6. Ask your client to make the change. The first time, **Copy desktop task prompt** gives a sentence that points it at `task_context`; the agent then uses the Helios tools, builds, and calls `finish_task`.
+7. Check the result in Helios. Under **After a successful build**, **Apply right away** (the default) applies the built candidate after saving a checkpoint, and **Undo AI changes** reverts it in one step while nothing else has changed. **Review the diff first** shows the source changes for you to apply or discard.
 
 For **Claude Code**, add the copied entry to the selected workspace's `.mcp.json`. The entry uses `type: "http"`, `url`, and an Authorization header. Open or reload that workspace in Claude Code and enable the server there. This is the Code workspace connection; a browser-hosted Claude connector cannot reach a loopback URL on your computer. See [Claude Code MCP setup](https://code.claude.com/docs/en/mcp).
 
@@ -38,6 +39,14 @@ Antigravity's consumer-plan guidance excludes wrapping its headless CLI inside a
 The pairing lasts up to eight hours, remains in local-host memory, and grants access only while a Helios task is active. It can be reused for later tasks in that browser session. After host restart or expiry, select **Prepare desktop connection** again and refresh the updated configuration in the native client. Treat the copied capability as a local credential; keep it out of source repositories, chat and exports.
 
 **Stop agent** cancels the current task and removes candidate access. **Disconnect desktop** revokes the pairing. Cancelling an in-flight native tool request also rejects the current candidate. HTTP connections launch no native-client processes; your existing desktop applications remain open. Claude Desktop owns the small stdio bridge process: closing its stdin ends that process and disposes the HTTP transport. Stopping an individual task keeps that reusable MCP connection idle. Native-client filesystem and shell permissions remain controlled by that client; the Helios tool server supplies neither.
+
+### What the agent sees
+
+`task_context` returns plain JSON: the task typed in Helios (or a note that the request is in the native chat), the requirements, the project files with their hashes, how Helios will apply the result, the time budget and its end time, and the rules and workflow. Desktop tasks default to a 20-minute budget because the agent reasons between tool calls; when the budget runs out the candidate is discarded.
+
+The tools are built to be read by an agent. `schema` lists every construct with a one-line buildable example; `describe_construct` gives one construct's fields. `edit_file` reports syntax and admission problems for the edited file straight away. `outline` lists declarations with their line numbers and field text. `build` returns a summary rather than viewport data: diagnostics, bounds, each body with its features (holes with their diameters), faces with surface type and diameter, and editable parameters. Use the occurrence and face ids from `build` in `measure`.
+
+When a task has ended, the next tool call says why (finished, cancelled, time budget, page reloaded) and asks the user to start another task, so the agent does not guess.
 
 An idle paired client can discover the tool schema but cannot read project source. `finish_task` requires a successful build of the current candidate; a subsequent source edit invalidates that admission. The final Helios build and source-revision check still run before application. The MCP server never exposes a direct apply-to-working-project tool.
 
@@ -73,7 +82,7 @@ Explicit TOML provider settings take precedence over host environment credential
 
 All connection modes can read project documents, inspect compiler schemas, edit candidate source, build, measure and prepare review exports through the existing engineering tools. Installed Codex tasks do not inherit shell access or the user's MCP connectors into the candidate workspace. No agent tool directly applies changes to the working project.
 
-Helios saves **Before AI task** before starting work. A changed candidate must build successfully before it can be applied. Disable **Apply changes after a successful build** to inspect the source diff first. The host's transaction status states whether the working project was updated; the agent's final text can describe an earlier candidate state.
+Helios saves **Before AI task** before starting work. A changed candidate must build successfully before it can be applied. Choose **Review the diff first** to inspect the source diff before applying; after an automatic application, **Undo AI changes** restores the previous source while nothing else has changed, and the **Before AI task** checkpoint remains for later recovery. The host's transaction status states whether the working project was updated; the agent's final text can describe an earlier candidate state.
 
 Cancelled, disconnected and failed tasks are not applied. Source changes made elsewhere invalidate the running task. Use **Version Control** to restore a checkpoint; restoration keeps the later checkpoints. Browser-local history is not a cloud backup.
 

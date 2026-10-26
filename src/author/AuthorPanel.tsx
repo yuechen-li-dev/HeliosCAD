@@ -47,12 +47,18 @@ export function AuthorPanel({ workspace, requirements, onRequirementsChange, onC
   const pairing = pairings[mode];
   const pairingReady = !!pairing && Date.parse(pairing.expiresAt) > Date.now();
   const [probe, setProbe] = useState<ConnectionProbe | null>(null);
+  const [lastSeen, setLastSeen] = useState<number | null>(null);
+  const [clock, setClock] = useState(() => Date.now());
   const [settingsBusy, setSettingsBusy] = useState(false);
   const [settingsMessage, setSettingsMessage] = useState('');
   const [model, setModel] = useState('gpt-6.1-sol');
   const [prompt, setPrompt] = useState('');
   const [autoApply, setAutoApply] = useState(true);
-  const [minutes, setMinutes] = useState(5);
+  // Desktop agents reason between tool calls, so their tasks get a longer default budget.
+  const [chosenMinutes, setMinutes] = useState<number | null>(null);
+  const minutes = chosenMinutes ?? (desktop ? 20 : 5);
+  /** The last auto-applied change, so it can be undone in one step while nothing else has changed. */
+  const [applied, setApplied] = useState<{ base: ProjectSnapshot; project: ProjectSnapshot } | null>(null);
   const [activity, updateActivity] = useState('');
   function setActivity(value: string) { updateActivity(value); onBusyChange(!!value); }
   const [answer, setAnswer] = useState('');
@@ -77,7 +83,17 @@ export function AuthorPanel({ workspace, requirements, onRequirementsChange, onC
     }).catch(async error => { const problem = await accessProblem(error); if (!abort.signal.aborted) { setAccess(problem); setConnection(''); } });
     return () => { abort.abort(); cancellation.current?.abort(); };
   }, [statusAttempt]);
-  useEffect(() => { setTranscript([]); setCandidate(null); setAnswer(''); setOutcome(''); setError(''); setReviewPackage(null); }, [workspace.id, restoredRevision]);
+  // Whether the native client has reached Helios's MCP endpoint with this pairing.
+  useEffect(() => {
+    setLastSeen(null);
+    if (!desktop || !pairingReady) return;
+    let stopped = false;
+    const poll = () => void request<{ lastSeen: string | null }>('/api/helios/author/local/pairing-status', { method: 'POST', body: JSON.stringify({ token: pairing!.token }) })
+      .then(status => { if (!stopped) { setLastSeen(status.lastSeen ? Date.parse(status.lastSeen) : null); setClock(Date.now()); } }).catch(() => undefined);
+    poll(); const timer = setInterval(poll, 4000);
+    return () => { stopped = true; clearInterval(timer); };
+  }, [desktop, pairingReady, pairing?.token]);
+  useEffect(() => { setTranscript([]); setCandidate(null); setApplied(null); setAnswer(''); setOutcome(''); setError(''); setReviewPackage(null); }, [workspace.id, restoredRevision]);
   function changeModel(providerId: string, model: string) {
     setProviderId(providerId); setModel(model);
     setSettingsMessage('');
@@ -114,20 +130,31 @@ export function AuthorPanel({ workspace, requirements, onRequirementsChange, onC
     setActivity('Applying built candidate…');
     try {
       const built = await current.current.apply(next.project, next.revision, 'AI source changes');
-      setCandidate(null);
+      setCandidate(null); setApplied({ base: cloneProject(next.base), project: cloneProject(next.project) });
       setOutcome(built ? 'Working project updated and built.' : 'Source updated; workspace build failed. Last valid geometry retained.');
       try { await onCheckpoint('AI changes applied', next.project); }
       catch { setError('Source applied, but its new checkpoint could not be stored. The pre-task recovery checkpoint is retained.'); }
       if (!built) setError('Source applied, but the workspace build failed. Last valid geometry remains visible; restore a checkpoint to recover.');
     } finally { setActivity(''); }
   }
+  async function undoApplied() {
+    if (!applied) return;
+    const now = current.current.snapshot();
+    if (JSON.stringify(now.project.documents) !== JSON.stringify(applied.project.documents)) {
+      setError('The source changed after the AI change was applied. Restore the "Before AI task" checkpoint instead.'); setApplied(null); return;
+    }
+    setActivity('Undoing AI changes…');
+    try { await current.current.apply(cloneProject(applied.base), now.revision, 'Undo AI changes'); setApplied(null); setOutcome('AI changes undone.'); }
+    catch (error) { setError(errorText(error)); }
+    finally { setActivity(''); }
+  }
   async function run() {
-    if (!prompt.trim() || cancellation.current || current.current.busy) return;
+    if ((!prompt.trim() && !desktop) || cancellation.current || current.current.busy) return;
     const task = prompt.trim(), base = current.current.snapshot();
     const abort = new AbortController(); cancellation.current = abort;
     const deadline = setTimeout(() => abort.abort(new Error('Agent time budget reached. Candidate changes were not applied.')), minutes * 60_000);
     let sandbox: AgentWorkspace | undefined;
-    setError(''); setAnswer(''); setOutcome(''); setCandidate(null); setReviewPackage(null); setActivity('Saving recovery checkpoint…');
+    setError(''); setAnswer(''); setOutcome(''); setCandidate(null); setReviewPackage(null); setApplied(null); setActivity('Saving recovery checkpoint…');
     try {
       await onCheckpoint('Before AI task', base.project);
       sandbox = await AgentWorkspace.create(base.project, abort.signal);
@@ -137,7 +164,8 @@ export function AuthorPanel({ workspace, requirements, onRequirementsChange, onC
       };
       const input = [...transcript, { role: 'user', content: task }];
       const result = mode !== 'api'
-        ? await runLocalAgent(gateway, sandbox, desktop ? '' : model, requirements, input, abort.signal, activity, setAnswer, { agent: mode, pairingToken: pairing?.token })
+        ? await runLocalAgent(gateway, sandbox, desktop ? '' : model, requirements, input, abort.signal, activity, setAnswer,
+          { agent: mode, pairingToken: pairing?.token, applyMode: autoApply ? 'auto' : 'review', budgetMinutes: minutes })
         : await runAgent(gateway, sandbox, model, requirements, input, abort.signal, activity);
       abort.signal.throwIfAborted(); setTranscript(result.transcript); setAnswer(result.text + (result.tokens === null ? '' : `\n\nReported token usage: ${result.tokens}.`)); setPrompt('');
       setReviewPackage(sandbox.reviewPackage ?? null);
@@ -186,6 +214,9 @@ export function AuthorPanel({ workspace, requirements, onRequirementsChange, onC
         <p>{mode === 'claude-desktop' ? 'Use Claude Desktop local MCP settings (Developer / Extensions). A project .mcp.json is not loaded by ordinary chat. The generated bridge runs on this computer; no VM localhost access is needed.'
           : mode === 'claude-code' ? 'Open the configured project in the Code workspace and enable its .mcp.json server. Ordinary Claude chat does not load a project MCP configuration.'
           : 'Add the configuration in Antigravity MCP Servers and refresh the server. Its native chat keeps your existing account.'}</p>
+        {pairingReady && <p className="desktop-agent-presence" role="status">{lastSeen
+          ? `${desktopLabel(mode)} connected ✓ · last call ${Math.max(0, Math.round((clock - lastSeen) / 1000))} s ago`
+          : `${desktopLabel(mode)} has not connected yet. Add the MCP configuration and enable the server there.`}</p>}
         {pairing && <>
           <button onClick={() => void navigator.clipboard.writeText(JSON.stringify(pairing.configuration, null, 2)).then(() => setSettingsMessage('MCP configuration copied. Add it to your native client.')).catch(() => setError('Clipboard unavailable. Use the configuration shown below.'))}>Copy MCP configuration</button>
           <button disabled={!!activity || settingsBusy} onClick={() => {
@@ -195,7 +226,7 @@ export function AuthorPanel({ workspace, requirements, onRequirementsChange, onC
               .catch(error => setError(errorText(error))).finally(() => setSettingsBusy(false));
           }}>Disconnect desktop</button>
           <details><summary>Desktop MCP configuration</summary><pre>{JSON.stringify(pairing.configuration, null, 2)}</pre></details>
-          <button onClick={() => void navigator.clipboard.writeText('Use the Helios MCP server. Call task_context to read the current task, carry it out using only the Helios candidate tools, build the result, then call finish_task with a summary. Do not edit host files or claim the candidate was applied.').then(() => setSettingsMessage('Task prompt copied. Start the task in Helios, then paste this in your native chat.')).catch(() => setError('Clipboard unavailable. Ask your native client to call Helios task_context, build, then finish_task.'))}>Copy desktop task prompt</button>
+          <button onClick={() => void navigator.clipboard.writeText('Use the Helios MCP tools for this. Call task_context first: it has the task (or says the task is this chat request), the project files and how Helios applies the result. Work only through the Helios tools, build until every requested feature is present, then call finish_task with a short summary. Do not edit host files or claim the candidate was applied.').then(() => setSettingsMessage('Task prompt copied. Start the task in Helios, then paste this in your native chat.')).catch(() => setError('Clipboard unavailable. Ask your native client to call Helios task_context, build, then finish_task.'))}>Copy desktop task prompt</button>
           <p>Pairing is limited to eight hours on this local host. Start a task here, then send the copied prompt in {desktopLabel(mode)}. Stop agent revokes the current candidate; your desktop app stays open.</p>
         </>}
       </div>}
@@ -207,10 +238,14 @@ export function AuthorPanel({ workspace, requirements, onRequirementsChange, onC
       </select></label>}
       <p>Changing provider or model starts a fresh conversation. Your project, requirements and checkpoints stay in place.</p>
       <label>Engineering requirements<textarea aria-label="Engineering requirements" value={requirements} disabled={!!activity || workspace.busy} placeholder="Interfaces, envelope, material, tolerances…" onChange={e => { onRequirementsChange(e.target.value); setCandidate(null); }} /></label>
-      <label><input type="checkbox" checked={autoApply} disabled={!!activity} onChange={e => setAutoApply(e.target.checked)} />Apply changes after a successful build</label>
+      <fieldset className="author-apply-mode" disabled={!!activity}><legend>After a successful build</legend>
+        <label><input type="radio" name="author-apply-mode" checked={autoApply} onChange={() => setAutoApply(true)} />Apply right away <small>for small steps; a checkpoint is saved first and Undo is one click</small></label>
+        <label><input type="radio" name="author-apply-mode" checked={!autoApply} onChange={() => setAutoApply(false)} />Review the diff first <small>for larger changes</small></label>
+      </fieldset>
       <label>Task budget (minutes)<input aria-label="Agent time budget" type="number" min="1" max="60" value={minutes} disabled={!!activity} onChange={e => setMinutes(Math.max(1, Math.min(60, Number(e.target.value) || 5)))} /></label>
       {error && <p role="alert">{error}</p>}
       {outcome && <p role="status">{outcome}</p>}
+      {applied && !activity && <button onClick={() => void undoApplied()}>Undo AI changes</button>}
       {answer && <div className="agent-answer">{answer}</div>}
       {reviewPackage && <button onClick={() => {
         const url = URL.createObjectURL(new Blob([reviewPackage.bytes.slice().buffer], { type: 'application/zip' }));
@@ -222,10 +257,10 @@ export function AuthorPanel({ workspace, requirements, onRequirementsChange, onC
         <button disabled={!!activity} onClick={() => setCandidate(null)}>Discard candidate</button>
       </div>}
     </div>
-    <div className="author-composer"><textarea aria-label="Engineering intent" value={prompt} disabled={!!activity} placeholder="Describe the part or change…" onChange={e => setPrompt(e.target.value)} />
+    <div className="author-composer"><textarea aria-label="Engineering intent" value={prompt} disabled={!!activity} placeholder={desktop ? `Optional: describe the change here, or just ask ${desktopLabel(mode)} in its chat.` : 'Describe the part or change…'} onChange={e => setPrompt(e.target.value)} />
       {activity ? <button disabled={activity === 'Applying built candidate…' || !cancellation.current} onClick={() => cancellation.current?.abort(new Error('Cancelled. Candidate changes were not applied.'))}>{activity === 'Applying built candidate…' || !cancellation.current ? 'Finishing transaction…' : 'Stop agent'}</button>
-        : <button disabled={!configured || (!desktop && !model) || settingsBusy || !!local?.error || !prompt.trim() || workspace.busy} onClick={() => void run()}>{desktop ? 'Start desktop task' : 'Run agent'}</button>}
-      <button disabled={!!activity} onClick={() => { setTranscript([]); setCandidate(null); setAnswer(''); setOutcome(''); setError(''); setReviewPackage(null); }}>New conversation</button>
+        : <button disabled={!configured || (!desktop && !model) || settingsBusy || !!local?.error || (!desktop && !prompt.trim()) || workspace.busy} onClick={() => void run()}>{desktop ? 'Start desktop task' : 'Run agent'}</button>}
+      <button disabled={!!activity} onClick={() => { setTranscript([]); setCandidate(null); setApplied(null); setAnswer(''); setOutcome(''); setError(''); setReviewPackage(null); }}>New conversation</button>
     </div>
   </section>;
 }

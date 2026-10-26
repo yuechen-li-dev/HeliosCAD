@@ -1,5 +1,6 @@
 import { Aetheris, type ModelSession, type MeasurementRequest, type ExportFormat } from '@aetheris/cad';
 import { reviewZip, type ReviewManifest } from './engineeringEvidence';
+import { buildSummary, describeConstruct, outlineSummary, schemaIndex } from './agentResults';
 
 import { cloneProject, type ProjectSnapshot } from '../app/projectSnapshot';
 export interface AgentTurn { output: unknown[]; text: string; calls: { callId: string; name: string; arguments: string }[]; inputTokens: number; outputTokens: number }
@@ -41,11 +42,15 @@ export class AgentWorkspace {
         throw new Error('Use a project-relative document name.');
       return value;
     };
-    if (name === 'schema') return { authoring: await this.cad.language.schema(), measurement: {
+    if (name === 'schema') return { ...schemaIndex(await this.cad.language.schema()), measurement: {
       modes: ['points', 'planes', 'axes'],
       request: '{ mode, first: { occurrenceId: string|null, faceId: number|null, rayOrigin: number[3], rayDirection: number[3] }, second?: same pick, allowApproximate: boolean }',
-      note: 'Picks are world-space rays against the actual built model. Use build bounds and occurrence identities; do not invent measurement results.'
+      note: 'Picks are world-space rays against the actual built model. Use build bounds, occurrence ids and face ids; do not invent measurement results.'
     } };
+    if (name === 'describe_construct') {
+      if (typeof args.name !== 'string' || !args.name.trim()) throw new Error('name must be a construct name from schema.');
+      return describeConstruct(await this.cad.language.schema(), args.name);
+    }
     if (name === 'read_file') { const key = path(); if (!Object.hasOwn(this.project.documents, key)) throw new Error('Document not found.'); return { path: key, source: this.project.documents[key] }; }
     if (name === 'edit_file') {
       const key = path(), before = args.before, after = args.after;
@@ -57,11 +62,17 @@ export class AgentWorkspace {
       if (Object.values({ ...this.project.documents, [key]: next }).reduce((n, s) => n + s.length, 0) > 2_000_000) throw new Error('Candidate project exceeds the source budget.');
       this.project.documents[key] = next; ++this.version;
       this.reviewPackage = null;
-      return { path: key, status: 'candidate-edited', appliedToWorkingProject: false, buildRequired: true };
+      // Catch a typo or an unsupported combination now rather than one build later. Geometry still needs build.
+      const problems = key.endsWith('.firmament') ? await this.cad.language.analyze(next, { sourceName: key, sourceRevision: String(this.version) })
+        .then(a => a.diagnostics.filter(d => d.severity === 'error').slice(0, 10).map(d => ({ code: d.code.split(': ')[0], message: d.message.replace(/^[\w-]+: /, ''),
+          ...(d.source ? { line: d.source.line, column: d.source.column } : {}) })))
+        .catch(() => null) : null;
+      return { path: key, status: 'candidate-edited', appliedToWorkingProject: false, buildRequired: true, ...(problems ? { problems } : {}) };
     }
     if (name === 'outline') {
       const key = path(); if (!Object.hasOwn(this.project.documents, key)) throw new Error('Document not found.');
-      return this.cad.language.outline(this.project.documents[key], { sourceName: key, sourceRevision: String(this.version), projectRoot: this.project.root, projectDocuments: this.project.documents });
+      const outline = await this.cad.language.outline(this.project.documents[key], { sourceName: key, sourceRevision: String(this.version), projectRoot: this.project.root, projectDocuments: this.project.documents });
+      return outlineSummary(outline, this.project.documents[key]);
     }
     if (name === 'build') {
       this.builtVersion = -1;
@@ -70,12 +81,7 @@ export class AgentWorkspace {
       const previous = this.model; this.model = result.model;
       if (previous) await previous.dispose();
       if (result.model) this.builtVersion = this.version;
-      return { accepted: !!result.model, diagnostics: result.diagnostics, tree: result.model?.tree,
-        properties: result.model?.properties, measurementAvailable: result.model?.measurementAvailable,
-        bounds: result.model ? { minimumMm: result.model.mesh.minimumMm, maximumMm: result.model.mesh.maximumMm } : null,
-        occurrences: result.model?.mesh.occurrences,
-        selections: result.model?.mesh.definitions.map(d => ({ id: d.id, faces: d.ranges, edges: d.edges?.map(e => ({ edgeId: e.edgeId })) })),
-        status: result.model ? 'candidate-built-not-applied' : 'candidate-rejected' };
+      return buildSummary(result);
     }
     if (name === 'measure') {
       if (!this.built) throw new Error('Build the current candidate successfully before measuring it.');

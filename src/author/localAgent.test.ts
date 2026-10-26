@@ -40,7 +40,7 @@ describe('installed agent task channel', () => {
     const abort = new AbortController();
     const result = runLocalAgent(gateway, workspace(), '', '', [], abort.signal, vi.fn(), vi.fn());
     const rejected = expect(result).rejects.toThrow('stop'); await flush(); abort.abort(new Error('stop')); await rejected;
-    expect(Socket.latest.sent.at(-1)).toEqual({ type: 'cancel' }); expect(Socket.latest.close).toHaveBeenCalled();
+    expect(Socket.latest.sent.at(-1)).toEqual({ type: 'cancel', reason: 'stop' }); expect(Socket.latest.close).toHaveBeenCalled();
     const failed = runLocalAgent(gateway, workspace(), '', '', [], new AbortController().signal, vi.fn(), vi.fn());
     const failure = expect(failed).rejects.toThrow('quota'); await flush(); Socket.latest.receive({ type: 'error', message: 'quota' }); await failure;
     const disconnected = runLocalAgent(gateway, workspace(), '', '', [], new AbortController().signal, vi.fn(), vi.fn());

@@ -26,7 +26,7 @@ describe('separate workspace panels', () => {
     const view = render(<WorkspacePanels workspace={workspace} active="llm" />);
     await screen.findByRole('option', { name: 'Claude' });
     fireEvent.change(screen.getByLabelText('Engineering requirements'), { target: { value: 'Keep holes' } });
-    fireEvent.click(screen.getByLabelText('Apply changes after a successful build'));
+    fireEvent.click(screen.getByLabelText(/Review the diff first/));
     fireEvent.change(screen.getByLabelText('Engineering intent'), { target: { value: 'Make candidate' } });
     fireEvent.click(screen.getByRole('button', { name: 'Run agent' }));
     await screen.findByRole('button', { name: 'Apply candidate' });
@@ -80,6 +80,33 @@ describe('separate workspace panels', () => {
     view.rerender(<WorkspacePanels workspace={workspace} active="llm" />);
     expect(screen.getByLabelText('Engineering intent')).toHaveValue('My next request');
     expect(screen.getByLabelText('Engineering requirements')).toHaveValue('Later requirements');
+  });
+
+  it('undoes an automatically applied AI change in one step, and refuses once the source moved on', async () => {
+    const id = crypto.randomUUID();
+    let project = { root: 'part.firmament', documents: { 'part.firmament': 'Model Before {}' } }, revision = 0;
+    const after = { root: project.root, documents: { 'part.firmament': 'Model After {}' } };
+    const apply = vi.fn(async (next: ProjectSnapshot) => { project = structuredClone(next) as typeof project; revision++; return true; });
+    const workspace = { id, snapshot: () => ({ project, revision }), apply };
+    for (let i = 0; i < 2; i++) vi.mocked(AgentWorkspace.create).mockResolvedValueOnce({ project: after, built: true, dispose: vi.fn() } as unknown as AgentWorkspace);
+    vi.mocked(runAgent).mockResolvedValue({ text: 'Changed', tokens: 1, transcript: [] });
+    render(<WorkspacePanels workspace={workspace} active="llm" />);
+    await screen.findByRole('option', { name: 'Claude' });
+    fireEvent.change(screen.getByLabelText('Engineering intent'), { target: { value: 'Change it' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Run agent' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Undo AI changes' }));
+    await screen.findByText('AI changes undone.');
+    expect(project.documents['part.firmament']).toBe('Model Before {}');
+    expect(apply).toHaveBeenLastCalledWith(expect.objectContaining({ documents: { 'part.firmament': 'Model Before {}' } }), 1, 'Undo AI changes');
+
+    fireEvent.change(screen.getByLabelText('Engineering intent'), { target: { value: 'Change it again' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Run agent' }));
+    const undo = await screen.findByRole('button', { name: 'Undo AI changes' });
+    project = { ...project, documents: { 'part.firmament': 'Model EditedByHand {}' } };
+    fireEvent.click(undo);
+    await screen.findByText(/Restore the "Before AI task" checkpoint instead/);
+    expect(project.documents['part.firmament']).toBe('Model EditedByHand {}');
+    vi.mocked(runAgent).mockReset();
   });
 
   it('shows automatic agent checkpoints in Version Control and locks restore until the task finishes', async () => {

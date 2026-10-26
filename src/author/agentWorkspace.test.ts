@@ -7,8 +7,8 @@ import { projectHashes } from './engineeringEvidence';
 
 const project = (): ProjectSnapshot => ({ root: 'part.firmament', documents: { 'part.firmament': 'Model Part { units: mm Box Body { size: [10mm,20mm,30mm] } }', 'module.firmament': 'Struct Module {}' } });
 function compiler(accepted = true) {
-  const model = { dispose: vi.fn(), tree: {}, properties: [], mesh: { definitions: [], occurrences: [] }, measure: vi.fn().mockResolvedValue({ accepted: true }) };
-  return { compile: vi.fn().mockResolvedValue({ model: accepted ? model : null, diagnostics: [] }), terminate: vi.fn(), language: { outline: vi.fn(), schema: vi.fn() }, model };
+  const model = { dispose: vi.fn(), tree: { rootId: 'm', nodes: [{ id: 'm', kind: 'Model', name: 'Part', children: [], visible: true }] }, properties: [], mesh: { definitions: [], occurrences: [] }, measure: vi.fn().mockResolvedValue({ accepted: true }) };
+  return { compile: vi.fn().mockResolvedValue({ model: accepted ? model : null, diagnostics: [] }), terminate: vi.fn(), language: { outline: vi.fn(), schema: vi.fn(), analyze: vi.fn().mockResolvedValue({ diagnostics: [] }) }, model };
 }
 describe('agent compiler workspace', () => {
   it('routes registered engineering tools through the gateway and exports only a fresh successful candidate', async () => {

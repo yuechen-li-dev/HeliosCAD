@@ -5,7 +5,7 @@ import { executeAgentTool, type AgentGateway, type AgentWorkspace } from './agen
 /** Helios task channel. Vendor protocols and authentication stay in the local host. */
 export async function runLocalAgent(gateway: AgentGateway, workspace: AgentWorkspace, model: string,
   requirements: string, input: unknown[], signal: AbortSignal, activity: (text: string) => void, text: (value: string) => void,
-  connection: { agent: string; pairingToken?: string } = { agent: 'codex' }) {
+  connection: { agent: string; pairingToken?: string; applyMode?: 'auto' | 'review'; budgetMinutes?: number } = { agent: 'codex' }) {
   const { ticket } = await request<{ ticket: string }>('/api/helios/author/local/ticket', { method: 'POST', body: '{}', signal });
   const hashes = await projectHashes(workspace.project); signal.throwIfAborted();
   const url = new URL('/api/helios/author/local/run', location.href);
@@ -22,7 +22,10 @@ export async function runLocalAgent(gateway: AgentGateway, workspace: AgentWorks
       else resolve({ text: answer ?? '', transcript: [...transcript, { role: 'assistant', content: answer ?? '' }], tokens: null });
     }
     function abort() {
-      if (socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify({ type: 'cancel' }));
+      // The reason reaches a desktop agent's next tool call, so it can tell the user what happened.
+      const reason = signal.reason instanceof DOMException && signal.reason.name === 'AbortError' ? 'Helios closed the task (the page reloaded or the panel closed). Candidate changes were not applied.'
+        : signal.reason instanceof Error ? signal.reason.message : typeof signal.reason === 'string' ? signal.reason : undefined;
+      if (socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify({ type: 'cancel', ...(reason ? { reason } : {}) }));
       finish(signal.reason ?? new Error('Agent cancelled.'));
     }
     signal.addEventListener('abort', abort, { once: true });
@@ -30,7 +33,8 @@ export async function runLocalAgent(gateway: AgentGateway, workspace: AgentWorks
     socket.onopen = () => {
       activity(connection.agent === 'codex' ? 'Connecting to Codex · ChatGPT subscription…' : 'Waiting for the connected desktop client…');
       socket.send(JSON.stringify({ model, root: workspace.project.root, documents: Object.keys(workspace.project.documents),
-        documentHashes: hashes, requirements, input, referenceIds: workspace.project.referenceIds ?? [], agent: connection.agent, pairingToken: connection.pairingToken }));
+        documentHashes: hashes, requirements, input, referenceIds: workspace.project.referenceIds ?? [], agent: connection.agent, pairingToken: connection.pairingToken,
+        applyMode: connection.applyMode, budgetMinutes: connection.budgetMinutes }));
     };
     socket.onmessage = event => {
       queue = queue.then(async () => {
