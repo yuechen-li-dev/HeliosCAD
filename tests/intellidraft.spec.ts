@@ -213,6 +213,49 @@ async function pointerDrag(page: Page, p: Locator, from: [number, number], to: [
   await expect(p.locator('.draft-alignment-guide')).toHaveCount(0);
 }
 
+test('moving construction stays local during a long drag, commits on drop and cancels cleanly', async ({ page }) => {
+  await start(page); const p = panel(page);
+  for (let i = 0; i < 8; i++) await addShape(p, { name: `pad${i}`, 'New width': 8, 'New height': 6, 'New center X': -30 + i % 4 * 20, 'New center Y': i < 4 ? -12 : 12 });
+  await select(p); await p.getByRole('button', { name: 'Fit construction', exact: true }).click();
+  const from = await canvasPosition(p, 30, 12), to = await canvasPosition(p, 35, 17);
+  await page.mouse.move(from.x, from.y); await page.keyboard.down('Alt'); await page.mouse.down();
+  // Observe the real SVG path; no test replacement for pointer handling or compiler editing.
+  await p.getByRole('group', { name: 'Construction and Profile preview' }).evaluate(element => {
+    const svg = element as SVGSVGElement, original = svg.getScreenCTM;
+    const measurement = { moves: 0, matrixReads: 0, frames: 0, frameMs: [] as number[], checking: false };
+    let last = performance.now(), frame = 0;
+    const tick = (now: number) => { measurement.frames++; measurement.frameMs.push(now - last); last = now; frame = requestAnimationFrame(tick); };
+    frame = requestAnimationFrame(tick);
+    svg.getScreenCTM = function () { measurement.matrixReads++; return original.call(this); };
+    const moved = () => { measurement.moves++; if (document.querySelector('.intellidraft footer [role="status"]')?.textContent?.includes('Checking with compiler')) measurement.checking = true; };
+    svg.addEventListener('pointermove', moved);
+    svg.addEventListener('pointerup', () => {
+      cancelAnimationFrame(frame); svg.getScreenCTM = original; svg.removeEventListener('pointermove', moved);
+      Object.assign(window, { draftDragMeasurement: measurement });
+    }, { once: true, capture: true });
+  });
+  await page.mouse.move(to.x, to.y, { steps: 120 });
+  // Source values remain accepted values until release, while the gold preview follows the pointer.
+  await expect(p.getByLabel('Center X', { exact: true })).toHaveValue('30');
+  await expect(p.getByLabel('Center Y', { exact: true })).toHaveValue('12');
+  await expect(p.locator('.draft-gesture-preview')).toHaveCount(1);
+  await page.mouse.up(); await page.keyboard.up('Alt');
+  await expect(p.getByLabel('Center X', { exact: true })).toHaveValue('35');
+  await expect(p.getByLabel('Center Y', { exact: true })).toHaveValue('17');
+  const measurement = await page.evaluate(() => (window as unknown as { draftDragMeasurement: { moves: number; matrixReads: number; checking: boolean } }).draftDragMeasurement);
+  expect(measurement.moves).toBeGreaterThan(0); expect(measurement.matrixReads).toBeLessThanOrEqual(measurement.moves + 1); expect(measurement.checking).toBe(false);
+  await writeFile(resolve(output, 'drag-measurement.json'), JSON.stringify(measurement, null, 2));
+  const a = await canvasPosition(p, 35, 17), b = await canvasPosition(p, 37, 19);
+  await page.mouse.move(a.x, a.y); await page.mouse.down(); await page.mouse.move(b.x, b.y, { steps: 30 });
+  await page.keyboard.press('Escape'); await page.mouse.up();
+  await expect(p.getByLabel('Center X', { exact: true })).toHaveValue('35');
+  await expect(p.locator('.draft-gesture-preview')).toHaveCount(0);
+  await act(p, 'Undo');
+  await expect(p.getByLabel('Center X', { exact: true })).toHaveValue('30');
+  await expect(p.getByLabel('Center Y', { exact: true })).toHaveValue('12');
+  await page.screenshot({ path: resolve(output, 'drag-qualification.png') });
+});
+
 test('draw, dimension and independently drag rectangles with temporary alignment, then trace the L', async ({ page }) => {
   await start(page); const p = panel(page);
   await p.getByLabel('Construction name', { exact: true }).fill('outer');

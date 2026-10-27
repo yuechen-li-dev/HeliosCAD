@@ -176,3 +176,51 @@ test('a finite pocket can be created from a block through graph controls', async
   const pocketed = await step(page, 'pocket');
   expect((pocketed.match(/ADVANCED_FACE\(/g) ?? []).length).toBeGreaterThan(6);
 });
+
+async function moveCard(page: Page, selector: string) {
+  const card = page.locator(selector).first();
+  const before = await card.getAttribute('style');
+  const header = await card.locator('.graph-node-drag').boundingBox(); expect(header).not.toBeNull();
+  await page.mouse.move(header!.x + header!.width / 2, header!.y + header!.height / 2);
+  await page.mouse.down(); await page.mouse.move(header!.x + header!.width / 2 + 65, header!.y + header!.height / 2 + 45, { steps: 90 }); await page.mouse.up();
+  await expect(card).not.toHaveAttribute('style', before!);
+  return { card, before, moved: await card.getAttribute('style') };
+}
+
+test('card dragging persists across selection, source view and rebuild without changing the part', async ({ page }) => {
+  await newBlock(page);
+  const source = (await saveSource(page, 'layout-before')).source;
+  const geometry = await step(page, 'layout-before');
+  const { card, moved } = await moveCard(page, '.react-flow__node-unit');
+  await card.locator('.graph-node-drag').click();
+  await expect(card).toHaveAttribute('style', moved!);
+  await page.getByRole('tab', { name: 'Source', exact: true }).click();
+  await page.getByRole('tab', { name: 'Graph', exact: true }).click();
+  await expect(card).toHaveAttribute('style', moved!);
+  await page.getByRole('button', { name: 'Build', exact: true }).click(); await ready(page);
+  await expect(card).toHaveAttribute('style', moved!);
+  expect((await saveSource(page, 'layout-after')).source).toBe(source);
+  expect(await step(page, 'layout-after')).toBe(geometry);
+  await inspector(page).getByRole('group', { name: 'Size', exact: true }).getByLabel('X', { exact: true }).fill('62');
+  await inspector(page).getByRole('button', { name: 'Apply changes', exact: true }).click(); await ready(page);
+  await expect(card).toHaveAttribute('style', moved!);
+  await expect(page.getByRole('button', { name: 'Size [62mm, 40mm, 12mm]', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Auto arrange', exact: true }).click();
+  await expect(card).not.toHaveAttribute('style', moved!);
+  await page.screenshot({ path: resolve(output, 'card-layout.png') });
+});
+
+test('assembly card dragging survives switching to Parts and back without moving physical occurrences', async ({ page }) => {
+  await page.goto('/'); await page.getByRole('button', { name: 'New assembly', exact: true }).click();
+  await expect(page.locator('.status-ready')).toContainText('Ready', { timeout: 120_000 });
+  await page.getByRole('tab', { name: 'Graph', exact: true }).click(); await ready(page);
+  const source = (await saveSource(page, 'assembly-layout-before')).source;
+  const { card, moved } = await moveCard(page, '.react-flow__node-part');
+  await page.getByRole('tab', { name: 'Parts', exact: true }).click();
+  await expect(page.locator('.react-flow__node-unit').first()).toBeVisible();
+  await page.getByRole('tab', { name: 'Assembly', exact: true }).click();
+  await expect(card).toHaveAttribute('style', moved!);
+  expect((await saveSource(page, 'assembly-layout-after')).source).toBe(source);
+  await page.getByRole('button', { name: 'Auto arrange', exact: true }).click();
+  await expect(card).not.toHaveAttribute('style', moved!);
+});

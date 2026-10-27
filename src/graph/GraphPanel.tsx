@@ -3,6 +3,7 @@ import { Background, BackgroundVariant, Controls, Handle, MarkerType, Position, 
 import '@xyflow/react/dist/style.css';
 import type { Diagnostic, LanguageEditOperation, LanguageOutline, OutlineNode, PaletteItem } from '@aetheris/cad';
 import { useGraphBodyLayout } from './graphBodyLayout';
+import { useGraphNodes, type GraphLayouts } from './useGraphNodes';
 import { reorderOperation, wireChoices, type WireChoice } from './graphAuthoring';
 import { PalettePopover } from './PalettePopover';
 import { AssemblyCanvas, type AssemblyAuthoring } from './AssemblyCanvas';
@@ -25,6 +26,7 @@ export interface GraphAuthoring {
 export interface GraphAction { id: string; label: string; description: string; reason?: string; run(): void }
 
 interface Props {
+  layouts: GraphLayouts;
   pending?: boolean;
   outline: LanguageOutline | null;
   error: string | null;
@@ -70,7 +72,7 @@ const UnitNode = memo(function UnitNode({ data, selected }: NodeProps<Node<UnitD
   return <div className={`graph-unit category-${unit.category}${selected ? ' selected' : ''}`} style={{ width: unit.width, minHeight: unit.height }}
     title={external ? `Defined in ${unit.document}` : 'Double-click to open in source'}>
     <Handle type="target" position={direction === 'LR' ? Position.Left : Position.Top} isConnectable={editable && !external} />
-    <header>
+    <header className="graph-node-drag" title="Drag to arrange this card; double-click to open source">
       <strong>{unit.title}</strong>
       {problems > 0 && <span className="graph-problems" aria-label={`${problems} problems`}>{problems}</span>}
       <small>{external ? `${unit.kind} · ${unit.document}` : unit.kind}</small>
@@ -107,12 +109,12 @@ const nodeTypes = { unit: UnitNode };
 
 type PendingWire = { provider: string; consumer: string; x: number; y: number };
 
-function Canvas({ outline, error, diagnostics, selection, theme, onSelect, onOpenSource, direction, authoring, paletteAt, setPaletteAt, host }:
-  Props & { direction: GraphDirection; paletteAt: { x: number; y: number } | null; setPaletteAt(at: { x: number; y: number } | null): void; host: RefObject<HTMLDivElement | null> }) {
+function Canvas({ outline, error, diagnostics, selection, theme, onSelect, onOpenSource, direction, authoring, paletteAt, setPaletteAt, host, positions, layoutRevision }:
+  Props & { positions: Map<string, { x: number; y: number }>; layoutRevision: number; direction: GraphDirection; paletteAt: { x: number; y: number } | null; setPaletteAt(at: { x: number; y: number } | null): void; host: RefObject<HTMLDivElement | null> }) {
   const flow = useReactFlow();
   const graph = useMemo(() => outline ? buildPartGraph(outline) : null, [outline]);
   const laid = useMemo(() => graph ? layoutPartGraph(graph, direction) : null, [graph, direction]);
-  const structure = useMemo(() => laid ? direction + laid.units.map(u => u.id).join('|') : '', [laid, direction]);
+  const structure = useMemo(() => laid ? direction + layoutRevision + laid.units.map(u => u.id).join('|') : '', [laid, direction, layoutRevision]);
   const problems = useMemo(() => {
     const counts = new Map<string, number>();
     if (!graph) return counts;
@@ -127,10 +129,6 @@ function Canvas({ outline, error, diagnostics, selection, theme, onSelect, onOpe
   const [dragging, setDragging] = useState<string | null>(null);
   const [drop, setDrop] = useState<DropMark>(null);
   const [wire, setWire] = useState<PendingWire | null>(null);
-  // Nodes are rebuilt from the outline on every edit, selection and drag. React Flow forgets the
-  // measured size of a node object it has not seen and hides it until it measures again, which a
-  // quick succession of rebuilds can starve: carry the last measured size into each rebuild.
-  const measured = useRef(new Map<string, { width: number; height: number }>());
   const editable = !!authoring;
 
   const dropRow = (targetId: string, place: 'before' | 'after') => {
@@ -142,8 +140,8 @@ function Canvas({ outline, error, diagnostics, selection, theme, onSelect, onOpe
     if (operation && node && target) authoring.onReorder(operation, `Moved ${node.name ?? node.kind} ${place} ${target.name ?? target.kind}`);
   };
 
-  const nodes: Node<UnitData>[] = useMemo(() => !laid || !graph ? [] : laid.units.map(unit => ({
-    id: unit.id, type: 'unit', position: { x: unit.x, y: unit.y }, draggable: false, connectable: editable, measured: measured.current.get(unit.id),
+  const input: Node<UnitData>[] = useMemo(() => !laid || !graph ? [] : laid.units.map(unit => ({
+    id: unit.id, type: 'unit', position: { x: unit.x, y: unit.y }, dragHandle: '.graph-node-drag', connectable: editable,
     selected: selection?.unitId === unit.id,
     data: { unit, direction, problems: problems.get(unit.id) ?? 0, selectedRow: selection?.unitId === unit.id ? selection.rowId : null,
       editable, drop: drop && unit.rows.some(r => r.id === drop.rowId) ? drop : null,
@@ -152,6 +150,7 @@ function Canvas({ outline, error, diagnostics, selection, theme, onSelect, onOpe
       onRow: row => onSelect(unit.id, row, graph), onOpen: row => onOpenSource(unit.id, row, graph),
       onDragRow: setDragging, onMark: setDrop, onDropRow: dropRow },
   })), [laid, graph, direction, selection, problems, onSelect, onOpenSource, editable, drop, dragging]);
+  const { nodes, onNodesChange } = useGraphNodes(input, positions, layoutRevision);
 
   const edges: Edge[] = useMemo(() => !laid ? [] : laid.links.map(link => {
     const active = !!selection && (link.from === selection.unitId || link.to === selection.unitId);
@@ -195,9 +194,9 @@ function Canvas({ outline, error, diagnostics, selection, theme, onSelect, onOpe
 
   return <>
     {laid?.units.length ? <ReactFlow nodes={nodes} edges={edges} nodeTypes={nodeTypes} colorMode={theme === 'apollonia' ? 'light' : 'dark'}
-      nodesDraggable={false} nodesConnectable={editable} elementsSelectable={false} minZoom={0.15} maxZoom={2}
+      nodesDraggable nodesConnectable={editable} elementsSelectable={false} minZoom={0.15} maxZoom={2}
       zoomOnDoubleClick={false} connectionRadius={36}
-      onNodesChange={changes => { for (const change of changes) if (change.type === 'dimensions' && change.dimensions) measured.current.set(change.id, change.dimensions); }}
+      onNodesChange={onNodesChange}
       onNodeClick={(_, node) => graph && onSelect(node.id, null, graph)}
       onNodeDoubleClick={(_, node) => graph && onOpenSource(node.id, null, graph)}
       // A wire lands on the card under the pointer, not only on its small input handle.
@@ -242,6 +241,13 @@ export function GraphPanel(props: Props) {
   // An assembly document opens on its Assembly view; a part model has only Parts.
   const [view, setView] = useState<'parts' | 'assembly'>(() => { try { return localStorage.getItem('helios-graph-view') === 'parts' ? 'parts' : 'assembly'; } catch { return 'assembly'; } });
   const showAssembly = view === 'assembly' && !!props.assembly?.graph;
+  const [layoutRevision, setLayoutRevision] = useState(0);
+  const scope = JSON.stringify([props.outline?.document, showAssembly ? props.assembly?.graph?.assembly.id : 'parts']);
+  const positions = useMemo(() => {
+    let saved = props.layouts.get(scope);
+    if (!saved) { saved = new Map(); props.layouts.set(scope, saved); }
+    return saved;
+  }, [props.layouts, scope]);
   const chooseView = (next: 'parts' | 'assembly') => { setView(next); try { localStorage.setItem('helios-graph-view', next); } catch { /* per-viewer convenience */ } };
   useEffect(() => {
     const element = canvas.current;
@@ -279,15 +285,16 @@ export function GraphPanel(props: Props) {
           <small>{count(summary.units, 'authoring step')}, {count(summary.links, 'connection')}. {props.authoring
             ? 'Select a card to edit dimensions or add a hole and edge finish. + Add opens the full catalog.' : 'Select a card to inspect its values.'}</small></> : <span>Model graph</span>}
       </div>}
+      <button className="graph-add" title="Reset card positions to the automatic layout" onClick={() => { positions.clear(); setLayoutRevision(value => value + 1); }}>Auto arrange</button>
       {props.authoring && !showAssembly && <button className="graph-add" aria-label="Add a body or feature" onClick={() => setPaletteAt(at => at ? null : { x: 12, y: 8 })}>+ Add</button>}
       {showAssembly && asm?.authoring?.onCreateMate && <button className="graph-add" onClick={asm.authoring.onCreateMate}>+ Mate</button>}
     </div>
     <div className={`graph-body${body.stacked ? ' stacked' : ''}${props.pending ? ' authoring-open' : ''}`} ref={body.ref}>
       <div className="graph-canvas" inert={props.pending} ref={canvas} style={{ ...body.canvas, visibility: props.pending ? 'hidden' : undefined }}>
-        <ReactFlowProvider>{showAssembly && asm?.graph && props.outline
+        <ReactFlowProvider key={scope}>{showAssembly && asm?.graph && props.outline
           ? <AssemblyCanvas key={asm.graph.assembly.id} outline={props.outline} graph={asm.graph} theme={props.theme} selectedId={asm.selectedId}
-              onSelect={asm.onSelect} onOpenSource={asm.onOpenSource} authoring={asm.authoring} host={canvas} direction={direction} />
-          : <Canvas {...props} direction={direction} paletteAt={paletteAt} setPaletteAt={setPaletteAt} host={canvas} />}</ReactFlowProvider>
+              onSelect={asm.onSelect} onOpenSource={asm.onOpenSource} authoring={asm.authoring} host={canvas} direction={direction} positions={positions} layoutRevision={layoutRevision} />
+          : <Canvas {...props} direction={direction} paletteAt={paletteAt} setPaletteAt={setPaletteAt} host={canvas} positions={positions} layoutRevision={layoutRevision} />}</ReactFlowProvider>
       </div>
       {props.inspector && <div className="graph-inspector-slot" style={props.pending ? { position: 'absolute', inset: 0 } : body.inspector}>{props.inspector}</div>}
     </div>

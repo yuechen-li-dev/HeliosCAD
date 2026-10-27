@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode, type PointerEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode, type PointerEvent } from 'react';
 import type { SketchShape } from '@aetheris/cad';
 import { arcEnd, inferSnap, snap, snapStep, type Snap, type SnapCurve } from './draftGeometry';
 
@@ -6,7 +6,8 @@ type Point = [number, number];
 export type CanvasBounds = { x: number; y: number; width: number; height: number };
 export type CanvasShape = { shape: SketchShape; bounds: CanvasBounds; owner: string };
 type Alignment = { axis: 'x' | 'y'; value: number; label: string };
-type Gesture = { pointer: number; start: Point; current: Point; shape?: CanvasShape; pan?: CanvasBounds; guides: Alignment[]; step: number; startName?: string; currentName?: string; snap?: Snap };
+type Gesture = { pointer: number; start: Point; current: Point; shape?: CanvasShape; pan?: { bounds: CanvasBounds; screen: Point; units: Point }; guides: Alignment[]; step: number; startName?: string; currentName?: string; snap?: Snap };
+type PointerSample = { clientX: number; clientY: number; altKey: boolean; pointerId: number };
 export type DrawnRectangle = { x: number; y: number; width: number; height: number };
 /** A picked stroke point: grid-snapped coordinates, or an existing named point it snapped onto. */
 export type StrokePoint = { at: Point; name?: string; snap?: Snap };
@@ -52,13 +53,21 @@ export function ConstructionCanvas({ bounds, shapes, selected, drawing, movable,
   onArea?(point: Point): void; onHover?(point: Point | null): void;
 }) {
   const svg = useRef<SVGSVGElement>(null), gesture = useRef<Gesture | null>(null), fitted = useRef(!autoFit);
+  const frame = useRef(0), queued = useRef<PointerSample | null>(null);
+  const cancelFrame = () => { cancelAnimationFrame(frame.current); frame.current = 0; queued.current = null; };
   const [camera, setCamera] = useState<CanvasBounds>(bounds), [active, setActive] = useState<Gesture | null>(null);
   const [notice, setNotice] = useState('');
   const [arcStage, setArcStage] = useState<ArcStage | null>(null);
   const [hover, setHover] = useState<Snap | null>(null);
   useEffect(() => setArcStage(null), [stroke, revision, disabled]);
   const [pixels, setPixels] = useState(0);
-  useEffect(() => { gesture.current = null; setActive(null); }, [revision, disabled]);
+  useEffect(() => {
+    cancelFrame();
+    const pointer = gesture.current?.pointer;
+    gesture.current = null; setActive(null);
+    if (pointer !== undefined && svg.current?.hasPointerCapture(pointer)) svg.current.releasePointerCapture(pointer);
+  }, [revision, disabled]);
+  useEffect(() => cancelFrame, []);
   useEffect(() => { if (!fitted.current && shapes.length) { setCamera(bounds); fitted.current = true; } }, [bounds, shapes.length]);
   const latestBounds = useRef(bounds); latestBounds.current = bounds;
   useEffect(() => { if (fitRequest) setCamera(latestBounds.current); }, [fitRequest]);
@@ -72,15 +81,14 @@ export function ConstructionCanvas({ bounds, shapes, selected, drawing, movable,
   const step = snapStep(pixelsPerMillimetre);
   const stepFor = (event: { altKey: boolean }) => event.altKey ? 0.1 : step;
   const change = (next: Gesture | null) => { gesture.current = next; setActive(next); };
-  const position = (event: { clientX: number; clientY: number }): Point => {
-    const matrix = svg.current!.getScreenCTM()!;
+  const position = (event: { clientX: number; clientY: number }, matrix = svg.current!.getScreenCTM()!): Point => {
     const point = new DOMPoint(event.clientX, event.clientY).matrixTransform(matrix.inverse());
     return [point.x, -point.y];
   };
   // Named points, midpoints, curves and alignment win over the grid within a few pixels, so drawing
   // joins existing construction exactly. Alt draws freely on the fine grid.
-  const pick = (event: { clientX: number; clientY: number; altKey: boolean }, gridStep: number, from?: Point | null): StrokePoint => {
-    const raw = position(event), reach = 8 / Math.abs(svg.current!.getScreenCTM()!.a);
+  const pick = (event: { clientX: number; clientY: number; altKey: boolean }, gridStep: number, from?: Point | null, matrix = svg.current!.getScreenCTM()!): StrokePoint => {
+    const raw = position(event, matrix), reach = 8 / Math.abs(matrix.a);
     const found = event.altKey ? inferSnap(raw, reach, gridStep, { points: [], curves: [] }) : inferSnap(raw, reach, gridStep, { points: snapPoints, curves: snapCurves, from });
     return { at: [found.at[0], found.at[1]], name: found.kind === 'point' ? found.name : undefined, snap: found.kind === 'grid' ? undefined : found };
   };
@@ -90,7 +98,8 @@ export function ConstructionCanvas({ bounds, shapes, selected, drawing, movable,
     const [x, y] = arcEnd(stage.center.at, stage.start.at, position(event), 15, event.altKey); return { at: [x, y] };
   };
   const begin = (event: PointerEvent<SVGElement>, shape?: CanvasShape) => {
-    if (disabled || ![0, 1].includes(event.button)) return;
+    if (disabled || gesture.current || ![0, 1].includes(event.button)) return;
+    cancelFrame();
     if (stroke && drawing && !shape && event.button === 0) {
       event.preventDefault(); event.stopPropagation(); setNotice(''); svg.current!.focus();
       if (arcStage) {
@@ -111,33 +120,39 @@ export function ConstructionCanvas({ bounds, shapes, selected, drawing, movable,
     if (!shape && !drawing && event.button !== 1) return;
     event.preventDefault(); event.stopPropagation(); setNotice(''); svg.current!.focus();
     svg.current!.setPointerCapture(event.pointerId);
-    const gestureStep = stepFor(event), raw = position(event);
+    const matrix = svg.current!.getScreenCTM()!;
+    const gestureStep = stepFor(event), raw = position(event, matrix);
     const start: Point = shape || event.button === 1 ? raw : pick(event, gestureStep).at; setHover(null);
-    change({ pointer: event.pointerId, start, current: start, shape, pan: event.button === 1 ? camera : undefined, guides: [], step: gestureStep });
+    change({ pointer: event.pointerId, start, current: shape ? [...shape.shape.center] as Point : start, shape,
+      pan: event.button === 1 ? { bounds: camera, screen: [event.clientX, event.clientY], units: [matrix.a, matrix.d] } : undefined, guides: [], step: gestureStep });
   };
-  const update = (event: PointerEvent<SVGElement>) => {
+  const update = (event: PointerSample) => {
     const previous = gesture.current; if (!previous || previous.pointer !== event.pointerId) return;
-    const p = position(event);
     if (previous.pan) {
-      // Use screen deltas, since the SVG camera itself is changing while panning.
-      const matrix = svg.current!.getScreenCTM()!;
-      setCamera(current => ({ ...current, x: current.x - event.movementX / matrix.a, y: current.y - event.movementY / matrix.d })); return;
+      // Absolute screen displacement keeps all motion, even when events share an animation frame.
+      const { bounds, screen, units } = previous.pan;
+      setCamera({ ...bounds, x: bounds.x - (event.clientX - screen[0]) / units[0], y: bounds.y - (event.clientY - screen[1]) / units[1] }); return;
+    }
+    const matrix = svg.current!.getScreenCTM()!, p = position(event, matrix);
+    if (previous.shape && Math.hypot(p[0] - previous.start[0], p[1] - previous.start[1]) < 1e-9) {
+      change({ ...previous, current: [...previous.shape.shape.center] as Point, guides: [] }); return;
     }
     const gestureStep = event.altKey ? 0.1 : previous.step;
-    if (stroke && !previous.shape) { const next = pick(event, gestureStep, previous.start); change({ ...previous, current: next.at, currentName: next.name, snap: next.snap }); return; }
+    if (stroke && !previous.shape) { const next = pick(event, gestureStep, previous.start, matrix); change({ ...previous, current: next.at, currentName: next.name, snap: next.snap }); return; }
     let current: Point = [snap(p[0], gestureStep), snap(p[1], gestureStep)], guides: Alignment[] = [], picked: Snap | undefined;
-    if (!previous.shape) { const next = pick(event, gestureStep, previous.start); current = next.at; picked = next.snap; }
+    if (!previous.shape) { const next = pick(event, gestureStep, previous.start, matrix); current = next.at; picked = next.snap; }
     if (previous.shape) {
       const shape = previous.shape, center = shape.shape.center;
       current = [snap(center[0] + p[0] - previous.start[0], gestureStep), snap(center[1] + p[1] - previous.start[1], gestureStep)];
       const moving = { ...shape.bounds, x: shape.bounds.x + current[0] - center[0], y: shape.bounds.y + current[1] - center[1] };
-      const matrix = svg.current!.getScreenCTM()!;
       const alignment = alignPlacement(moving, shapes.filter(s => s.shape.id !== shape.shape.id && s.owner === shape.owner), 7 / Math.abs(matrix.a), event.altKey);
       current = [clean(current[0] + alignment.offset[0]), clean(current[1] + alignment.offset[1])]; guides = alignment.guides;
     }
     change({ ...previous, current, guides, snap: picked });
   };
   const finish = (event: PointerEvent<SVGElement>) => {
+    if (gesture.current?.pointer !== event.pointerId) return;
+    cancelFrame(); update(event); // Pointer-up can arrive before the queued preview frame.
     const final = gesture.current; if (!final || final.pointer !== event.pointerId) return;
     change(null); svg.current!.releasePointerCapture(event.pointerId);
     if (final.pan) return;
@@ -162,6 +177,26 @@ export function ConstructionCanvas({ bounds, shapes, selected, drawing, movable,
   const strokeLine = active && !moving && !active.pan && stroke ? [active.start, active.current] as const : null;
   const far = Math.max(camera.width, camera.height) * 4;
   const scale = camera.width / 100;
+  // Labels/dimension geometry depend on the view and compiler projection, not the drag preview.
+  const annotations = useMemo(() => layer?.(scale), [layer, scale]);
+  const move = useRef<(event: PointerSample) => void>(() => {});
+  move.current = event => {
+    if (disabled) return;
+    if (arcStage && !gesture.current) setArcStage({ ...arcStage, end: arcFinish(arcStage, event) });
+    else if (gesture.current) update(event);
+    else {
+      if (drawing) setHover(pick(event, stepFor(event)).snap ?? null);
+      if (onHover) onHover(position(event));
+    }
+  };
+  const scheduleMove = (event: PointerEvent<SVGElement>) => {
+    if (disabled || !gesture.current && !drawing && !arcStage && !onHover) return;
+    queued.current = { clientX: event.clientX, clientY: event.clientY, altKey: event.altKey, pointerId: event.pointerId };
+    if (!frame.current) frame.current = requestAnimationFrame(() => {
+      frame.current = 0; const latest = queued.current; queued.current = null;
+      if (latest) move.current(latest);
+    });
+  };
   // Show the snap grid when its dots are far enough apart; otherwise a coarser multiple of it.
   const shownStep = [1, 5, 10].map(n => n * step).find(s => s * pixelsPerMillimetre >= 12) ?? step * 10;
   return <div className="draft-canvas">
@@ -169,17 +204,10 @@ export function ConstructionCanvas({ bounds, shapes, selected, drawing, movable,
     <div className="draft-canvas-tools"><button type="button" disabled={!!active} title="Fit construction · F" onClick={() => setCamera(bounds)}>Fit construction</button><button type="button" aria-label="Zoom in construction" disabled={!!active} onClick={() => zoom(.8)}>+</button><button type="button" aria-label="Zoom out construction" disabled={!!active} onClick={() => zoom(1.25)}>−</button></div>
     <svg ref={svg} role="group" tabIndex={-1} aria-label="Construction and Profile preview" className={drawing ? 'drawing' : ''}
       viewBox={`${camera.x} ${camera.y} ${camera.width} ${camera.height}`} onPointerDown={event => begin(event)} onPointerUp={finish}
-      onPointerMove={event => {
-        if (arcStage && !gesture.current) setArcStage({ ...arcStage, end: arcFinish(arcStage, event) });
-        else if (gesture.current) update(event);
-        else {
-          if (drawing && !disabled) setHover(pick(event, stepFor(event)).snap ?? null);
-          onHover?.(position(event));
-        }
-      }}
-      onPointerLeave={() => { setHover(null); onHover?.(null); }}
-      onPointerCancel={() => change(null)} onLostPointerCapture={() => { if (gesture.current) change(null); }}
-      onKeyDown={event => { if (event.key === 'Escape' && (gesture.current || arcStage)) { event.preventDefault(); event.stopPropagation(); change(null); setArcStage(null); setNotice(''); } }}
+      onPointerMove={scheduleMove}
+      onPointerLeave={() => { if (!gesture.current) cancelFrame(); setHover(null); onHover?.(null); }}
+      onPointerCancel={() => { cancelFrame(); change(null); }} onLostPointerCapture={() => { cancelFrame(); if (gesture.current) change(null); }}
+      onKeyDown={event => { if (event.key === 'Escape' && (gesture.current || arcStage)) { event.preventDefault(); event.stopPropagation(); cancelFrame(); change(null); setArcStage(null); setNotice(''); } }}
       onClick={event => {
         if (disabled) return;
         if (onArea) onArea(position(event));
@@ -191,7 +219,7 @@ export function ConstructionCanvas({ bounds, shapes, selected, drawing, movable,
       </pattern></defs>
       <rect x={camera.x} y={camera.y} width={camera.width} height={camera.height} fill="url(#draft-grid)" pointerEvents="none" />
       {children}
-      {layer?.(scale)}
+      {annotations}
       {movable && shapes.map(item => <g key={item.shape.id} className="draft-shape-target" role="button" tabIndex={disabled ? -1 : 0} aria-disabled={disabled} aria-label={`Move ${item.shape.name}`} aria-pressed={item.shape.id === selected}
         onPointerDown={event => { if (event.button === 1) return; begin(event, item); }}
         onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); if (!disabled) onSelect(item.shape.id); } }}>

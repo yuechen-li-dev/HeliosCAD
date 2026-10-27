@@ -12,6 +12,10 @@ Each row's checkmark controls **construction visibility in this workspace**. Unc
 
 Use **Draw rectangle**, **Draw circle**, **Draw ellipse**, **Draw slot**, or **Draw rounded rectangle**, then drag between two corners. Enter exact dimensions in the inspector afterward, or fill the creation fields and choose **Add shape** (**Add Rectangle** for a rectangle).
 
+While drawing or moving a shape, the canvas shows a temporary preview. Releasing
+the pointer submits one edit to the compiler; it does not rebuild for every mouse
+movement. **Esc** cancels a drag. Middle-button dragging pans the canvas.
+
 | Tool | Retained type | Exact inputs |
 |---|---|---|
 | Rectangle | `Rect2` | Width, height, center |

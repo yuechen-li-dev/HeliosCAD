@@ -1,4 +1,5 @@
-import { memo, useEffect, useMemo, useRef, useState, type RefObject } from 'react';
+import { memo, useEffect, useMemo, useState, type RefObject } from 'react';
+import { useGraphNodes } from './useGraphNodes';
 import { Background, BackgroundVariant, Controls, Handle, MarkerType, Position, ReactFlow, useReactFlow, type Edge, type Node, type NodeProps } from '@xyflow/react';
 import type { LanguageOutline } from '@aetheris/cad';
 import { layoutAssembly, portOf, type AssemblyEnd, type AssemblyGraph, type PositionedPart } from './assemblyGraph';
@@ -11,6 +12,8 @@ export interface AssemblyAuthoring {
 }
 
 interface Props {
+  positions: Map<string, { x: number; y: number }>;
+  layoutRevision: number;
   outline: LanguageOutline;
   graph: AssemblyGraph;
   theme: 'bronze-age' | 'apollonia';
@@ -31,7 +34,7 @@ const PartNode = memo(function PartNode({ data }: NodeProps<Node<PartData>>) {
   const { part, selected, editable, activePorts } = data;
   return <div className={`assembly-part kind-${part.kind}${selected ? ' selected' : ''}`} style={{ width: part.width, minHeight: part.height }}
     title="Double-click to open in source">
-    <header>
+    <header className="graph-node-drag" title="Drag to arrange this card; double-click to open source">
       <i aria-hidden>{glyph[part.kind]}</i>
       <strong>{part.name}</strong>
       {part.anchored && <span className="assembly-anchor" title="Anchored: this part stays put and the others move relative to it">Anchored</span>}
@@ -53,21 +56,21 @@ const nodeTypes = { part: PartNode };
 
 type PendingJoint = { a: AssemblyEnd; b: AssemblyEnd | { part: string }; x: number; y: number };
 
-export function AssemblyCanvas({ graph, theme, selectedId, onSelect, onOpenSource, authoring, host, direction }: Props) {
+export function AssemblyCanvas({ graph, theme, selectedId, onSelect, onOpenSource, authoring, host, direction, positions, layoutRevision }: Props) {
   const flow = useReactFlow();
   const laid = useMemo(() => layoutAssembly(graph, direction), [graph, direction]);
-  const measured = useRef(new Map<string, { width: number; height: number }>());
   const [pending, setPending] = useState<PendingJoint | null>(null);
   const [fitted, setFitted] = useState('');
-  const structure = direction + laid.map(p => `${p.id}:${p.ports.length}`).join('|');
+  const structure = direction + layoutRevision + laid.map(p => `${p.id}:${p.ports.length}`).join('|');
   const selectedJoint = graph.joints.find(j => j.id === selectedId);
 
-  const nodes: Node<PartData>[] = useMemo(() => laid.map(part => {
+  const input: Node<PartData>[] = useMemo(() => laid.map(part => {
     const active = new Set<string>();
     if (selectedJoint) for (const end of [selectedJoint.a, selectedJoint.b]) if (end?.part === part.id) { const port = portOf(graph, end); if (port) active.add(port.key); }
-    return { id: part.id, type: 'part', position: { x: part.x, y: part.y }, draggable: false, connectable: !!authoring, measured: measured.current.get(part.id),
+    return { id: part.id, type: 'part', position: { x: part.x, y: part.y }, dragHandle: '.graph-node-drag', connectable: !!authoring,
       data: { part, selected: selectedId === part.id, editable: !!authoring, activePorts: active } };
   }), [laid, selectedId, selectedJoint, authoring, graph]);
+  const { nodes, onNodesChange } = useGraphNodes(input, positions, layoutRevision);
 
   const edges: Edge[] = useMemo(() => graph.joints.flatMap(joint => {
     if (!joint.a || !joint.b) return [];
@@ -97,8 +100,8 @@ export function AssemblyCanvas({ graph, theme, selectedId, onSelect, onOpenSourc
 
   return <>
     <ReactFlow nodes={nodes} edges={edges} nodeTypes={nodeTypes} colorMode={theme === 'apollonia' ? 'light' : 'dark'}
-      nodesDraggable={false} nodesConnectable={!!authoring} elementsSelectable={false} minZoom={0.15} maxZoom={2} zoomOnDoubleClick={false} connectionRadius={28}
-      onNodesChange={changes => { for (const change of changes) if (change.type === 'dimensions' && change.dimensions) measured.current.set(change.id, change.dimensions); }}
+      nodesDraggable nodesConnectable={!!authoring} elementsSelectable={false} minZoom={0.15} maxZoom={2} zoomOnDoubleClick={false} connectionRadius={28}
+      onNodesChange={onNodesChange}
       onNodeClick={(_, node) => onSelect(node.id)} onNodeDoubleClick={(_, node) => onOpenSource(node.id)}
       onEdgeClick={(_, edge) => onSelect(edge.id)} onEdgeDoubleClick={(_, edge) => onOpenSource(edge.id)}
       onConnectEnd={(event, state) => {

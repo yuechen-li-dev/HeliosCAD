@@ -3,6 +3,12 @@
 Use the graph to create a block, drill holes, finish edges and export exact
 geometry without writing Firmament. No AI connection is needed.
 
+Drag a card by its header to arrange the graph. Positions stay in the open workspace
+when you select cards, edit fields, rebuild, or switch views. This changes the graph
+layout only; it does not move a physical part or reorder source declarations.
+**Auto arrange** restores the automatic layout for the current graph view.
+Manual positions reset when the workspace is closed or the page is refreshed.
+
 For a custom outline, use [IntelliDraft](intellidraft.md): named points and
 guides or distance-driven Paths, then Trace and Extrude. **Sketch** retains the
 closed-shape dimension workspace for rectangles, circles and slots.

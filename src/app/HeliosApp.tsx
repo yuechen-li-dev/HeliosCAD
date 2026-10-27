@@ -24,6 +24,7 @@ import { ResizeHandle } from './ResizeHandle';
 import { WorkspaceStatus } from './WorkspaceStatus';
 import { useTheme } from '../themes/useTheme';
 import { GraphPanel, type GraphSelection } from '../graph/GraphPanel';
+import type { GraphLayouts } from '../graph/useGraphNodes';
 import { IntelliDraftPanel } from '../graph/IntelliDraftPanel';
 import { NodeInspector, type GraphEditState } from '../graph/NodeInspector';
 import { outlineNode, spliceField } from '../graph/fieldEdit';
@@ -116,6 +117,7 @@ export function HeliosApp({ project, initialWorkspace, chooseBase = false, onSho
   const [outline, setOutline] = useState<LanguageOutline | null>(null);
   const [outlineError, setOutlineError] = useState<string | null>(null);
   const [graphSelection, setGraphSelection] = useState<GraphSelection | null>(null);
+  const graphLayouts = useRef<GraphLayouts>(new Map());
   // A graph edit is a transaction: it is committed when its build succeeds, and while it
   // fails it stays a draft over the last good model that can be reverted in one step.
   const [graphEdit, setGraphEdit] = useState<(GraphEditState & { revision: number; base: string }) | null>(null);
@@ -798,7 +800,7 @@ export function HeliosApp({ project, initialWorkspace, chooseBase = false, onSho
           <button role="tab" aria-selected={editorMode === 'graph'} className={editorMode === 'graph' ? 'active' : ''} onClick={() => setEditorMode('graph')}>Graph</button>
           <button role="tab" disabled={!!pendingAuthoring} aria-selected={editorMode === 'source'} className={editorMode === 'source' ? 'active' : ''} onClick={() => setEditorMode('source')}>Source</button>
         </div></div>
-        {editorMode === 'graph' && <GraphPanel pending={!!pendingAuthoring} outline={outline} error={outlineError} diagnostics={shownDiagnostics} selection={graphSelection} theme={theme}
+        {editorMode === 'graph' && <GraphPanel layouts={graphLayouts.current} pending={!!pendingAuthoring} outline={outline} error={outlineError} diagnostics={shownDiagnostics} selection={graphSelection} theme={theme}
           onSelect={(unitId, row, graph) => selectFromGraph(unitId, row, graph)} onOpenSource={(unitId, row, graph) => openFromGraph(unitId, row, graph)}
           authoring={graphAuthoring()} assembly={assemblyView()}
           inspector={<div className="graph-side">

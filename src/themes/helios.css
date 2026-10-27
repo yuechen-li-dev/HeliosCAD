@@ -223,6 +223,8 @@ button.viewport-renderer-note:hover { color: var(--text-primary); border-color: 
 .graph-unit.selected { border-color: var(--selection); border-left-color: var(--cat); box-shadow: 0 0 0 1px var(--selection), 0 2px 8px var(--shadow); }
 .graph-unit header { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; column-gap: 6px; padding: 7px 10px 6px; }
 .graph-unit header strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--type-body); font-weight: 600; }
+.graph-panel .graph-node-drag { cursor: grab; touch-action: none; }
+.graph-panel .react-flow__node.dragging .graph-node-drag { cursor: grabbing; }
 .graph-unit header small { grid-column: 1 / -1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-secondary); font-size: var(--type-caption); }
 .graph-problems { display: inline-grid; place-items: center; min-width: 17px; height: 16px; padding: 0 4px; border-radius: 999px; color: var(--panel-elevated); background: var(--error); font-size: var(--type-caption); font-weight: 600; font-variant-numeric: tabular-nums; }
 .graph-rows { margin: 0; padding: 0 4px 6px; list-style: none; border-top: 1px solid var(--border); }
