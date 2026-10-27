@@ -82,6 +82,31 @@ test('a block, offset through hole, atomic edits, chamfer and STEP all work with
   await page.screenshot({ path: resolve(output, 'block-hole-chamfer.png'), fullPage: true });
 });
 
+test('rim previews keep the accepted solid and show gold candidate boundaries until Apply', async ({ page }) => {
+  await newBlock(page);
+  const before = (await saveSource(page, 'rim-before')).source;
+  await inspector(page).getByRole('button', { name: 'Fillet…', exact: true }).click();
+  await panel(page).getByLabel('Face', { exact: true }).selectOption('-Z');
+  await panel(page).getByRole('button', { name: 'Preview', exact: true }).click();
+  await expect(panel(page).getByRole('status')).toContainText('Preview admitted');
+  await expect(page.locator('.authoring-preview-banner')).toContainText('gold boundaries');
+  await expect.poll(async () => page.locator('[data-operation-preview-wires]').evaluateAll(nodes =>
+    Math.max(0, ...nodes.map(n => Number(n.getAttribute('data-operation-preview-wires')))))).toBeGreaterThan(0);
+  expect((await saveSource(page, 'rim-preview')).source).toBe(before);
+  await page.screenshot({ path: resolve(output, 'gold-fillet-preview.png'), fullPage: true });
+  await panel(page).getByRole('button', { name: 'Cancel', exact: true }).click();
+  await expect(page.locator('.authoring-preview-banner')).toHaveCount(0);
+  await expect.poll(async () => page.locator('[data-operation-preview-wires]').evaluateAll(nodes =>
+    Math.max(0, ...nodes.map(n => Number(n.getAttribute('data-operation-preview-wires')))))).toBe(0);
+  expect((await saveSource(page, 'rim-cancelled')).source).toBe(before);
+  await inspector(page).getByRole('button', { name: 'Fillet…', exact: true }).click();
+  await panel(page).getByLabel('Face', { exact: true }).selectOption('+X');
+  await applyPreview(page);
+  expect((await saveSource(page, 'right-rim')).source).toContain('Face: +X');
+  const exported = await step(page, 'right-rim');
+  expect((exported.match(/ADVANCED_FACE\(/g) ?? []).length).toBe(10);
+});
+
 for (const [action, finish, type] of [
   ['Counterbored hole…', 'Fillet…', 'CYLINDRICAL_SURFACE'],
   ['Countersunk hole…', 'Chamfer…', 'CONICAL_SURFACE'],

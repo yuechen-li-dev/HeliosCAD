@@ -107,6 +107,8 @@ export function HeliosApp({ project, initialWorkspace, chooseBase = false, onSho
   const [historyState, setHistoryState] = useState({ undo: false, redo: false });
   const [pendingAuthoring, setPendingAuthoring] = useState<PendingAuthoring | null>(chooseBase ? { action: { kind: 'base' }, node: null, revision: 0 } : null);
   const [previewModel, setPreviewModel] = useState<ModelSession | null>(null);
+  const wireframePreview = previewModel && pendingAuthoring?.action.kind === 'feature'
+    && ['fillet', 'chamfer'].includes(pendingAuthoring.action.item.id) ? previewModel : null;
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [publishOpen, setPublishOpen] = useState(false);
   const [publishState, setPublishState] = useState('');
@@ -182,6 +184,7 @@ export function HeliosApp({ project, initialWorkspace, chooseBase = false, onSho
   const submitBuild = async (value: string, name: string, revision = sourceRevisionRef.current) => {
     const submission = ++latestSubmission.current;
     setBusy(runtime.info ? 'Building' : 'Initializing Aetheris Worker');
+    setElapsedSeconds(0);
     setBuildStarted(performance.now());
     pushOutput(`Build started · ${name} · revision ${revision}`);
     const root = projectRoot.current ?? name;
@@ -838,8 +841,8 @@ export function HeliosApp({ project, initialWorkspace, chooseBase = false, onSho
           <div className="toolbar-display"><select aria-label="Display mode" value={displayMode} onChange={event => setDisplayMode(event.target.value as DisplayMode)}><option value="shaded">Shaded</option><option value="edges">Shaded with edges</option><option value="wireframe">Wireframe</option></select><button aria-label="Selection mode" title="Switch face or edge selection" onClick={() => { setSelectionMode(value => value === 'face' ? 'edge' : 'face'); setDisplayMode('edges'); }}>{selectionMode === 'face' ? 'Faces' : 'Edges'}</button><button title="Toggle camera projection" onClick={() => setViewMode(value => value === 'perspective' ? 'orthographic' : 'perspective')}>{viewMode === 'perspective' ? 'Perspective' : 'Orthographic'}</button></div>
         </div>
         <div className="viewport-stage" style={shellLayout.place('stage')}>
-        {previewModel && <div className="authoring-preview-banner" role="status">Preview · source unchanged · Apply or Cancel</div>}
-        <Viewport measurementDisabledReason={previewModel ? 'Apply or cancel the preview before measuring.' : busy || displayRevision !== sourceRevision ? "Build the current source successfully before measuring." : undefined} showConcepts={showConcepts} pose={previewModel ? null : pose} busyMessage={busy === 'Worker failed' ? null : busy} errorMessage={shownDiagnostics.some(item => item.severity === 'error') ? (model ? 'Build failed. The last valid model remains visible; see Problems for details.' : 'Build needs attention. See Problems for the compiler diagnostic.') : null} model={previewModel ?? model} selectedEntityId={previewModel ? null : selectedEntityId} selectedTopologyId={previewModel ? null : selectedFaceId} theme={theme} displayMode={displayMode} viewMode={viewMode} viewCommand={previewModel ? `fit-preview-${previewModel.id}` : viewCommand} selectionMode={selectionMode} onSelect={previewModel ? () => {} : select} captureRef={capturePreview} />
+        {previewModel && <div className="authoring-preview-banner" role="status">Preview · {wireframePreview ? 'gold boundaries · ' : ''}source unchanged · Apply or Cancel</div>}
+        <Viewport measurementDisabledReason={previewModel ? 'Apply or cancel the preview before measuring.' : busy || displayRevision !== sourceRevision ? "Build the current source successfully before measuring." : undefined} showConcepts={showConcepts} pose={previewModel ? null : pose} busyMessage={busy === 'Worker failed' ? null : busy} errorMessage={shownDiagnostics.some(item => item.severity === 'error') ? (model ? 'Build failed. The last valid model remains visible; see Problems for details.' : 'Build needs attention. See Problems for the compiler diagnostic.') : null} model={wireframePreview ? model : previewModel ?? model} wireframePreview={wireframePreview} selectedEntityId={previewModel ? null : selectedEntityId} selectedTopologyId={previewModel ? null : selectedFaceId} theme={theme} displayMode={displayMode} viewMode={viewMode} viewCommand={previewModel && !wireframePreview ? `fit-preview-${previewModel.id}` : viewCommand} selectionMode={selectionMode} onSelect={previewModel ? () => {} : select} captureRef={capturePreview} />
         {intelliDraft && <IntelliDraftPanel key={intelliDraft.source === undefined ? 'new' : `existing:${intelliDraft.node ?? ''}`} runtime={runtime} initialSource={intelliDraft.source}
           document={intelliDraft.source === undefined ? undefined : sourceName} initialNode={intelliDraft.node ?? null}
           onSource={intelliDraft.source === undefined ? undefined : span => { setIntelliDraft(null); setEditorMode('source'); navigateSource({ source: sourceName, ...span, line: 1, column: 1 }); }}

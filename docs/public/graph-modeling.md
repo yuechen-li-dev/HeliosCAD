@@ -18,6 +18,12 @@ closed-shape dimension workspace for rectangles, circles and slots.
    Changing focus between fields does not rebuild the part.
 4. Click **Chamfer…** or **Fillet…**. Keep the top face and Boundary target;
    enter a distance or radius such as 0.5 mm. **Preview → Apply**.
+
+   A Box also supports a whole-face rim finish on the bottom or any side: change
+   **Face** before Preview. Rim previews draw the candidate's BRep boundaries
+   as gold polylines over the current solid. The solid, source and export remain
+   unchanged until **Apply**; **Cancel** removes the gold guides. Interfering or
+   unsupported combinations report a compiler diagnostic instead of a preview.
 5. Use **Export → STEP AP242 → Download selected format**. **Save source**
    downloads the editable design. Save before closing or refreshing a local tab.
 

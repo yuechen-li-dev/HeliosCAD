@@ -4,7 +4,7 @@ import type { MotionPose } from '@aetheris/cad';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import type { DisplayEdgePolyline, ModelSession, SelectionDescription } from '@aetheris/cad';
-import { TelosCamera, conceptWireframeGroup, disposeConceptWireframe, pmiGroup, disposePmiGroup, pmiBodyMaterial } from '@aetheris/three-telos';
+import { TelosCamera, conceptWireframeGroup, operationPreviewWireframeGroup, disposeConceptWireframe, pmiGroup, disposePmiGroup, pmiBodyMaterial } from '@aetheris/three-telos';
 import type { DisplayMode, ThemeName, ViewMode } from '../app/types';
 import { applyNamedView, WORLD_UP } from './viewCommands';
 import { HELIOS_PRESENTATIONS } from './presentation';
@@ -18,6 +18,7 @@ interface Props {
   busyMessage?: string | null;
   errorMessage?: string | null;
   model: ModelSession | null;
+  wireframePreview?: ModelSession | null;
   selectedEntityId: string | null;
   selectedTopologyId: string | null;
   theme: ThemeName;
@@ -62,6 +63,15 @@ export function LegacyViewport(props: Props) {
     return () => { disposeConceptWireframe(group); current.invalidate(); };
   }, [props.measurementTick, props.measurementTool]);
   useEffect(() => { if (state.current) loadModel(state.current, props.model); }, [props.model, props.model?.revision]);
+  useEffect(() => {
+    const current = state.current; if (!current) return;
+    current.renderer.domElement.setAttribute('data-operation-preview-wires', '0');
+    if (!props.wireframePreview) return;
+    const guides = operationPreviewWireframeGroup(props.wireframePreview.mesh);
+    current.renderer.domElement.setAttribute('data-operation-preview-wires', String(guides.children.length));
+    current.scene.add(guides); current.invalidate();
+    return () => { disposeConceptWireframe(guides); current.invalidate(); };
+  }, [props.wireframePreview, props.wireframePreview?.revision]);
   useEffect(() => {
     const current = state.current; if (!current) return;
     const group = pmiGroup(props.model?.mesh.annotations); current.scene.add(group); current.invalidate();

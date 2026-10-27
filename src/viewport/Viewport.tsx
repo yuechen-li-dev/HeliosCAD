@@ -11,6 +11,7 @@ import {
 import {
   TelosHost,
   conceptWireframe,
+  operationPreviewWireframe,
   fromDisplayMesh,
   clearColor,
   inspectSurfaces,
@@ -41,6 +42,8 @@ interface Props {
   aaMode?: import("@aetheris/three-telos").TelosAAMode;
   aaDebug?: import("@aetheris/three-telos").TelosAADebug;
   model: ModelSession | null;
+  /** Retained candidate edges over the accepted solid; no candidate faces. */
+  wireframePreview?: ModelSession | null;
   /** A sampled motion pose; the viewport shows the built model moved to it. */
   pose?: MotionPose | null;
   selectedEntityId: string | null;
@@ -204,12 +207,14 @@ function TelosViewport(props: Props & { onRetry(): void; onUnavailable(reason: s
           : [0.3, 0.35, 0.32, 0.85],
     }));
     const concepts = value.showConcepts && value.model ? conceptWireframe(posedMesh(value.model.mesh, value.pose)) : [];
+    const preview = value.wireframePreview ? operationPreviewWireframe(value.wireframePreview.mesh) : [];
+    canvas.current?.setAttribute("data-operation-preview-wires", String(preview.length / 2));
     canvas.current?.setAttribute("data-concept-wires", String(concepts.length / 2));
     const displayScene = { ...scene, meshes, lines, fields: scene.fields.map(f=>({...f, selected:selectedIds.has(f.identity.occurrenceId), visible:value.displayMode !== "wireframe"})) };
     const inspected = inspectSurfaces(inspection.current.mode === "normal" && !inspection.current.face ? displayScene : scene,
       inspection.current.mode, inspection.current.face);
     current.setScene({ ...inspected, meshes: [...inspected.meshes, ...pmiMeshes(value.model?.mesh.annotations)],
-      lines: [...inspected.lines, ...concepts, ...measurementLines(value.measurementTool?.result ?? null), ...pmiLines(value.model?.mesh.annotations)] });
+      lines: [...inspected.lines, ...concepts, ...preview, ...measurementLines(value.measurementTool?.result ?? null), ...pmiLines(value.model?.mesh.annotations)] });
     canvas.current?.setAttribute("data-surface-inspection", JSON.stringify({ mode: inspection.current.mode,
       isolatedFace: inspection.current.face ?? null,
       usesFieldProxy: scene.fields.some(field => field.proxy) && (!!inspection.current.face || inspection.current.mode === "patches"),
@@ -353,7 +358,7 @@ function TelosViewport(props: Props & { onRetry(): void; onUnavailable(reason: s
   }, []);
   useEffect(() => {
     apply();
-  }, [props.measurementTick, props.measurementTool, props.showConcepts, props.model, props.model?.revision, props.pose, props.selectedEntityId, props.selectedTopologyId,
+  }, [props.measurementTick, props.measurementTool, props.showConcepts, props.model, props.model?.revision, props.wireframePreview, props.wireframePreview?.revision, props.pose, props.selectedEntityId, props.selectedTopologyId,
     props.theme, props.displayMode, props.viewMode, props.viewCommand, props.aaMode, props.aaDebug,
     inspectionMode, isolatedFaceKey]);
   useEffect(() => { setIsolatedFaceKey(""); }, [props.model?.id, props.model?.revision]);
