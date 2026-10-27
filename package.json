@@ -14,10 +14,11 @@
     "test:watch": "vitest",
     "preview": "vite preview",
     "package:standalone": "node scripts/package-standalone.mjs",
-    "test:standalone": "node scripts/qualify-standalone.mjs"
+    "test:standalone": "node scripts/qualify-standalone.mjs",
+    "sdk:link": "node scripts/install-local-sdk.mjs"
   },
   "dependencies": {
-    "@aetheris/cad": "file:../Aetheris/artifacts/local/helios-sdk/aetheris-cad-2.0.0.tgz",
+    "@aetheris/cad": "file:../Aetheris/Aetheris.Web.Runtime/sdk",
     "@aetheris/three-telos": "file:../Aetheris/Aetheris.Web.Runtime/telos",
     "@dagrejs/dagre": "^1.1.8",
     "@fontsource-variable/inter": "5.3.0",
@@ -48,5 +49,8 @@
   },
   "overrides": {
     "dompurify": "3.4.17"
+  },
+  "engines": {
+    "node": ">=24"
   }
 }

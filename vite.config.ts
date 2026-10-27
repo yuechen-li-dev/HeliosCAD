@@ -71,7 +71,8 @@ function telosRoot() {
 }
 
 export default defineConfig({
+  resolve: { dedupe: ['three'] },
   plugins: [aetherisCad(), patchedMonacoSanitizer(), react(), localTerminal()],
-  server: { port: 4173, watch: { ignored: ['**/artifacts/**', '**/test-results/**'] }, fs: { allow: [fileURLToPath(new URL('.', import.meta.url)), telosRoot()] }, proxy: { '/api': { target: process.env.HELIOS_API_URL ?? 'http://127.0.0.1:5189', ws: true } } },
+  server: { port: 4173, watch: { ignored: ['**/artifacts/**', '**/test-results/**'] }, fs: { allow: [fileURLToPath(new URL('.', import.meta.url)), telosRoot(), fileURLToPath(new URL('../Aetheris/Aetheris.Web.Runtime/sdk', import.meta.url))] }, proxy: { '/api': { target: process.env.HELIOS_API_URL ?? 'http://127.0.0.1:5189', ws: true } } },
   test: { include: ['src/**/*.test.ts', 'src/**/*.test.tsx'], environment: 'jsdom', setupFiles: './src/test/setup.ts', css: true }
 });

@@ -41,6 +41,26 @@ The Aetheris language service provides completion, semantic tokens, hover, live 
 
 The workspace has resizable source/viewport and bottom panes, a collapsible utility dock, Files, Inspector, Examples, AI Author and Version Control. Self-hosted Inter is used throughout, including Monaco and the terminal. Wrap above the editor, or Alt+Z, toggles a remembered word-wrap preference. AI Author supports OpenAI, Claude and Gemini API connections, a local Codex subscription connection, and native MCP connections for Claude Code, Claude Desktop Chat and Antigravity. All edits use compiler-backed candidates and recovery checkpoints. See [AI connections and local configuration](docs/public/ai-connections.md), including the separate Code and Desktop setup paths. Export availability follows the compiled product and public SDK capabilities.
 
+## Build from source
+
+Install the .NET 10 SDK with the `wasm-tools` workload, Node.js 24 or newer,
+and npm. The build scripts use [Node's native TypeScript support](https://nodejs.org/docs/latest-v24.x/api/typescript.html). Clone Aetheris and HeliosCAD beside each other:
+
+```powershell
+git clone https://github.com/yuechen-li-dev/Aetheris.git
+git clone https://github.com/yuechen-li-dev/HeliosCAD.git
+cd HeliosCAD
+npm run sdk:link
+npm run dev -- --host 127.0.0.1
+```
+
+Open `http://127.0.0.1:4173/local`. The local editor builds without Leviathan
+or an account. `sdk:link` builds the sibling SDK and Telos renderer, then installs Helios dependencies;
+it runs before the first `npm install` and needs no installed JavaScript packages.
+The SDK is a local directory link, so rebuilding it updates the runtime in place.
+Registry packages retain their normal lockfile integrity checks. `sdk:install`
+is a compatibility alias; `sdk:install:production` builds the AOT runtime for releases.
+
 ## Local development
 
 Run `npm run dev -- --host 127.0.0.1` and open `http://127.0.0.1:4173/` for the showcase without an account or Leviathan. `/local` opens the bracket editor directly and is also available in the production bundle. The optional Terminal · local tab runs PowerShell only through the Vite development server on loopback. A built browser deployment has no terminal tab.
@@ -48,7 +68,7 @@ Run `npm run dev -- --host 127.0.0.1` and open `http://127.0.0.1:4173/` for the 
 Refresh canonical source copies with `node scripts/sync-showcase.mts`; the manifest records upstream paths and SHA-256 hashes. Keep generated screenshots and downloads under ignored `artifacts/local/`.
 The ATLAS example now uses source-owned rigid components, keyed hardware sites and five articulated/mounting interfaces. Its ten canonical modules and native wireframe are synchronized together; see [the construction and qualification notes](../Aetheris/docs/public/demos/industrial-atlas-modernization.md).
 
-Keep `HeliosCAD`, `Leviathan`, and `Aetheris` as sibling checkouts. For local iteration, run `npm run sdk:install` to build the fast non-AOT Aetheris SDK tarball in `Aetheris/artifacts/local/helios-sdk`. The Vite dev server uses that runtime for both LX and the Worker. Then:
+Keep `HeliosCAD`, `Leviathan`, and `Aetheris` as sibling checkouts. For local iteration, run `npm run sdk:link` to rebuild the fast non-AOT SDK in `Aetheris/Aetheris.Web.Runtime/sdk/dist`. The Vite dev server uses that runtime for both LX and the Worker. Then:
 
 ```powershell
 cd ../Leviathan
@@ -79,6 +99,6 @@ The showcase configuration qualifies the real SDK/WebGPU paths in installed Edge
 
 ## Production deployment candidate
 
-`compose.production.yaml` runs the ASP.NET server, PostgreSQL, and a Caddy HTTPS/static frontend. It requires an existing HTTPS S3-compatible bucket. Build the production frontend from the sibling Aetheris checkout with `npm run sdk:install:production` followed by `npm run build`; the install command creates the local SDK tarball before npm resolves Helios dependencies. The production bundle keeps standard WASM for page-thread LX and selects the .NET WASM AOT runtime for the geometry Worker. Run `npx playwright test --config playwright.production.config.ts` for local production-bundle qualification before publishing. Then set the required Compose variables in a private `.env` or secret source and run `docker compose -f compose.production.yaml up --build -d`. Configure the public DNS name in `HELIOS_HOST`. Keep the PostgreSQL, Leviathan data, and Caddy volumes durable and backed up. Caddy caches fingerprinted runtime assets as immutable and revalidates boot files after five minutes. Run `GET /health/ready` through the public hostname after startup. See [the runtime performance report](docs/release/WEB-RUNTIME-PERF-X1.md) for the measured AOT tradeoff and remaining tessellation limit.
+`compose.production.yaml` runs the ASP.NET server, PostgreSQL, and a Caddy HTTPS/static frontend. It requires an existing HTTPS S3-compatible bucket. Build the production frontend from the sibling Aetheris checkout with `npm run sdk:install:production` followed by `npm run build`; the install command builds the linked SDK before npm resolves Helios dependencies. The production bundle keeps standard WASM for page-thread LX and selects the .NET WASM AOT runtime for the geometry Worker. Run `npx playwright test --config playwright.production.config.ts` for local production-bundle qualification before publishing. Then set the required Compose variables in a private `.env` or secret source and run `docker compose -f compose.production.yaml up --build -d`. Configure the public DNS name in `HELIOS_HOST`. Keep the PostgreSQL, Leviathan data, and Caddy volumes durable and backed up. Caddy caches fingerprinted runtime assets as immutable and revalidates boot files after five minutes. Run `GET /health/ready` through the public hostname after startup. See [the runtime performance report](docs/release/WEB-RUNTIME-PERF-X1.md) for the measured AOT tradeoff and remaining tessellation limit.
 
 The Compose file has passed configuration parsing, but no live production deployment or PostgreSQL/S3 integration test has run in this checkout. See [the X0 release report](docs/release/HELIOS-TELOS-X0.md) for the exact qualification boundary.
