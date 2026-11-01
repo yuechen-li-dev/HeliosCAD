@@ -66,6 +66,12 @@ During a build or graph refresh, edit controls are temporarily disabled so that
 another operation cannot target an older source revision. Apply or discard
 unapplied field edits before switching selections.
 
+Unapplied graph fields keep Source, Parameters and other editing operations
+unavailable until **Apply changes** or **Discard edits**. Selecting another card
+or navigating to its source keeps the current field draft in place. Saving is
+also unavailable while these edits are pending, so a download cannot silently
+omit the values still shown in the inspector.
+
 The compiler admits supported feature combinations; the graph does not broaden
 kernel capabilities. Angular mold Draft is currently a legacy V1 operation and
 is not exposed as a V2 graph feature. A saved or failed editing draft is a

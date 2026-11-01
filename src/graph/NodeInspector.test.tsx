@@ -22,6 +22,19 @@ const renderInspector = (overrides: Partial<Parameters<typeof NodeInspector>[0]>
 };
 
 describe('node inspector', () => {
+  it('reports unapplied field edits until discard or unmount so navigation cannot silently lose them', async () => {
+    const pending = vi.fn();
+    const view = render(<FieldSet fields={plate.fields} disabled={false} onApply={vi.fn(async () => null)} onPending={pending} />);
+    await waitFor(() => expect(pending).toHaveBeenLastCalledWith(false));
+    fireEvent.change(screen.getByLabelText('X'), { target: { value: '80' } });
+    await waitFor(() => expect(pending).toHaveBeenLastCalledWith(true));
+    fireEvent.click(screen.getByRole('button', { name: 'Discard edits' }));
+    await waitFor(() => expect(pending).toHaveBeenLastCalledWith(false));
+    expect(screen.getByLabelText('X')).toHaveValue('50');
+    fireEvent.change(screen.getByLabelText('X'), { target: { value: '90' } });
+    await waitFor(() => expect(pending).toHaveBeenLastCalledWith(true));
+    view.unmount(); expect(pending).toHaveBeenLastCalledWith(false);
+  });
   it('discards a focused numeric or text edit on Escape without committing on blur', () => {
     const props = renderInspector();
     for (const input of [screen.getByLabelText('X'), screen.getByDisplayValue('Solid')]) {

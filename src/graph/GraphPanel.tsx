@@ -26,6 +26,7 @@ export interface GraphAction { id: string; label: string; description: string; r
 interface Props {
   layouts: GraphLayouts;
   pending?: boolean;
+  pendingFields?: boolean;
   outline: LanguageOutline | null;
   error: string | null;
   diagnostics: readonly Diagnostic[];
@@ -237,12 +238,12 @@ export function GraphPanel(props: Props) {
   return <section className="panel graph-panel" aria-label="Model graph">
     <div className="graph-caption">
       {asm?.graph && <div className="segmented graph-view-switch" role="tablist" aria-label="Graph view">
-        <button role="tab" aria-selected={showAssembly} className={showAssembly ? 'active' : ''} onClick={() => chooseView('assembly')}>Assembly</button>
-        <button role="tab" aria-selected={!showAssembly} className={!showAssembly ? 'active' : ''} onClick={() => chooseView('parts')}>Parts</button>
+        <button role="tab" disabled={props.pendingFields} aria-selected={showAssembly} className={showAssembly ? 'active' : ''} onClick={() => chooseView('assembly')}>Assembly</button>
+        <button role="tab" disabled={props.pendingFields} aria-selected={!showAssembly} className={!showAssembly ? 'active' : ''} onClick={() => chooseView('parts')}>Parts</button>
       </div>}
       {showAssembly && asm?.graph ? <div>
         <span>{asm.assemblies.length > 1
-          ? <select aria-label="Assembly" value={asm.graph.assembly.id} onChange={event => asm.onPickAssembly(event.target.value)}>
+          ? <select aria-label="Assembly" disabled={props.pendingFields} value={asm.graph.assembly.id} onChange={event => asm.onPickAssembly(event.target.value)}>
               {asm.assemblies.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}</select>
           : asm.graph.assembly.name}</span>
         <small>{count(asm.graph.parts.filter(p => p.kind !== 'ground').length, 'part')}, {count(asm.graph.joints.length, 'joint')}. {asm.authoring

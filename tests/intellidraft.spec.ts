@@ -81,6 +81,44 @@ async function qualify(page: Page, name: string, fixture: string) {
   return source;
 }
 
+test('an existing extrusion remains editable and pending height edits cannot build the old solid', async ({ page }) => {
+  await start(page); const p = panel(page);
+  await addShape(p, { 'New width': 60, 'New height': 40 });
+  await p.getByRole('button', { name: 'Trace', exact: true }).click();
+  await act(p, 'Use whole rectangle outline');
+  await act(p, 'Use this outline');
+  await act(p, 'Extrude Profile');
+  await expect(p.getByLabel('Extrusion end height', { exact: true })).toHaveValue('6');
+  await p.getByLabel('Extrusion end height', { exact: true }).fill('10');
+  await expect(p.getByRole('button', { name: 'Build and use part', exact: true })).toBeDisabled();
+  await act(p, 'Discard extrusion edits');
+  await expect(p.getByLabel('Extrusion end height', { exact: true })).toHaveValue('6');
+  await p.getByLabel('Extrusion end height', { exact: true }).fill('10');
+  await act(p, 'Update extrusion');
+  await expect(p.getByLabel('Extrusion end height', { exact: true })).toHaveValue('10');
+  await p.getByLabel('Extrusion end height', { exact: true }).fill('-1');
+  await act(p, 'Update extrusion');
+  await p.getByRole('button', { name: 'Build and use part', exact: true }).click();
+  await expect(p.getByRole('alert')).toBeVisible();
+  await expect(p.getByLabel('Extrusion end height', { exact: true })).toHaveValue('-1');
+  await p.getByLabel('Extrusion end height', { exact: true }).fill('10');
+  await act(p, 'Update extrusion');
+  await expect(p.getByLabel('Extrusion end height', { exact: true })).toHaveValue('10');
+  await p.getByRole('button', { name: 'Build and use part', exact: true }).click();
+  await expect(p).toHaveCount(0); await expect(page.locator('.status-ready')).toContainText('Ready');
+  await page.getByRole('button', { name: 'IntelliDraft', exact: true }).click();
+  await panel(page).getByRole('button', { name: 'Extrude', exact: true }).click();
+  await expect(panel(page).getByLabel('Extrusion end height', { exact: true })).toHaveValue('10');
+  await page.screenshot({ path: resolve(output, 'editable-extrusion.png'), fullPage: true });
+  await panel(page).getByRole('button', { name: 'Build and use part', exact: true }).click(); await expect(panel(page)).toHaveCount(0);
+  await page.getByRole('button', { name: 'Export ▾', exact: true }).click();
+  const download = page.waitForEvent('download');
+  await page.getByRole('button', { name: 'Download selected format', exact: true }).click();
+  const path = resolve(output, 'edited-extrusion.step'); await (await download).saveAs(path);
+  const volume = JSON.parse(execFileSync('dotnet', [cli, 'analyze', 'volume', path, '--json'], { encoding: 'utf8' }));
+  expect(volume.success).toBe(true); expect(volume.exact).toBe(true); expect(volume.volume).toBeCloseTo(60 * 40 * 10, 8);
+});
+
 test('named points and lines trace an L, edit upstream, reject a broken trace, undo and build without source editing', async ({ page }) => {
   await start(page); const p = panel(page); await layout(p);
   for (const [name, x, y] of [['a', 0, 0], ['b', 60, 0], ['c', 60, 8], ['d', 8, 8], ['e', 8, 40], ['f', 0, 40]] as const) await point(p, name, x, y);

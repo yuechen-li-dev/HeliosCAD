@@ -21,6 +21,36 @@ function projection(built = false): SketchProjection {
       points: [], guides: [], frames: [], diagnostics: [], validationLevel: 'ConstructionResolvedNotTraced' } };
 }
 describe('IntelliDraft transaction', () => {
+  it('clears an old operation refusal when changing tools', async () => {
+    const runtime = { sketch: vi.fn().mockResolvedValue(projection()), sketchEdit: vi.fn().mockRejectedValue(new Error('draft-name-exists: choose a unique name')) };
+    render(<IntelliDraftPanel runtime={runtime} onCommit={vi.fn()} onClose={vi.fn()} />);
+    await waitFor(() => expect(runtime.sketch).toHaveBeenCalledOnce());
+    fireEvent.click(screen.getByText('Add by dimensions')); fireEvent.click(await screen.findByRole('button', { name: 'Add Rectangle' }));
+    expect(await screen.findByRole('alert')).toBeVisible();
+    fireEvent.click(screen.getByRole('button', { name: 'Draw circle' }));
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
+  it('reopens the compiler-projected extrusion end and requires applying or discarding before building', async () => {
+    const built = projection(true);
+    built.construction!.elements.find(e => e.kind === 'Extrude')!.fields = [
+      { name: 'from', value: '2mm', number: 2, unit: 'mm', editable: true },
+      { name: 'to', value: '8mm', number: 8, unit: 'mm', editable: true },
+    ];
+    const runtime = { sketch: vi.fn().mockResolvedValue(built), sketchEdit: vi.fn().mockResolvedValue({ text: 'revised', nodes: [], warnings: [] }) };
+    const commit = vi.fn(); render(<IntelliDraftPanel runtime={runtime} initialSource="built part" document="draft.firmament" onCommit={commit} onClose={vi.fn()} />);
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Extrude' })).toBeEnabled());
+    fireEvent.click(screen.getByRole('button', { name: 'Extrude' }));
+    expect(screen.getByLabelText('Extrusion end height')).toHaveValue(8);
+    fireEvent.change(screen.getByLabelText('Extrusion end height'), { target: { value: '12' } });
+    expect(screen.getByRole('button', { name: 'Build and use part' })).toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: 'Discard extrusion edits' }));
+    expect(screen.getByLabelText('Extrusion end height')).toHaveValue(8);
+    expect(screen.getByRole('button', { name: 'Build and use part' })).toBeEnabled();
+    fireEvent.change(screen.getByLabelText('Extrusion end height'), { target: { value: '12' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Update extrusion' }));
+    await waitFor(() => expect(runtime.sketchEdit).toHaveBeenCalledWith('built part', { kind: 'construction', construction: { action: 'dimension', parent: 'Part/body', field: 'to', value: 12 } }, 'draft.firmament', '0'));
+    expect(commit).not.toHaveBeenCalled();
+  });
   it('preserves the runtime explanation when a generic failure includes diagnostic details', async () => {
     const failure = Object.assign(new Error('Aetheris could not complete the operation.'), { code: 'internal-error', details: 'Face 3 has unsupported surface kind LinearExtrusion.' });
     const runtime = { sketch: vi.fn().mockResolvedValue(projection()), sketchEdit: vi.fn().mockRejectedValue(failure) };

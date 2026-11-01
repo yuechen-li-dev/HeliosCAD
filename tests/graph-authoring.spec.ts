@@ -33,6 +33,30 @@ async function newBlock(page: Page) {
   await applyPreview(page);
   await expect(page.getByRole('button', { name: 'Size [60mm, 40mm, 12mm]', exact: true })).toBeVisible();
 }
+
+test('unapplied graph fields cannot be lost by switching views or opening source', async ({ page }) => {
+  await newBlock(page);
+  await page.getByRole('button', { name: 'Size [60mm, 40mm, 12mm]', exact: true }).click();
+  await inspector(page).getByLabel('X', { exact: true }).fill('80');
+  await expect(page.getByRole('tab', { name: 'Source', exact: true })).toBeDisabled();
+  await expect(page.getByRole('tab', { name: /^Parameters/ })).toBeDisabled();
+  await expect(page.getByRole('button', { name: 'Save source', exact: true })).toBeDisabled();
+  await page.keyboard.press('Control+Shift+P');
+  await expect(page.getByRole('dialog', { name: 'Command palette', exact: true })).toHaveCount(0);
+  await inspector(page).getByRole('button', { name: 'Source', exact: true }).click();
+  await expect(page.getByRole('tab', { name: 'Graph', exact: true })).toHaveAttribute('aria-selected', 'true');
+  await expect(inspector(page).getByLabel('X', { exact: true })).toHaveValue('80');
+  await page.screenshot({ path: resolve(output, 'unapplied-fields-protected.png'), fullPage: true });
+  await inspector(page).getByRole('button', { name: 'Discard edits', exact: true }).click();
+  await expect(page.getByRole('tab', { name: 'Source', exact: true })).toBeEnabled();
+  await page.getByRole('tab', { name: 'Source', exact: true }).click();
+  await page.getByRole('tab', { name: 'Graph', exact: true }).click();
+  await expect(inspector(page).getByLabel('X', { exact: true })).toHaveValue('60');
+  await inspector(page).getByLabel('X', { exact: true }).fill('80');
+  await inspector(page).getByRole('button', { name: 'Apply changes', exact: true }).click(); await ready(page);
+  await expect(page.getByRole('tab', { name: 'Source', exact: true })).toBeEnabled();
+  expect((await saveSource(page, 'protected-field-applied')).source).toContain('[80mm, 40mm, 12mm]');
+});
 async function saveSource(page: Page, name: string) {
   await mkdir(output, { recursive: true });
   const event = page.waitForEvent('download', { timeout: 30_000 }); await page.getByRole('button', { name: 'Save source', exact: true }).click();

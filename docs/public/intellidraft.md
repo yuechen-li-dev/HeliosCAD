@@ -68,6 +68,15 @@ Drawing and dragging preview locally, then submit one compiler-owned source tran
 
 **Undo** and **Redo** navigate staged source transactions. **Cancel** discards the staged draft. Save source or create a checkpoint before closing or refreshing a local browser tab. A complete candidate must pass normal engineering build admission before replacing the current document.
 
+After extruding, **Extrude** keeps the current **Extrusion end height** available,
+including when reopening an existing part. It is measured along the layout normal
+from the same origin as the displayed start height. Choose **Update extrusion**
+to apply the new end height, or **Discard extrusion edits** to restore it.
+Unapplied height changes disable building and stage changes. Expression-driven
+end heights remain read-only; edit their driving parameter or source instead.
+Update stages the construction change; **Build and use part** performs the full
+solid check. A failed solid build keeps the draft open for correction.
+
 A traced Profile must remain closed and valid. A move that breaks an existing Profile is refused with the compiler's diagnostic and leaves the preceding candidate intact; another shape is never moved to repair it. Correct the placement or use Trace to select a different valid boundary. **Close** verifies closure and never invents a missing segment.
 
 ## Explicit dependencies are optional

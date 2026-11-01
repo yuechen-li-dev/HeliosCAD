@@ -135,6 +135,8 @@ export function IntelliDraftPanel({ runtime, initialSource = blank, document = D
   };
   const firstPoint = from || points[0]?.name || '', secondPoint = to || points[1]?.name || points[0]?.name || '';
   const profile = elements.find(e => e.kind === 'Profile'), body = elements.find(e => e.kind === 'Extrude');
+  const extrusionEnd = body?.fields.find(f => f.name.toLowerCase() === 'to');
+  useEffect(() => { if (extrusionEnd?.number != null) { setHeight(extrusionEnd.number); setPendingDimensions(false); } }, [body?.id, extrusionEnd?.number, index]);
   const usedNames = new Set(elements.map(e => e.name));
   const freshLegacy = (stem: string) => { let value = stem; for (let n = 2; usedNames.has(value); n++) value = stem + n; return value; };
   const drawing = tool === 'Rectangle';
@@ -150,6 +152,7 @@ export function IntelliDraftPanel({ runtime, initialSource = blank, document = D
   }
   const choose = (next: Tool) => {
     if (pendingDimensions) { setProblem({ text: 'Apply or discard the dimension edits before changing tools.' }); return; }
+    setProblem(null);
     setEditingPoint(null); setDimension(null); setDimensionEdit(null); setAlignPrompt(null); setTool(next);
     if (next === 'Rectangle') setReference('');
     setName(next === 'Trace' ? profile?.name ?? 'section' : ({ Layout: freshLegacy('layout'), Rectangle: freshName(nameStem(drawKind), usedNames), Point: freshLegacy('a'), Line: freshLegacy('edge'), Circle: freshLegacy('rim'), Path: freshLegacy('outline') } as Partial<Record<Tool, string>>)[next] ?? 'body');
@@ -157,6 +160,7 @@ export function IntelliDraftPanel({ runtime, initialSource = blank, document = D
   };
   const chooseDraw = (kind: string) => {
     if (pendingDimensions) { setProblem({ text: 'Apply or discard the dimension edits before changing tools.' }); return; }
+    setProblem(null);
     const group = DRAW_TOOLS.find(t => t.kind === kind)?.group; if (group) setVariant(v => ({ ...v, [group]: kind }));
     if (STROKE_KINDS.has(kind)) setAddOpen(false);
     setEditingPoint(null); setDimension(null); setDimensionEdit(null); setAlignPrompt(null); setTool('Rectangle'); setReference(''); setDrawKind(kind);
@@ -291,11 +295,11 @@ export function IntelliDraftPanel({ runtime, initialSource = blank, document = D
   };
 
   const commit = async () => {
-    if (busy) return; setBusy(true); setProblem(null);
+    if (busy || pendingDimensions) return; setBusy(true); setProblem(null);
     try { await onCommit(source); } catch (e) { if (mounted.current) report(e); }
     finally { if (mounted.current) setBusy(false); }
   };
-  const cancel = () => { if (!busy && (index === 0 || confirm('Discard this construction draft? The current part has not changed.'))) onClose(); };
+  const cancel = () => { if (!busy && (index === 0 && !pendingDimensions || confirm('Discard this construction draft? The current part has not changed.'))) onClose(); };
   const pickSpan = (span: DraftSpan) => {
     const existing = trace.findIndex(t => t.reference === span.reference && t.from === span.from && t.to === span.to);
     const parent = elements.find(e => e.id === span.owner)?.parent; if (parent) setOwner(parent);
@@ -412,7 +416,7 @@ export function IntelliDraftPanel({ runtime, initialSource = blank, document = D
 
   return <dialog ref={dialog} tabIndex={-1} className="intellidraft" aria-label="IntelliDraft" onKeyDown={keyDown} onCancel={e => { e.preventDefault(); cancel(); }}>
     <header><strong>IntelliDraft</strong><span>Draw → Trace → Extrude</span>
-      {!fresh && onNew && <button disabled={busy} onClick={() => { if (!index || confirm('Discard these staged edits and start a new part?')) onNew(); }}>New profile part</button>}
+      {!fresh && onNew && <button disabled={busy || pendingDimensions} onClick={() => { if (!index || confirm('Discard these staged edits and start a new part?')) onNew(); }}>New profile part</button>}
       <button disabled={busy || pendingDimensions || index === 0} title="Undo · Ctrl+Z" onClick={() => navigateHistory(index - 1)}>Undo</button><button disabled={busy || pendingDimensions || index + 1 === history.length} title="Redo · Ctrl+Y" onClick={() => navigateHistory(index + 1)}>Redo</button><button disabled={busy} onClick={cancel}>Cancel</button>
     </header>
     <div className="draft-body"><aside ref={inspector}>
@@ -526,7 +530,17 @@ export function IntelliDraftPanel({ runtime, initialSource = blank, document = D
         <button type="button" disabled={busy || !!profile} onClick={() => { setOwner(path.id); choose('Trace'); }}>Trace this Path</button>
       </form>)}
       {profile && !body && tool === 'Extrude' && <form onSubmit={e => { e.preventDefault(); void apply({ action: 'extrude', parent: profile.id, name: freshLegacy('body'), length: height }); }}><h3>Extrude {profile.name}</h3>{numberField('Extrusion depth', height, setHeight)}<button className="draft-primary" disabled={busy}>Extrude Profile</button></form>}
-      {tool === 'Extrude' && body && <p>The outline is extruded. Edit shapes in Draw, then Build and use part.</p>}
+      {tool === 'Extrude' && body && <>
+        <h3>Extrude {profile?.name ?? body.name}</h3>
+        <p>Start height: {body.fields.find(f => f.name.toLowerCase() === 'from')?.value ?? '0mm'}. End height is measured along the layout normal.</p>
+        {extrusionEnd?.editable && extrusionEnd.number != null
+          ? <form onSubmit={e => { e.preventDefault(); void apply({ action: 'dimension', parent: body.id, field: extrusionEnd.name, value: height }); }}>
+            {numberField('Extrusion end height', height, value => { setHeight(value); setPendingDimensions(value !== extrusionEnd.number); })}<button disabled={busy || height === extrusionEnd.number}>Update extrusion</button>
+            {height !== extrusionEnd.number && <button type="button" disabled={busy} onClick={() => { setHeight(extrusionEnd.number!); setPendingDimensions(false); setProblem(null); }}>Discard extrusion edits</button>}
+          </form>
+          : <p>End height: {extrusionEnd?.value ?? 'unavailable'}. Edit its driving expression or parameter in Draw or Source.</p>}
+        <p>Edit construction in Draw, then Build and use part.</p>
+      </>}
 
       {!!view?.openingReferences.length && view.node && <ProfileOpening references={view.openingReferences} disabled={!draftStage || busy || pendingDimensions}
         onAdd={opening => void transact({ kind: 'opening', node: view.node, ...opening })} />}

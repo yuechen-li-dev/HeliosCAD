@@ -35,6 +35,8 @@ interface Props {
   readOnly: string | null;
   onCommit(node: OutlineNode, field: OutlineField, text: string): string | null;
   onApplyFields?(node: OutlineNode, values: readonly { field: string; value: string }[]): Structural;
+  onPendingFields?(pending: boolean): void;
+  fieldsPending?: boolean;
   onAddField(node: OutlineNode, name: string, value: string): Structural;
   onRemoveField(node: OutlineNode, field: OutlineField): Structural;
   onRename(node: OutlineNode, name: string): Structural;
@@ -124,10 +126,10 @@ export function NodeInspector(props: Props) {
   const suggestions = node.call ? argumentSuggestions(node, callee?.signature ?? []) : fieldSuggestions(node, completion, schema, nodes);
   const parameterId = (name: string) => [...nodes.values()].find(n => n.name === name && n.kind === 'Static')?.id;
   // A feature written as fields inside a Modify can become a reusable Feature.
-  const reusable = !readOnly && !node.call && isModify(parent) && node.children.length === 0 && node.fields.some(parameterizable);
+  const reusable = !readOnly && !props.fieldsPending && !node.call && isModify(parent) && node.children.length === 0 && node.fields.some(parameterizable);
 
   return <aside className="node-inspector" aria-label="Node inspector">
-    <NodeHead {...props} node={node} />
+    <NodeHead {...props} node={node} readOnly={props.fieldsPending ? 'Apply or discard field edits first' : readOnly} />
     {props.actions}
     {parent && parent.kind !== 'Model' && parent.kind !== 'model' && <button className="node-parent" onClick={() => onSelectNode(parent.id)}>↑ {parent.name ?? parent.kind}</button>}
     {readOnly && <p className="node-note">{readOnly}</p>}
@@ -150,7 +152,7 @@ export function NodeInspector(props: Props) {
     </div>}
     {(node.fields.length > 0 || (!readOnly && !node.value)) && <div className="node-fields" role="group" aria-label="Values">
       {props.onApplyFields && node.fields.length > 0 ? <FieldSet key={JSON.stringify([node.id, props.revision, node.fields.map(f => [f.name, f.text])])} fields={node.fields} schema={schema} disabled={!!readOnly}
-        focusField={focusField} onApply={values => props.onApplyFields!(node, values)} rowActions={field => ({
+        focusField={focusField} onPending={props.onPendingFields} onApply={values => props.onApplyFields!(node, values)} rowActions={field => ({
           onRemove: () => onRemoveField(node, field), onPromote: (axis, name) => onPromote(node, field, axis, name),
           defaultParameter: `${node.name ?? node.kind}${field.name[0].toUpperCase()}${field.name.slice(1)}`,
           onParameter: name => { const id = parameterId(name); if (id) onSelectNode(id); },
@@ -161,7 +163,7 @@ export function NodeInspector(props: Props) {
         onCommit={text => onCommit(node, field, text)} onRemove={() => onRemoveField(node, field)}
         onPromote={(axis, name) => onPromote(node, field, axis, name)} defaultParameter={`${node.name ?? node.kind}${field.name[0].toUpperCase()}${field.name.slice(1)}`}
         onParameter={name => { const id = parameterId(name); if (id) onSelectNode(id); }} />)}
-      {!readOnly && <AddField key={node.id} suggestions={suggestions} onAdd={(name, value) => onAddField(node, name, value)} />}
+      {!readOnly && !props.fieldsPending && <AddField key={node.id} suggestions={suggestions} onAdd={(name, value) => onAddField(node, name, value)} />}
     </div>}
     {node.call && callee && <div className="node-children">
       <span>Placed Feature</span>
@@ -249,14 +251,17 @@ function AddField({ suggestions, onAdd }: { suggestions: readonly FieldSuggestio
 export interface FieldDraft { read(): string | null }
 
 /** Collect all controls before compiling. No blur-time builds or asynchronous outline races. */
-export function FieldSet({ fields, schema, disabled, focusField, draftRef, onApply, onDirty, rowActions }: {
+export function FieldSet({ fields, schema, disabled, focusField, draftRef, onApply, onDirty, onPending, rowActions }: {
   fields: readonly OutlineField[]; schema?: SemanticConstructSchema | null; disabled: boolean; focusField?: string | null;
   draftRef?: React.Ref<{ read(): { field: string; value: string }[] | null }>;
   onApply?(values: readonly { field: string; value: string }[]): Structural; onDirty?(): void;
+  onPending?(pending: boolean): void;
   rowActions?(field: OutlineField): Pick<Parameters<typeof FieldRow>[0], 'onRemove' | 'onPromote' | 'defaultParameter' | 'onParameter'>;
 }) {
   const handles = useRef(new Map<string, FieldDraft>());
   const [dirty, setDirty] = useState(false), [epoch, setEpoch] = useState(0);
+  useEffect(() => { onPending?.(dirty); }, [dirty, onPending]);
+  useEffect(() => () => onPending?.(false), [onPending]);
   const [error, setError] = useState<string | null>(null);
   const [applying, setApplying] = useState(false);
   const read = () => {
@@ -285,7 +290,7 @@ export function FieldSet({ fields, schema, disabled, focusField, draftRef, onApp
       draftRef={handle => { if (handle) handles.current.set(field.name, handle); else handles.current.delete(field.name); }} onCommit={() => null} />; })}
     {onApply && <div className="field-set-actions"><button className="primary" disabled={!dirty || disabled || applying} onClick={() => void apply()}>Apply changes</button>
       <button disabled={!dirty || disabled || applying} onClick={() => { setEpoch(e => e + 1); setDirty(false); setError(null); }}>Discard edits</button>
-      <small>{dirty ? 'Unapplied edits · builds together when applied' : 'Enter values, then Apply changes'}</small></div>}
+      <small>{dirty ? 'Unapplied edits · apply or discard before changing selection or view' : 'Enter values, then Apply changes'}</small></div>}
     {schema?.fields.some(f => f.description && fields.some(value => value.name.toLowerCase() === f.name.toLowerCase())) && <details className="field-help"><summary>Field help</summary>
       {schema.fields.filter(f => f.description && fields.some(value => value.name.toLowerCase() === f.name.toLowerCase())).map(f => <p key={f.id}><b>{f.name}</b> · {f.description}</p>)}
     </details>}

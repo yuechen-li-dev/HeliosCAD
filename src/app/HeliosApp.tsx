@@ -107,6 +107,16 @@ export function HeliosApp({ project, initialWorkspace, chooseBase = false, onSho
   const sourcePanel = useRef<SourcePanelHandle>(null);
   const [historyState, setHistoryState] = useState({ undo: false, redo: false });
   const [pendingAuthoring, setPendingAuthoring] = useState<PendingAuthoring | null>(chooseBase ? { action: { kind: 'base' }, node: null, revision: 0 } : null);
+  const [pendingGraphFields, setPendingGraphFields] = useState(false);
+  const graphFieldsPending = useRef(false);
+  const onPendingGraphFields = useCallback((pending: boolean) => {
+    graphFieldsPending.current = pending; setPendingGraphFields(pending);
+  }, []);
+  const canLeaveGraphFields = () => {
+    if (!graphFieldsPending.current) return true;
+    pushOutput('Apply or discard the graph field edits before changing selection, view or operation.');
+    return false;
+  };
   const [previewModel, setPreviewModel] = useState<ModelSession | null>(null);
   const wireframePreview = previewModel && pendingAuthoring?.action.kind === 'feature'
     && ['fillet', 'chamfer'].includes(pendingAuthoring.action.item.id) ? previewModel : null;
@@ -150,12 +160,14 @@ export function HeliosApp({ project, initialWorkspace, chooseBase = false, onSho
   };
   useEffect(() => { if (pendingAuthoring && pendingAuthoring.revision !== sourceRevision) setPendingAuthoring(null); }, [sourceRevision, pendingAuthoring]);
   function beginAuthoring(action: AuthoringAction, mate?: PendingAuthoring['mate']) {
+    if (!canLeaveGraphFields()) return;
     if (busy || buildStarted !== null) { pushOutput('Wait for the current operation to finish.'); return; }
     if (outline?.document !== sourceName || outline.revision !== String(sourceRevisionRef.current)) { pushOutput('Updating graph controls; try again when they are ready.'); return; }
     setEditorMode('graph'); setSideTab('selection');
     setPendingAuthoring({ action, node: inspectedId, revision: sourceRevisionRef.current, mate });
   }
   const runHistory = async (direction: 'undo' | 'redo') => {
+    if (!canLeaveGraphFields()) return;
     if (busy || buildStarted !== null || pendingAuthoring) return;
     try { await sourcePanel.current?.history(direction); }
     catch (error) { pushOutput(`History refused · ${error instanceof Error ? error.message : String(error)}`); }
@@ -231,7 +243,7 @@ export function HeliosApp({ project, initialWorkspace, chooseBase = false, onSho
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's') { event.preventDefault(); if (onSave) void save(); else downloadSource(); }
-      if (((event.ctrlKey || event.metaKey) && event.shiftKey && event.key.toLowerCase() === 'p') || event.key === 'F1') { event.preventDefault(); setPaletteOpen(true); }
+      if (((event.ctrlKey || event.metaKey) && event.shiftKey && event.key.toLowerCase() === 'p') || event.key === 'F1') { event.preventDefault(); if (canLeaveGraphFields()) setPaletteOpen(true); }
       if (event.key.toLowerCase() === 'f' && !isTyping(event.target)) setViewCommand(`fit-${Date.now()}`);
       if ((event.ctrlKey || event.metaKey) && !isTyping(event.target) && ['z', 'y'].includes(event.key.toLowerCase())) {
         event.preventDefault(); void runHistory(event.key.toLowerCase() === 'y' || event.shiftKey ? 'redo' : 'undo');
@@ -241,6 +253,7 @@ export function HeliosApp({ project, initialWorkspace, chooseBase = false, onSho
   }, [source, sourceName, onSave, busy, buildStarted, pendingAuthoring]);
 
   const save = async () => {
+    if (!canLeaveGraphFields()) return;
     if (!onSave) return;
     if (Object.keys(projectDocuments.current).length > 1 || projectRoot.current && projectRoot.current !== sourceName) {
       setSaveState('Cloud save requires a single root document. Use local project checkpoints for this workspace.');
@@ -258,6 +271,7 @@ export function HeliosApp({ project, initialWorkspace, chooseBase = false, onSho
   };
 
   const downloadSource = () => {
+    if (!canLeaveGraphFields()) return;
     if (Object.keys(projectDocuments.current).length > 1) {
       const documents = { ...projectDocuments.current, [sourceName]: source };
       downloadBlob(new Blob([Uint8Array.from(packProject({ root: projectRoot.current ?? sourceName, documents })).buffer], { type: 'application/zip' }), `${stripExtension(projectRoot.current ?? sourceName)}.helios.zip`);
@@ -270,7 +284,7 @@ export function HeliosApp({ project, initialWorkspace, chooseBase = false, onSho
     pushOutput(`Source download started · ${sourceName}`);
   };
 
-  const select = (entityId: string | null, faceId: string | null = null, selection: SelectionDescription | null = null) => { setSelectedEntityId(entityId); setSelectedFaceId(faceId); setSelectedSelection(selection); };
+  const select = (entityId: string | null, faceId: string | null = null, selection: SelectionDescription | null = null) => { if (!canLeaveGraphFields()) return; setSelectedEntityId(entityId); setSelectedFaceId(faceId); setSelectedSelection(selection); };
   useEffect(() => {
     let current = true;
     setFieldProjection(null);
@@ -293,6 +307,7 @@ export function HeliosApp({ project, initialWorkspace, chooseBase = false, onSho
   // Reopen the draft over an existing Profile. Asked fresh: the graph outline is only kept in graph mode.
   // Opens over the document's Profiles (any part, not only drafts made here), or a new draft without one.
   const openIntelliDraft = async (node: string | null = null) => {
+    if (!canLeaveGraphFields()) return;
     if (busy || buildStarted !== null) return;
     setPendingAuthoring(null);
     const revision = sourceRevision, text = source;
@@ -300,7 +315,7 @@ export function HeliosApp({ project, initialWorkspace, chooseBase = false, onSho
     setIntelliDraft({ revision, source: nodes.some(n => n.kind === 'Profile') ? text : undefined, node });
   };
   openIntelliDraftRef.current = node => void openIntelliDraft(node ?? null);
-  const newIntelliDraft = () => { if (!busy && buildStarted === null) { setPendingAuthoring(null); setIntelliDraft({ revision: sourceRevision }); } };
+  const newIntelliDraft = () => { if (canLeaveGraphFields() && !busy && buildStarted === null) { setPendingAuthoring(null); setIntelliDraft({ revision: sourceRevision }); } };
   // A part made or reshaped in IntelliDraft is framed once its new geometry arrives.
   const fitOnNextModel = useRef(false);
   useEffect(() => { if (fitOnNextModel.current && model) { fitOnNextModel.current = false; setViewCommand(`fit-${Date.now()}`); } }, [model?.revision]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -335,6 +350,7 @@ export function HeliosApp({ project, initialWorkspace, chooseBase = false, onSho
       .sort((a, b) => (a.source?.length ?? Infinity) - (b.source?.length ?? Infinity))[0];
   };
   const selectFromGraph = useCallback((unitId: string, row: GraphRow | null, graph: PartGraph) => {
+    if (!canLeaveGraphFields()) return;
     setGraphSelection({ unitId, rowId: row?.id ?? null });
     const unit = graph.units.find(item => item.id === unitId);
     if (unit?.category === 'external') return;
@@ -344,6 +360,7 @@ export function HeliosApp({ project, initialWorkspace, chooseBase = false, onSho
     if (entity) select(entity.id);
   }, [model, sourceName]);
   const openFromGraph = useCallback((unitId: string, row: GraphRow | null, graph: PartGraph) => {
+    if (!canLeaveGraphFields()) return;
     const unit = graph.units.find(item => item.id === unitId);
     if (unit?.category === 'external') { if (unit.document in projectDocuments.current) switchFile(unit.document); return; }
     const node = graph.nodes.get(row?.id ?? unitId);
@@ -356,6 +373,7 @@ export function HeliosApp({ project, initialWorkspace, chooseBase = false, onSho
     navigateSource({ source: sourceName, start: span.start, length: span.length, line: 1, column: 1 });
   }, [sourceName]);
   const selectGraphNode = (id: string) => {
+    if (!canLeaveGraphFields()) return;
     const unitId = partGraph?.unitOf.get(id);
     if (!unitId || !partGraph) return;
     setGraphSelection({ unitId, rowId: id === unitId ? null : id });
@@ -510,19 +528,19 @@ export function HeliosApp({ project, initialWorkspace, chooseBase = false, onSho
   }, [semanticSchema]);
   const assemblyView = (): AssemblyView | null => !assemblyGraph ? null : {
     assemblies, graph: assemblyGraph, selectedAssembly: assemblyGraph.assembly.id, selectedId: inspectedId,
-    authoring: busy || buildStarted !== null || pendingAuthoring ? null : {
+    authoring: busy || buildStarted !== null || pendingAuthoring || pendingGraphFields ? null : {
       kinds: jointKinds,
       onCreateMate: () => beginAuthoring({ kind: 'mate' }),
       onJoin: (kind: string, a: AssemblyEnd, b: AssemblyEnd) => {
         beginAuthoring({ kind: 'mate' }, { kind, a, b });
       },
     },
-    onPickAssembly: setPickedAssembly,
+    onPickAssembly: id => { if (canLeaveGraphFields()) setPickedAssembly(id); },
     onSelect: id => selectGraphNode(id),
-    onOpenSource: id => { const node = outline?.nodes.find(n => n.id === id); if (node) { setEditorMode('source'); navigateSource({ source: sourceName, start: node.span.start, length: node.span.length, line: 1, column: 1 }); } },
+    onOpenSource: id => { if (!canLeaveGraphFields()) return; const node = outline?.nodes.find(n => n.id === id); if (node) { setEditorMode('source'); navigateSource({ source: sourceName, start: node.span.start, length: node.span.length, line: 1, column: 1 }); } },
   };
   const graphAuthoring = () => {
-    if (busy || buildStarted !== null || pendingAuthoring || !outline || outline.document !== sourceName || outline.revision !== String(sourceRevision)) return null;
+    if (busy || buildStarted !== null || pendingAuthoring || pendingGraphFields || !outline || outline.document !== sourceName || outline.revision !== String(sourceRevision)) return null;
     const target = featureTarget(outline, inspectedId);
     return {
       actions: constructionActions(),
@@ -610,6 +628,7 @@ export function HeliosApp({ project, initialWorkspace, chooseBase = false, onSho
     };
   };
   const rebuildSource = async () => {
+    if (!canLeaveGraphFields()) return;
     if (buildStarted !== null || busy === 'Exporting' || busy === 'Rewriting source') return;
     await submitBuild(source, sourceName);
   };
@@ -669,6 +688,7 @@ export function HeliosApp({ project, initialWorkspace, chooseBase = false, onSho
     finally { setBusy(value => value === 'Exporting' ? null : value); }
   };
   const newDocument = (value: string, name: string) => {
+    if (!canLeaveGraphFields()) return;
     projectRoot.current = null; projectDocuments.current = {}; setProjectFileNames([]);
     setWorkspaceTitle(stripExtension(name));
     void open(value, name);
@@ -679,6 +699,7 @@ export function HeliosApp({ project, initialWorkspace, chooseBase = false, onSho
     newDocument(value, name);
   };
   const switchFile = (name: string) => {
+    if (!canLeaveGraphFields()) return;
     if (name === sourceName) { sourcePanel.current?.focusAt(); return; }
     setSource(projectDocuments.current[name]); setSourceName(name);
     setLiveDiagnostics([]);
@@ -688,6 +709,7 @@ export function HeliosApp({ project, initialWorkspace, chooseBase = false, onSho
     requestAnimationFrame(() => sourcePanel.current?.focusAt(reference));
   };
   const openExample = async (id: string) => {
+    if (!canLeaveGraphFields()) return;
     if (project) { location.assign(`/?example=${encodeURIComponent(id)}`); return; }
     if (openingExample || buildStarted !== null) return;
     setOpeningExample(id);
@@ -755,12 +777,12 @@ export function HeliosApp({ project, initialWorkspace, chooseBase = false, onSho
 
   return <div className={`helios-app${project ? ' cloud-mode' : ''}`}>
     <header className="topbar">
-      <button className="brand" onClick={() => project ? location.assign('/') : onShowcase ? onShowcase() : setExamplesOpen(true)} aria-label="Helios home"><span className="helios-symbol">H</span><div><strong>HELIOS</strong><small>by Aetheris</small></div></button>
+      <button className="brand" disabled={pendingGraphFields} onClick={() => project ? location.assign('/') : onShowcase ? onShowcase() : setExamplesOpen(true)} aria-label="Helios home"><span className="helios-symbol">H</span><div><strong>HELIOS</strong><small>by Aetheris</small></div></button>
       <div className="workspace-identity"><strong title={partName}>{partName}</strong><small>{sourceName} · {project ? 'Saved project' : 'Local workspace'}</small></div>
-      <nav className="workspace-tabs" aria-label="Workspace"><button aria-label="Undo" title="Undo · Ctrl+Z" disabled={!historyState.undo || !!busy || !!pendingAuthoring} onClick={() => void runHistory('undo')}>↶</button><button aria-label="Redo" title="Redo · Ctrl+Shift+Z" disabled={!historyState.redo || !!busy || !!pendingAuthoring} onClick={() => void runHistory('redo')}>↷</button><button onClick={() => setExamplesOpen(true)}>Examples</button><button onClick={() => fileInput.current?.click()}>Open file</button><button onClick={() => fileInput.current?.click()} title="Import a supported canonical STEP part as immutable geometry">Import STEP</button><button title="Download source, or a portable workspace with all imported assets · Ctrl+S" onClick={() => onSave ? void save() : downloadSource()}>{!onSave && Object.keys(projectDocuments.current).length > 1 ? 'Save workspace' : 'Save source'}</button><button className="build-action" disabled={buildStarted !== null || !!busy || !!pendingAuthoring} title="Build project · Ctrl+Enter" onClick={() => void rebuildSource()}>{buildStarted !== null ? `Building · ${elapsedSeconds.toFixed(1)} s` : 'Build'}</button><ExportPicker formats={model?.exportFormats ?? []} disabled={!model || !!busy || buildStarted !== null || !!pendingAuthoring} open={exportOpen} onOpen={setExportOpen} onExport={exportSelected} /></nav>
+      <nav className="workspace-tabs" aria-label="Workspace"><button aria-label="Undo" title="Undo · Ctrl+Z" disabled={!historyState.undo || !!busy || !!pendingAuthoring || pendingGraphFields} onClick={() => void runHistory('undo')}>↶</button><button aria-label="Redo" title="Redo · Ctrl+Shift+Z" disabled={!historyState.redo || !!busy || !!pendingAuthoring || pendingGraphFields} onClick={() => void runHistory('redo')}>↷</button><button disabled={pendingGraphFields} onClick={() => setExamplesOpen(true)}>Examples</button><button disabled={pendingGraphFields} onClick={() => fileInput.current?.click()}>Open file</button><button disabled={pendingGraphFields} onClick={() => fileInput.current?.click()} title="Import a supported canonical STEP part as immutable geometry">Import STEP</button><button disabled={pendingGraphFields} title="Download source, or a portable workspace with all imported assets · Ctrl+S" onClick={() => onSave ? void save() : downloadSource()}>{!onSave && Object.keys(projectDocuments.current).length > 1 ? 'Save workspace' : 'Save source'}</button><button className="build-action" disabled={buildStarted !== null || !!busy || !!pendingAuthoring || pendingGraphFields} title="Build project · Ctrl+Enter" onClick={() => void rebuildSource()}>{buildStarted !== null ? `Building · ${elapsedSeconds.toFixed(1)} s` : 'Build'}</button><ExportPicker formats={model?.exportFormats ?? []} disabled={!model || !!busy || buildStarted !== null || !!pendingAuthoring} open={exportOpen} onOpen={setExportOpen} onExport={exportSelected} /></nav>
       <div className="toolbar">
         <LocalHostControl />
-        <button className="palette-trigger" onClick={() => setPaletteOpen(true)}>⌕ <span>Command palette</span><kbd>Ctrl+Shift+P</kbd></button>
+        <button className="palette-trigger" disabled={pendingGraphFields} onClick={() => setPaletteOpen(true)}>⌕ <span>Command palette</span><kbd>Ctrl+Shift+P</kbd></button>
       </div>
       <div className="top-actions"><button title="Toggle utility dock" aria-label="Toggle utility dock" aria-pressed={shellLayout.utilityOpen} onClick={() => shellLayout.setUtilityOpen(value => !value)}>▥</button><select aria-label="Theme" value={theme} onChange={event => setTheme(event.target.value as ThemeName)}><option value="bronze-age">Bronze Age</option><option value="apollonia">Apollonia</option></select></div>
       <input ref={fileInput} hidden type="file" multiple accept=".firmament,.firmasm,.step,.stp,.zip" onChange={async event => {
@@ -791,9 +813,9 @@ export function HeliosApp({ project, initialWorkspace, chooseBase = false, onSho
         <div className="editor-pane" style={shellLayout.place('editor')}>
         <div className="editor-mode"><div className="segmented" role="tablist" aria-label="Editing view">
           <button role="tab" aria-selected={editorMode === 'graph'} className={editorMode === 'graph' ? 'active' : ''} onClick={() => setEditorMode('graph')}>Graph</button>
-          <button role="tab" disabled={!!pendingAuthoring} aria-selected={editorMode === 'source'} className={editorMode === 'source' ? 'active' : ''} onClick={() => setEditorMode('source')}>Source</button>
+          <button role="tab" disabled={!!pendingAuthoring || pendingGraphFields} title={pendingGraphFields ? 'Apply or discard graph field edits first' : undefined} aria-selected={editorMode === 'source'} className={editorMode === 'source' ? 'active' : ''} onClick={() => setEditorMode('source')}>Source</button>
         </div></div>
-        {editorMode === 'graph' && <GraphPanel layouts={graphLayouts.current} pending={!!pendingAuthoring} outline={outline} error={outlineError} diagnostics={shownDiagnostics} selection={graphSelection} theme={theme}
+        {editorMode === 'graph' && <GraphPanel layouts={graphLayouts.current} pendingFields={pendingGraphFields} pending={!!pendingAuthoring} outline={outline} error={outlineError} diagnostics={shownDiagnostics} selection={graphSelection} theme={theme}
           onSelect={(unitId, row, graph) => selectFromGraph(unitId, row, graph)} onOpenSource={(unitId, row, graph) => openFromGraph(unitId, row, graph)}
           authoring={graphAuthoring()} assembly={assemblyView()}
           inspector={<div className="graph-side">
@@ -812,12 +834,12 @@ export function HeliosApp({ project, initialWorkspace, chooseBase = false, onSho
               }} /> : <>
             <div className="graph-side-tabs" role="tablist" aria-label="Side panel">
               <button role="tab" aria-selected={sideTab === 'selection'} className={sideTab === 'selection' ? 'active' : ''} onClick={() => setSideTab('selection')}>Selection</button>
-              <button role="tab" aria-selected={sideTab === 'parameters'} className={sideTab === 'parameters' ? 'active' : ''} onClick={() => setSideTab('parameters')}>
+              <button role="tab" disabled={pendingGraphFields} title={pendingGraphFields ? 'Apply or discard graph field edits first' : undefined} aria-selected={sideTab === 'parameters'} className={sideTab === 'parameters' ? 'active' : ''} onClick={() => setSideTab('parameters')}>
                 Parameters{parameterNodes(outline).length > 0 && <small>{parameterNodes(outline).length}</small>}</button>
             </div>
             {sideTab === 'selection'
-              ? <NodeInspector {...inspectorProps()} {...graphActions} actions={contextActions()} onCommit={commitGraphField} onRevert={revertGraphEdit} onSelectNode={selectGraphNode}
-                  onOpenSource={span => { setEditorMode('source'); navigateSource({ source: sourceName, start: span.start, length: span.length, line: 1, column: 1 }); }} />
+              ? <NodeInspector {...inspectorProps()} {...graphActions} onPendingFields={onPendingGraphFields} fieldsPending={pendingGraphFields} actions={contextActions()} onCommit={commitGraphField} onRevert={revertGraphEdit} onSelectNode={selectGraphNode}
+                  onOpenSource={span => { if (!canLeaveGraphFields()) return; setEditorMode('source'); navigateSource({ source: sourceName, start: span.start, length: span.length, line: 1, column: 1 }); }} />
               : <ParametersSheet outline={outline} edit={graphEdit && graphEdit.revision === sourceRevision ? graphEdit : null}
                   readOnly={inspectorProps().readOnly} onCommit={commitGraphField} onRename={graphActions.onRename} onDelete={graphActions.onDelete}
                   onAdd={parameterActions.onAdd} onSelect={selectGraphNode} />}</>}
@@ -829,7 +851,7 @@ export function HeliosApp({ project, initialWorkspace, chooseBase = false, onSho
         <ResizeHandle axis="horizontal" label="Resize source and viewport" value={shellLayout.editorPercent} onResize={shellLayout.resizeEditor} style={shellLayout.splitter} />
         <div className={`viewport-pane${ghosted ? ' ghosted' : ''}`} style={shellLayout.place('viewport')}>
         <div className={`viewport-toolbar${shellLayout.toolbarStacked ? ' stacked' : ''}`} inert={!!intelliDraft} style={shellLayout.place('toolbar')}>
-          <div className="toolbar-tools"><button title="Draw, dimension and trace Profiles" disabled={!!busy || buildStarted !== null} onClick={() => void openIntelliDraft()}>IntelliDraft</button>
+          <div className="toolbar-tools"><button title="Draw, dimension and trace Profiles" disabled={!!busy || buildStarted !== null || pendingGraphFields} onClick={() => void openIntelliDraft()}>IntelliDraft</button>
           <button title="Show retained geometric Concept Structs as gold wireframes; disabled when none are available" aria-pressed={showConcepts}
             disabled={!model?.mesh.definitions.some(d => d.concepts?.length) && !model?.mesh.occurrences.some(o => o.concepts?.length)} onClick={() => setShowConcepts(value => !value)}>Concepts</button></div>
           <div className="toolbar-views"><button title="Front view" onClick={() => namedView('front')}>Front</button><button title="Top view" onClick={() => namedView('top')}>Top</button><button title="Right view" onClick={() => namedView('right')}>Right</button><button title="Isometric view" onClick={() => namedView('iso')}>Iso</button><button title="Fit model · F" onClick={() => setViewCommand(`fit-${Date.now()}`)}>Fit</button><button title="Fit selection" disabled={!selectedEntityId} onClick={() => setViewCommand(`fitselection-${Date.now()}`)}>Fit selection</button></div>
