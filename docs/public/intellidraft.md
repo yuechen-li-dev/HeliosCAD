@@ -10,10 +10,10 @@ The sidebar has a searchable, independently scrollable **Shapes** list. Select a
 
 Each row's checkmark controls **construction visibility in this workspace**. Uncheck it to hide the shape and exclude it from picking and alignment targets; check it to show it again. **Show all** restores the construction. This is display suppression, not deletion or a conditional build: source, existing traced Profiles and exported geometry stay unchanged. Selecting a hidden row does not reveal it. Visibility resets when the IntelliDraft workspace closes.
 
-Use **Draw rectangle**, **Draw circle**, **Draw ellipse**, **Draw slot**, or **Draw rounded rectangle**, then drag between two corners. Enter exact dimensions in the inspector afterward, or fill the creation fields and choose **Add shape** (**Add Rectangle** for a rectangle).
+Use **Draw rectangle**, **Draw ellipse**, **Draw slot**, or **Draw rounded rectangle**, then drag between two corners. **Draw circle** takes two clicks: center, then a point that sets the radius. **Draw arc** (in the Circle type menu, or **A**) takes three clicks: center, arc start, arc end. Arcs run counter-clockwise from start to end; the end stays on the selected radius. Enter exact shape dimensions in the inspector afterward, or fill the creation fields and choose **Add shape** (**Add Rectangle** for a rectangle).
 
-While drawing or moving a shape, the canvas shows a temporary preview. Releasing
-the pointer submits one edit to the compiler; it does not rebuild for every mouse
+While drawing or moving a shape, the canvas shows a temporary preview. Finishing
+the gesture submits one edit to the compiler; it does not rebuild for every mouse
 movement. **Esc** cancels a drag. Middle-button dragging pans the canvas.
 
 | Tool | Retained type | Exact inputs |
@@ -24,7 +24,9 @@ movement. **Esc** cancels a drag. Middle-button dragging pans the canvas.
 | Slot | `Slot2` | Overall length including both round ends, width, rotation, center |
 | Rounded rectangle | `RoundedRect2` | Width, height, corner radius, center |
 
-A circle uses the smaller dragged extent as its diameter. A slot's longer dragged extent becomes its overall length; a vertically drawn slot keeps that orientation. A rounded rectangle starts with a radius one eighth of the smaller extent; edit it through **Radius**. Invalid slot dimensions or an oversized corner radius are rejected by the compiler.
+A circle's radius is the distance from its first click to its second, including a horizontal or vertical radius. A slot's longer dragged extent becomes its overall length; a vertically drawn slot keeps that orientation. A rounded rectangle starts with a radius one eighth of the smaller extent; edit it through **Radius**. Invalid slot dimensions or an oversized corner radius are rejected by the compiler.
+
+In **Draw**, choose **Select** (**V**) and drag a shape's body or a line, arc, or axis directly. Lines and arcs translate their defining named points together in one undoable edit; shared points remain shared. Expression-driven placements retain their expressions. **Trace** and **Extrude** lock construction movement and dimensions. Selecting a row in those stages does not unlock it: return to **Draw** to edit. Escape cancels a pending center/radius/arc gesture; changing tools also discards its preview.
 
 In **Trace**, select the construction shape. **Use whole shape outline** traces a complete circle, ellipse, slot or rounded rectangle. Rectangles also offer named landmark spans as described below. Existing **Manual guide trace** exposes the compiler's named boundary guides for more detailed selection; curved span trimming uses its existing named-point controls rather than inventing intersection points.
 
@@ -76,7 +78,7 @@ Existing references `rectangles-l.firmament` and `rectangles-l-revised.firmament
 
 ## Advanced construction and limits
 
-The drawing palette creates the five closed shape types listed above. Shapes whose compiler-projected center controls are independently writable can be moved; positions driven by expressions retain their inputs. **Advanced: points, lines and Paths** retains named Point2/Line2/Circle2 guides and ordered line/arc Path steps. Legacy named-circle spans use named endpoints. Paths use distances, radii and signed turns; **Close Path with line** explicitly adds a closing line. Existing slot and rounded-rectangle dimensions and circular profile openings remain available through **Sketch**.
+The drawing palette creates retained closed shapes plus Line2, Arc2 and Axis2 construction guides. Shapes whose compiler-projected center controls are independently writable can be moved; positions driven by expressions retain their inputs. Guide drags require literal positions for all defining points (or an axis origin); the compiler still rejects moves that break an arc or an existing traced Profile. **Advanced: points, lines and Paths** retains named Point2/Line2/Circle2 guides and ordered line/arc Path steps. Legacy named-circle spans use named endpoints. Paths use distances, radii and signed turns; **Close Path with line** explicitly adds a closing line. Existing slot and rounded-rectangle dimensions and circular profile openings remain available through **Sketch**.
 
 Layouts support XY, XZ and YZ; UI-created Paths use XY. Alignment considers shapes in the same layout, using compiler-projected bounds. It is temporary positioning assistance, not general geometric inference. Trace uses existing named landmarks. Arbitrary intersection creation, new inner-loop assembly, arbitrary trim/extend and freeform curve editing are not implemented.
 

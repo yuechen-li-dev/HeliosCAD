@@ -189,6 +189,10 @@ async function moveCard(page: Page, selector: string) {
 
 test('card dragging persists across selection, source view and rebuild without changing the part', async ({ page }) => {
   await newBlock(page);
+  await expect(page.locator('.graph-caption')).toContainText('Links show source dependencies');
+  await expect(page.locator('.graph-unit .react-flow__handle')).toHaveCount(2);
+  await expect(page.locator('.graph-unit .react-flow__handle.connectable')).toHaveCount(0);
+  for (const handle of await page.locator('.graph-unit .react-flow__handle').all()) await expect(handle).toBeHidden();
   const source = (await saveSource(page, 'layout-before')).source;
   const geometry = await step(page, 'layout-before');
   const { card, moved } = await moveCard(page, '.react-flow__node-unit');

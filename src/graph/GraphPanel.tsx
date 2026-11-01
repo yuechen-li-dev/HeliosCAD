@@ -4,7 +4,7 @@ import '@xyflow/react/dist/style.css';
 import type { Diagnostic, LanguageEditOperation, LanguageOutline, OutlineNode, PaletteItem } from '@aetheris/cad';
 import { useGraphBodyLayout } from './graphBodyLayout';
 import { useGraphNodes, type GraphLayouts } from './useGraphNodes';
-import { reorderOperation, wireChoices, type WireChoice } from './graphAuthoring';
+import { reorderOperation } from './graphAuthoring';
 import { PalettePopover } from './PalettePopover';
 import { AssemblyCanvas, type AssemblyAuthoring } from './AssemblyCanvas';
 import type { AssemblyGraph } from './assemblyGraph';
@@ -19,8 +19,6 @@ export interface GraphAuthoring {
   featureTarget: { body: string } | { reason: string };
   unavailable(item: PaletteItem): string | null;
   onInsert(item: PaletteItem): void;
-  /** A wire from `provider` landed on `consumer` and the engineer chose how it connects. */
-  onWire(provider: string, consumer: OutlineNode, choice: WireChoice): void;
   onReorder(operation: LanguageEditOperation, label: string): void;
 }
 export interface GraphAction { id: string; label: string; description: string; reason?: string; run(): void }
@@ -71,7 +69,7 @@ const UnitNode = memo(function UnitNode({ data, selected }: NodeProps<Node<UnitD
   };
   return <div className={`graph-unit category-${unit.category}${selected ? ' selected' : ''}`} style={{ width: unit.width, minHeight: unit.height }}
     title={external ? `Defined in ${unit.document}` : 'Double-click to open in source'}>
-    <Handle type="target" position={direction === 'LR' ? Position.Left : Position.Top} isConnectable={editable && !external} />
+    <Handle type="target" position={direction === 'LR' ? Position.Left : Position.Top} isConnectable={false} />
     <header className="graph-node-drag" title="Drag to arrange this card; double-click to open source">
       <strong>{unit.title}</strong>
       {problems > 0 && <span className="graph-problems" aria-label={`${problems} problems`}>{problems}</span>}
@@ -101,13 +99,11 @@ const UnitNode = memo(function UnitNode({ data, selected }: NodeProps<Node<UnitD
       })}
       {unit.hiddenRows > 0 && <li className="graph-more">{unit.hiddenRows} more in source</li>}
     </ol>}
-    <Handle type="source" position={direction === 'LR' ? Position.Right : Position.Bottom} isConnectable={editable} />
+    <Handle type="source" position={direction === 'LR' ? Position.Right : Position.Bottom} isConnectable={false} />
   </div>;
 });
 
 const nodeTypes = { unit: UnitNode };
-
-type PendingWire = { provider: string; consumer: string; x: number; y: number };
 
 function Canvas({ outline, error, diagnostics, selection, theme, onSelect, onOpenSource, direction, authoring, paletteAt, setPaletteAt, host, positions, layoutRevision }:
   Props & { positions: Map<string, { x: number; y: number }>; layoutRevision: number; direction: GraphDirection; paletteAt: { x: number; y: number } | null; setPaletteAt(at: { x: number; y: number } | null): void; host: RefObject<HTMLDivElement | null> }) {
@@ -128,7 +124,6 @@ function Canvas({ outline, error, diagnostics, selection, theme, onSelect, onOpe
   const [fitted, setFitted] = useState('');
   const [dragging, setDragging] = useState<string | null>(null);
   const [drop, setDrop] = useState<DropMark>(null);
-  const [wire, setWire] = useState<PendingWire | null>(null);
   const editable = !!authoring;
 
   const dropRow = (targetId: string, place: 'before' | 'after') => {
@@ -141,7 +136,7 @@ function Canvas({ outline, error, diagnostics, selection, theme, onSelect, onOpe
   };
 
   const input: Node<UnitData>[] = useMemo(() => !laid || !graph ? [] : laid.units.map(unit => ({
-    id: unit.id, type: 'unit', position: { x: unit.x, y: unit.y }, dragHandle: '.graph-node-drag', connectable: editable,
+    id: unit.id, type: 'unit', position: { x: unit.x, y: unit.y }, dragHandle: '.graph-node-drag', connectable: false,
     selected: selection?.unitId === unit.id,
     data: { unit, direction, problems: problems.get(unit.id) ?? 0, selectedRow: selection?.unitId === unit.id ? selection.rowId : null,
       editable, drop: drop && unit.rows.some(r => r.id === drop.rowId) ? drop : null,
@@ -167,7 +162,7 @@ function Canvas({ outline, error, diagnostics, selection, theme, onSelect, onOpe
       const next = { width: element.clientWidth, height: element.clientHeight };
       if (Math.abs(next.width - last.width) < 24 && Math.abs(next.height - last.height) < 24) return;
       last = next; cancelAnimationFrame(frame);
-      frame = requestAnimationFrame(() => void flow.fitView({ padding: 0.08, minZoom: 0.7, maxZoom: 1.1, duration: 0 }));
+      frame = requestAnimationFrame(() => void flow.fitView({ padding: 0.08, minZoom: 0.15, maxZoom: 1.1, duration: 0 }));
     });
     observer.observe(element);
     return () => { observer.disconnect(); cancelAnimationFrame(frame); };
@@ -175,7 +170,7 @@ function Canvas({ outline, error, diagnostics, selection, theme, onSelect, onOpe
   // Fit when the set of units changes, not on every field edit.
   useEffect(() => {
     if (!structure || structure === fitted) return;
-    const frame = requestAnimationFrame(() => { void flow.fitView({ padding: 0.08, minZoom: 0.7, maxZoom: 1.1, duration: 0 }); setFitted(structure); });
+    const frame = requestAnimationFrame(() => { void flow.fitView({ padding: 0.08, minZoom: 0.15, maxZoom: 1.1, duration: 0 }); setFitted(structure); });
     return () => cancelAnimationFrame(frame);
   }, [structure, fitted, flow]);
 
@@ -185,33 +180,13 @@ function Canvas({ outline, error, diagnostics, selection, theme, onSelect, onOpe
     const box = host.current?.getBoundingClientRect();
     return box ? { x: Math.max(8, Math.min(clientX - box.left, box.width - 300)), y: Math.max(8, Math.min(clientY - box.top, box.height - 120)) } : { x: 16, y: 16 };
   };
-  const consumerNode = wire && graph ? graph.nodes.get(wire.consumer) : undefined;
-  const providerUnit = wire && graph ? graph.units.find(u => u.id === wire.provider) : undefined;
-  const providerName = providerUnit ? (graph?.nodes.get(providerUnit.id)?.name ?? (providerUnit.category === 'external' ? providerUnit.title : null)) : null;
-  // A wire may land on the card or on any declaration it shows: their reference fields are the endings.
-  const endings = consumerNode && graph ? [consumerNode, ...[...graph.nodes.values()].filter(n => graph.unitOf.get(n.id) === consumerNode.id && n.id !== consumerNode.id)]
-    .flatMap(node => wireChoices(node, outline).map(choice => ({ node, choice }))) : [];
-
   return <>
     {laid?.units.length ? <ReactFlow nodes={nodes} edges={edges} nodeTypes={nodeTypes} colorMode={theme === 'apollonia' ? 'light' : 'dark'}
-      nodesDraggable nodesConnectable={editable} elementsSelectable={false} minZoom={0.15} maxZoom={2}
-      zoomOnDoubleClick={false} connectionRadius={36}
+      nodesDraggable nodesConnectable={false} edgesReconnectable={false} connectOnClick={false} elementsSelectable={false} minZoom={0.15} maxZoom={2}
+      zoomOnDoubleClick={false}
       onNodesChange={onNodesChange}
       onNodeClick={(_, node) => graph && onSelect(node.id, null, graph)}
       onNodeDoubleClick={(_, node) => graph && onOpenSource(node.id, null, graph)}
-      // A wire lands on the card under the pointer, not only on its small input handle.
-      onConnectEnd={(event, state) => {
-        const p = 'changedTouches' in event ? event.changedTouches[0] : event;
-        const from = state.fromNode?.id;
-        // While connecting, cards do not take pointer hits: find the one under the pointer by its box.
-        const card = [...(host.current?.querySelectorAll<HTMLElement>('.react-flow__node') ?? [])].find(element => {
-          const box = element.getBoundingClientRect();
-          return p.clientX >= box.left && p.clientX <= box.right && p.clientY >= box.top && p.clientY <= box.bottom;
-        })?.dataset.id;
-        const to = state.toNode?.id ?? card ?? undefined;
-        if (!from || !to || from === to) return;
-        setWire({ provider: from, consumer: to, ...local(p.clientX, p.clientY) });
-      }}
       onDoubleClick={event => {
         if (!authoring || !(event.target as HTMLElement).classList.contains('react-flow__pane')) return;
         setPaletteAt(local(event.clientX, event.clientY));
@@ -221,15 +196,7 @@ function Canvas({ outline, error, diagnostics, selection, theme, onSelect, onOpe
     </ReactFlow> : <div className="graph-empty"><strong>Nothing to show.</strong><p>This document has no declarations yet. {authoring ? 'Add a body to start.' : 'Switch to Source to start writing, or open an example.'}</p></div>}
     {authoring && paletteAt && <PalettePopover items={authoring.palette} actions={authoring.actions} at={paletteAt} featureTarget={authoring.featureTarget} unavailable={authoring.unavailable}
       onClose={() => setPaletteAt(null)} onPick={item => { setPaletteAt(null); authoring.onInsert(item); }} />}
-    {authoring && wire && consumerNode && <div className="graph-wire-menu" role="menu" aria-label="Connect" style={{ left: wire.x, top: wire.y }}
-      onKeyDown={event => { if (event.key === 'Escape') setWire(null); }}>
-      <p>Use <b>{providerName ?? providerUnit?.title}</b> in <b>{consumerNode.kind}{consumerNode.name ? ` ${consumerNode.name}` : ''}</b> as…</p>
-      {endings.length ? endings.map(({ node, choice }, index) => <button key={index} role="menuitem" autoFocus={index === 0}
-        onClick={() => { setWire(null); if (providerName) authoring.onWire(providerName, node, choice); }}>
-        {choice.kind === 'retarget' ? <>the body it modifies<small> now {consumerNode.name}</small></> : <>{node.id !== consumerNode.id && <small>{node.name ?? node.kind} · </small>}{choice.field.name}<small> now {choice.field.text}</small></>}
-      </button>) : <p className="graph-wire-none">{consumerNode.name ?? consumerNode.kind} has no field that takes a part. Add one in the inspector.</p>}
-      <button className="cancel" role="menuitem" onClick={() => setWire(null)}>Cancel</button>
-    </div>}
+
   </>;
 }
 
@@ -282,8 +249,8 @@ export function GraphPanel(props: Props) {
           ? 'Drag from one frame to another to join them; click a joint to edit it.' : 'Click a part or a joint to see it.'}</small>
       </div> : <div>
         {summary ? <><span>{summary.containers.length ? summary.containers.join(', ') : props.outline?.document}</span>
-          <small>{count(summary.units, 'authoring step')}, {count(summary.links, 'connection')}. {props.authoring
-            ? 'Select a card to edit dimensions or add a hole and edge finish. + Add opens the full catalog.' : 'Select a card to inspect its values.'}</small></> : <span>Model graph</span>}
+          <small>{count(summary.units, 'authoring step')}, {count(summary.links, 'dependency')}. {props.authoring
+            ? 'Drag cards to arrange; select to edit. Links show source dependencies. + Add creates bodies and features.' : 'Select a card to inspect its values.'}</small></> : <span>Model graph</span>}
       </div>}
       <button className="graph-add" title="Reset card positions to the automatic layout" onClick={() => { positions.clear(); setLayoutRevision(value => value + 1); }}>Auto arrange</button>
       {props.authoring && !showAssembly && <button className="graph-add" aria-label="Add a body or feature" onClick={() => setPaletteAt(at => at ? null : { x: 12, y: 8 })}>+ Add</button>}
@@ -301,4 +268,4 @@ export function GraphPanel(props: Props) {
   </section>;
 }
 
-const count = (n: number, noun: string) => `${n} ${noun}${n === 1 ? '' : 's'}`;
+const count = (n: number, noun: string) => `${n} ${n === 1 ? noun : noun === 'dependency' ? 'dependencies' : noun + 's'}`;

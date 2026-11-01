@@ -234,7 +234,7 @@ button.viewport-renderer-note:hover { color: var(--text-primary); border-color: 
 .graph-rows button:hover { background: var(--control-bg); }
 .graph-rows button.selected { background: color-mix(in srgb, var(--selection) 22%, transparent); }
 .graph-more { padding: 3px 6px 0; color: var(--text-secondary); font-size: var(--type-caption); }
-.graph-unit .react-flow__handle { width: 6px; height: 6px; min-width: 0; min-height: 0; border: 0; background: var(--border-strong); opacity: .8; }
+.graph-unit .react-flow__handle { visibility: hidden; pointer-events: none; }
 .graph-panel .react-flow { --xy-background-color: transparent; --xy-background-pattern-color: var(--grid-minor); --xy-edge-stroke: var(--border-strong); --xy-edge-stroke-width: 1.2; --xy-edge-label-background-color: var(--panel-bg); --xy-edge-label-color: var(--text-secondary);
   --xy-controls-button-background-color: var(--panel-elevated); --xy-controls-button-background-color-hover: var(--control-bg); --xy-controls-button-color: var(--text-primary); --xy-controls-button-border-color: var(--border); --xy-controls-box-shadow: 0 1px 2px var(--shadow); }
 .graph-panel .react-flow__edge-text { font-size: var(--type-caption); }
@@ -350,8 +350,6 @@ button.viewport-renderer-note:hover { color: var(--text-primary); border-color: 
 .graph-wire-menu button:hover, .graph-wire-menu button:focus-visible { outline: none; background: var(--gold-wash); }
 .graph-wire-menu button.cancel { margin-top: 2px; border-top: 1px solid var(--border); border-radius: 0 0 4px 4px; color: var(--text-secondary); }
 .graph-wire-menu .graph-wire-none { color: var(--warning); }
-.graph-unit .react-flow__handle.connectable { width: 10px; height: 10px; border: 2px solid var(--panel-elevated); background: var(--gold); opacity: 0; transition: opacity .12s ease; cursor: crosshair; }
-.graph-unit:hover .react-flow__handle.connectable, .graph-panel .react-flow__handle.connectingfrom, .graph-panel .react-flow__handle.connectingto, .graph-panel .react-flow__handle.valid { opacity: 1; }
 .graph-panel .react-flow__connection-path { stroke: var(--gold); stroke-width: 2; stroke-dasharray: 5 4; }
 .graph-rows button > span { flex: 1; min-width: 0; }
 .graph-rows button.movable { cursor: grab; }

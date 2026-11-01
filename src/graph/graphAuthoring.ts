@@ -1,4 +1,4 @@
-import type { LanguageEditOperation, LanguageOutline, OutlineField, OutlineNode, PaletteItem } from '@aetheris/cad';
+import type { LanguageEditOperation, LanguageOutline, OutlineNode, PaletteItem } from '@aetheris/cad';
 import { categoryOf, type PartGraph } from './outlineGraph';
 
 // What graph gestures mean as language edits. Each function decides from the outline alone and
@@ -65,33 +65,6 @@ export function paletteOperation(item: PaletteItem, outline: LanguageOutline | n
     return { kind: 'insertFeature', node: target.body.id, source: item.source, name };
   }
   return { kind: 'insertDeclaration', parent: bodyParent(outline, selectedId), source: item.source, name };
-}
-
-/** The ways a wire from `provider` can land on `consumer`: one of its reference fields, or, for a
- * Modify, what it acts on. */
-export type WireChoice = { kind: 'field'; field: OutlineField } | { kind: 'retarget' };
-
-// The kernel outline's vocabulary fields: their words are choices, never part names.
-const vocabulary = new Set(['units', 'role', 'end', 'kind', 'angle', 'handedness', 'orientation', 'hand', 'rule',
-  'correspondence', 'easing', 'layout', 'direction', 'variant', 'mode', 'policy', 'alignment']);
-
-export function wireChoices(consumer: OutlineNode, outline: LanguageOutline | null): WireChoice[] {
-  // A field that already names a part takes a wire; so does any other reference field that is not vocabulary.
-  const wired = new Set((outline?.edges ?? []).filter(edge => edge.from === consumer.id && edge.via.startsWith('field:'))
-    .map(edge => edge.via.slice('field:'.length).split('.')[0]));
-  const fields = consumer.fields.filter(field => wired.has(field.name)
-    || ((field.shape === 'reference' || field.shape === 'member') && !vocabulary.has(field.name.toLowerCase())));
-  const choices: WireChoice[] = fields.map(field => ({ kind: 'field', field }));
-  if (isModify(consumer)) choices.unshift({ kind: 'retarget' });
-  return choices;
-}
-
-/** `provider` is the name the consumer writes: a declaration's name, or an included definition's. */
-export function wireOperation(provider: string | null, consumer: OutlineNode, choice: WireChoice): LanguageEditOperation | { reason: string } {
-  if (!provider) return { reason: 'That part has no name to refer to.' };
-  return choice.kind === 'retarget'
-    ? { kind: 'renameDeclaration', node: consumer.id, name: provider }
-    : { kind: 'setField', node: consumer.id, field: choice.field.name, value: provider };
 }
 
 /** Drop `dragged` before or after `target`, both children of the same declaration. */

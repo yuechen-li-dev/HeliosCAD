@@ -2,10 +2,9 @@ import { describe, expect, it } from 'vitest';
 import type { LanguageOutline, PaletteItem } from '@aetheris/cad';
 import chimera from './fixtures/chimera.outline.json';
 import { buildPartGraph } from './outlineGraph';
-import { bodyParent, featureTarget, paletteOperation, reorderOperation, uniqueName, wireChoices, wireOperation } from './graphAuthoring';
+import { bodyParent, featureTarget, paletteOperation, reorderOperation, uniqueName } from './graphAuthoring';
 
 const outline = chimera as unknown as LanguageOutline;
-const node = (id: string) => outline.nodes.find(n => n.id === id)!;
 const hole: PaletteItem = { id: 'hole', label: 'Hole', category: 'Holes', description: '', placement: 'feature', nameStem: 'Pilot', source: 'Hole<Shaft> Pilot { Diameter: 6mm }' };
 const box: PaletteItem = { id: 'box', label: 'Box', category: 'Bodies', description: '', placement: 'model', nameStem: 'Block', source: 'Box Block { Size: [1mm, 1mm, 1mm] }' };
 
@@ -33,14 +32,6 @@ describe('graph authoring', () => {
     expect(paletteOperation(box, outline, 'MotorMount/Layout/CableSlot'))
       .toEqual({ kind: 'insertDeclaration', parent: 'MotorMount', source: box.source, name: 'Block' });
     expect(bodyParent(outline, null)).toBe('MotorMount');
-  });
-
-  it('offers reference fields, and retargeting for a Modify, as wire endings', () => {
-    const plate = node('MotorMount/Compose:Body/Plate');
-    expect(wireChoices(plate, outline).map(c => c.kind === 'field' ? c.field.name : c.kind)).toEqual(['Profile']);
-    expect(wireChoices(node('MotorMount/Modify:Body'), outline)[0]).toEqual({ kind: 'retarget' });
-    expect(wireOperation('SlotProfile', plate, wireChoices(plate, outline)[0]))
-      .toEqual({ kind: 'setField', node: plate.id, field: 'Profile', value: 'SlotProfile' });
   });
 
   it('reorders among siblings and ignores drops that change nothing', () => {

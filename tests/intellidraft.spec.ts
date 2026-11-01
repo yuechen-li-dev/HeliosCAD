@@ -94,6 +94,7 @@ test('named points and lines trace an L, edit upstream, reject a broken trace, u
   await p.getByRole('button', { name: 'Remove bottom from trace', exact: true }).click();
   for (const [edge] of edges) { await p.getByLabel('Guide', { exact: true }).selectOption(edge); await p.getByRole('button', { name: 'Add to boundary', exact: true }).click(); }
   await act(p, 'Use this outline');
+  await p.getByRole('button', { name: 'Draw', exact: true }).click();
   await p.getByText('Advanced construction objects and dimensions', { exact: true }).click();
   await p.getByRole('button', { name: 'Edit point b', exact: true }).click();
   await p.getByLabel('X', { exact: true }).fill('65'); await act(p, 'Update Point');
@@ -238,7 +239,7 @@ test('moving construction stays local during a long drag, commits on drop and ca
   // Source values remain accepted values until release, while the gold preview follows the pointer.
   await expect(p.getByLabel('Center X', { exact: true })).toHaveValue('30');
   await expect(p.getByLabel('Center Y', { exact: true })).toHaveValue('12');
-  await expect(p.locator('.draft-gesture-preview')).toHaveCount(1);
+  await expect(p.locator('.draft-gesture-preview').first().locator('..')).toHaveAttribute('transform', 'translate(5,-5)');
   await page.mouse.up(); await page.keyboard.up('Alt');
   await expect(p.getByLabel('Center X', { exact: true })).toHaveValue('35');
   await expect(p.getByLabel('Center Y', { exact: true })).toHaveValue('17');
@@ -318,8 +319,11 @@ for (const [kind, label] of [['Rect2', 'rectangle'], ['Circle2', 'circle'], ['El
     await start(page); const p = panel(page);
     await p.getByRole('button', { name: `Draw ${label}`, exact: true }).click();
     await p.getByLabel('Construction name', { exact: true }).fill('outline');
-    const a = await canvasPosition(p, -20, -10), b = await canvasPosition(p, 20, 10);
-    await page.mouse.move(a.x, a.y); await page.mouse.down(); await page.mouse.move(b.x, b.y, { steps: 10 }); await page.mouse.up();
+    if (kind === 'Circle2') { await clickAt(page, p, [0, 0]); await clickAt(page, p, [10, 0]); }
+    else {
+      const a = await canvasPosition(p, -20, -10), b = await canvasPosition(p, 20, 10);
+      await page.mouse.move(a.x, a.y); await page.mouse.down(); await page.mouse.move(b.x, b.y, { steps: 10 }); await page.mouse.up();
+    }
     await expect(p.getByRole('button', { name: 'Select outline', exact: true })).toBeVisible();
     await expect(p.getByRole('alert')).toHaveCount(0);
     if (kind === 'RoundedRect2') { await p.getByLabel('Radius', { exact: true }).fill('2'); await act(p, 'Apply shape dimensions'); }
@@ -389,7 +393,7 @@ test('line and arc tools draft a door outline that traces by clicking in any ord
   // Later strokes start and end on the named points already drawn, so the outline joins exactly.
   await stroke(page, p, [20, 0], [20, 20]); await stroke(page, p, [-20, 20], [-20, 0]);
   await page.keyboard.press('a'); await expect(p.getByRole('button', { name: 'Draw arc', exact: true })).toHaveAttribute('aria-pressed', 'true');
-  await stroke(page, p, [0, 20], [20, 20]);
+  await clickAt(page, p, [0, 20]); await clickAt(page, p, [20, 20]);
   await clickAt(page, p, [-20, 21]);
   await expect(p.getByRole('status')).not.toContainText('Checking with compiler'); await expect(p.getByRole('alert')).toHaveCount(0);
   const guides = p.getByRole('region', { name: 'Lines, arcs and axes' });
@@ -421,6 +425,13 @@ test('the line menu declares an Axis2 and the rounded menu draws a SmoothRounded
   await stroke(page, p, [-20, -10], [20, 10]);
   await expect(p.getByRole('region', { name: 'Lines, arcs and axes' }).getByText('Axis · Axis2')).toBeVisible();
   await expect(p.locator('.draft-axis-guide')).toHaveCount(1);
+  await select(p);
+  const axis = p.locator('.draft-axis-guide line'), before = await axis.getAttribute('x1');
+  await pointerDrag(page, p, [-10, -5], [-5, 0], true);
+  expect(await axis.getAttribute('x1')).not.toBe(before);
+  await act(p, 'Undo'); expect(await axis.getAttribute('x1')).toBe(before);
+  await act(p, 'Redo');
+  await expect(p).toBeFocused();
   await page.keyboard.press('Delete');
   await expect(p.getByRole('status')).not.toContainText('Checking with compiler');
   await expect(p.locator('.draft-axis-guide')).toHaveCount(0);
@@ -472,4 +483,62 @@ test('drawing snaps to midpoints and lines up with named points, with a visible 
   await expect(p.locator('.draft-snap-glyph text')).toHaveText('midpoint of outer.Top');
   await stroke(page, p, [.3, 20.2], [.2, -19.8]);
   await expect(p.getByRole('region', { name: 'Lines, arcs and axes' }).getByRole('listitem')).toHaveCount(1);
+});
+
+test('centre-first circles and arcs move in Draw, lock in Trace, and survive a build', async ({ page }) => {
+  await start(page); const p = panel(page);
+  await p.getByRole('button', { name: 'Draw circle', exact: true }).click();
+  await clickAt(page, p, [-25, -15]); await clickAt(page, p, [-15, -15]);
+  await expect(p.getByLabel('Radius', { exact: true })).toHaveValue('10');
+  await page.keyboard.press('l'); await stroke(page, p, [-20, 25], [0, 25]);
+  await page.keyboard.press('a');
+  await clickAt(page, p, [20, 10]); await clickAt(page, p, [30, 10]); await clickAt(page, p, [20, 20]);
+  await expect(p.getByRole('status')).not.toContainText('Checking with compiler');
+  await expect(p.getByRole('alert')).toHaveCount(0);
+  await select(p);
+  const line = p.locator('polyline[aria-label="line1"]'), arc = p.locator('polyline[aria-label="arc1"]');
+  const originalLine = await line.getAttribute('points'), originalArc = await arc.getAttribute('points');
+  // Horizontal Line2 has a zero-height bounding box: the visible stroke must still be draggable.
+  await pointerDrag(page, p, [-10, 25], [-5, 30], true);
+  expect(await line.getAttribute('points')).not.toBe(originalLine);
+  await act(p, 'Undo'); expect(await line.getAttribute('points')).toBe(originalLine);
+  await act(p, 'Redo');
+  // All three arc points translate together. A partial edit would fail radius admission.
+  await pointerDrag(page, p, [27.0710678, 17.0710678], [32.0710678, 22.0710678], true);
+  expect(await arc.getAttribute('points')).not.toBe(originalArc);
+  await act(p, 'Undo'); expect(await arc.getAttribute('points')).toBe(originalArc);
+  await act(p, 'Redo');
+  await pointerDrag(page, p, [-25, -15], [-20, -15], true);
+  await p.getByRole('button', { name: 'Trace', exact: true }).click();
+  await expect(p.getByRole('button', { name: /^Move / })).toHaveCount(0);
+  const lockedLine = await line.getAttribute('points');
+  await stroke(page, p, [-5, 30], [0, 35]); expect(await line.getAttribute('points')).toBe(lockedLine);
+  await p.getByRole('button', { name: 'Select circle1', exact: true }).click();
+  await expect(p.getByRole('button', { name: 'Trace', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await expect(p.getByRole('button', { name: /^Move / })).toHaveCount(0);
+  await p.getByRole('button', { name: 'Draw', exact: true }).click();
+  await pointerDrag(page, p, [-5, 30], [0, 35], true);
+  expect(await line.getAttribute('points')).not.toBe(lockedLine);
+  await p.getByRole('button', { name: 'Trace', exact: true }).click();
+  await act(p, 'Use whole shape outline'); await act(p, 'Use this outline'); await act(p, 'Extrude Profile');
+  await page.screenshot({ path: resolve(output, 'dejank-locked-trace.png') });
+  await p.getByRole('button', { name: 'Select circle1', exact: true }).click();
+  await expect(p.getByRole('button', { name: 'Extrude', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await p.getByRole('button', { name: 'Build and use part', exact: true }).click(); await expect(p).toHaveCount(0);
+  await expect(page.locator('.status-ready')).toContainText('Ready');
+  // A tall construction card must fit the narrow stacked graph pane rather than being clipped.
+  await expect(page.locator('.react-flow__node-unit')).toHaveCount(3);
+  const cardsFit = () => page.locator('.react-flow__node-unit').evaluateAll(nodes => nodes.every(node => {
+    const canvas = node.closest('.graph-canvas')!.getBoundingClientRect(), card = node.getBoundingClientRect();
+    return card.top >= canvas.top - 1 && card.bottom <= canvas.bottom + 1 && card.left >= canvas.left - 1 && card.right <= canvas.right + 1;
+  }));
+  await expect.poll(cardsFit).toBe(true);
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await expect.poll(cardsFit).toBe(true);
+  const event = page.waitForEvent('download'); await page.getByRole('button', { name: 'Save source', exact: true }).click();
+  const path = resolve(output, 'dejank-moved-guides.firmament'); await (await event).saveAs(path);
+  const text = await readFile(path, 'utf8');
+  expect(text).toContain('position: [-10mm, 35mm]'); expect(text).toContain('position: [10mm, 35mm]');
+  expect(text).toContain('position: [25mm, 15mm]'); expect(text).toContain('position: [35mm, 15mm]'); expect(text).toContain('position: [25mm, 25mm]');
+  await page.screenshot({ path: resolve(output, 'dejank-built.png') });
 });

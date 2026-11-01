@@ -4,7 +4,8 @@ import { sketchCurvePoints } from '@aetheris/three-telos';
 import type { WebSdkCadRuntime } from '../sdk/CadRuntime';
 import { ConstructionShapeList } from './ConstructionShapeList';
 import { ConstructionShapes } from './ConstructionShapes';
-import { ConstructionCanvas, type CanvasShape, type StrokePoint } from './ConstructionCanvas';
+import { ConstructionCanvas, type CanvasGuide, type CanvasShape, type StrokePoint } from './ConstructionCanvas';
+import { guidePlacements, translateGuide } from './draftGuideEditing';
 import { ALIGNMENTS, STROKE_KINDS, alignOffset, areaAt, areasOf, endMarks, type Area, alignedNeighbours, explainRefusal, freshName, nameStem, predictedBounds, shapeLabel, traceClosure, translation, type AlignedNeighbour } from './draftGeometry';
 import './IntelliDraftPanel.css';
 
@@ -80,6 +81,12 @@ export function IntelliDraftPanel({ runtime, initialSource = blank, document = D
     mounted.current = true; const element = dialog.current!; element.showModal(); element.focus();
     return () => { mounted.current = false; element.close(); };
   }, []);
+  // A compiler edit disables its pressed Apply button. Restore modal shortcuts
+  // afterward without disturbing an editor still in focus.
+  useEffect(() => {
+    const element = dialog.current;
+    if (!busy && element?.open && !element.contains(element.ownerDocument.activeElement)) element.focus();
+  }, [busy]);
   useEffect(() => {
     let current = true;
     void runtime.sketch(source, node, document, String(index)).then(result => {
@@ -103,7 +110,7 @@ export function IntelliDraftPanel({ runtime, initialSource = blank, document = D
     profileShapes.some(p => p.id === shape.id) ? { kind: 'dimensions', node: view?.node, changes } : { kind: 'constructionDimensions', changes };
   const shownShapes = shapes.filter(shape => !hidden.has(shape.id));
   const rectangles = shownShapes.filter(shape => shape.kind === 'Rect2');
-  const selected = shapes.find(s => s.id === selectedShape) ?? (tool === 'Rectangle' ? undefined : shapes[0]);
+  const selected = pickedGuide ? undefined : shapes.find(s => s.id === selectedShape) ?? (tool === 'Rectangle' ? undefined : shapes[0]);
   const shownGuide = (value: string) => !elements.some(e => hidden.has(e.id) && (value === e.name || value.startsWith(e.name + '.')));
   const points = (construction?.points ?? []).filter(p => shownGuide(p.name)), spans = construction?.spans ?? [];
   const sourceOrder = (value: string) => elements.findIndex(e => e.name === value || (e.kind === 'Path' || shapes.some(shape => shape.id === e.id)) && value.startsWith(e.name + '.'));
@@ -131,6 +138,7 @@ export function IntelliDraftPanel({ runtime, initialSource = blank, document = D
   const usedNames = new Set(elements.map(e => e.name));
   const freshLegacy = (stem: string) => { let value = stem; for (let n = 2; usedNames.has(value); n++) value = stem + n; return value; };
   const drawing = tool === 'Rectangle';
+  const draftStage = tool !== 'Trace' && tool !== 'Extrude';
   const stroking = drawing && STROKE_KINDS.has(drawKind);
   // Lines, arc circles and axes drawn as construction: not closed shapes, listed and deletable on their own.
   const strokeGuides = elements.filter(e => GUIDE_KINDS.has(e.kind) && !shapes.some(shape => shape.id === e.id));
@@ -142,7 +150,7 @@ export function IntelliDraftPanel({ runtime, initialSource = blank, document = D
   }
   const choose = (next: Tool) => {
     if (pendingDimensions) { setProblem({ text: 'Apply or discard the dimension edits before changing tools.' }); return; }
-    setEditingPoint(null); setDimensionEdit(null); setAlignPrompt(null); setTool(next);
+    setEditingPoint(null); setDimension(null); setDimensionEdit(null); setAlignPrompt(null); setTool(next);
     if (next === 'Rectangle') setReference('');
     setName(next === 'Trace' ? profile?.name ?? 'section' : ({ Layout: freshLegacy('layout'), Rectangle: freshName(nameStem(drawKind), usedNames), Point: freshLegacy('a'), Line: freshLegacy('edge'), Circle: freshLegacy('rim'), Path: freshLegacy('outline') } as Partial<Record<Tool, string>>)[next] ?? 'body');
     if (next !== 'Trace') setOwner(layouts[0]?.id ?? '');
@@ -151,7 +159,7 @@ export function IntelliDraftPanel({ runtime, initialSource = blank, document = D
     if (pendingDimensions) { setProblem({ text: 'Apply or discard the dimension edits before changing tools.' }); return; }
     const group = DRAW_TOOLS.find(t => t.kind === kind)?.group; if (group) setVariant(v => ({ ...v, [group]: kind }));
     if (STROKE_KINDS.has(kind)) setAddOpen(false);
-    setEditingPoint(null); setDimensionEdit(null); setAlignPrompt(null); setTool('Rectangle'); setReference(''); setDrawKind(kind);
+    setEditingPoint(null); setDimension(null); setDimensionEdit(null); setAlignPrompt(null); setTool('Rectangle'); setReference(''); setDrawKind(kind);
     setName(freshName(nameStem(kind), usedNames)); setOwner(layouts[0]?.id ?? '');
   };
 
@@ -192,7 +200,7 @@ export function IntelliDraftPanel({ runtime, initialSource = blank, document = D
     if (operation.action === 'layout') { chooseDraw('Rect2'); }
     if (draws) {
       const created = edit.nodes.at(-1) ?? '';
-      setSelectedShape(created); setHidden(previous => { const next = new Set(previous); next.delete(created); return next; }); setReference('');
+      setSelectedShape(created); setPickedGuide(''); setHidden(previous => { const next = new Set(previous); next.delete(created); return next; }); setReference('');
       // The drawing tool stays active; the next shape gets the next free name.
       setName(freshName(nameStem(drawKind), new Set([...usedNames, operation.name ?? ''])));
       setAddOpen(false);
@@ -321,8 +329,31 @@ export function IntelliDraftPanel({ runtime, initialSource = blank, document = D
       return predicted ? [{ shape, owner: elements.find(e => e.id === shape.id)?.parent ?? '', bounds: predicted }] : [];
     }
     const xs = vertices.map(p => p[0]), ys = vertices.map(p => p[1]);
-    return [{ shape, owner: elements.find(e => e.id === shape.id)?.parent ?? '', bounds: { x: Math.min(...xs), y: Math.min(...ys), width: Math.max(...xs) - Math.min(...xs), height: Math.max(...ys) - Math.min(...ys) } }];
+    return [{ shape, owner: elements.find(e => e.id === shape.id)?.parent ?? '', outlines: polylines.filter(p => p.construction && ownsCurve(shape, p.curve.name)).map(p => p.points.map(p => [p[0], p[1]] as [number, number])), bounds: { x: Math.min(...xs), y: Math.min(...ys), width: Math.max(...xs) - Math.min(...xs), height: Math.max(...ys) - Math.min(...ys) } }];
   });
+  const canvasGuides: CanvasGuide[] = construction ? strokeGuides.filter(e => !hidden.has(e.id)).flatMap(element => {
+    const axis = axes.find(a => a.id === element.id);
+    const far = Math.max(maxX - minX, maxY - minY, 100) * 4;
+    const vertices: [number, number][] = axis
+      ? [[axis.origin[0] - axis.direction[0] * far, axis.origin[1] - axis.direction[1] * far], [axis.origin[0] + axis.direction[0] * far, axis.origin[1] + axis.direction[1] * far]]
+      : polylines.filter(p => p.construction && p.curve.name === element.name).flatMap(p => p.points.map(p => [p[0], p[1]] as [number, number]));
+    if (!vertices.length) return [];
+    const xs = vertices.map(p => p[0]), ys = vertices.map(p => p[1]);
+    const bounds = { x: Math.min(...xs), y: Math.min(...ys), width: Math.max(...xs) - Math.min(...xs), height: Math.max(...ys) - Math.min(...ys) };
+    return [{ shape: { id: element.id, name: element.name, kind: element.kind, center: axis?.origin ?? [bounds.x + bounds.width / 2, bounds.y + bounds.height / 2] },
+      owner: element.parent ?? '', bounds, points: vertices, editable: !!runtime.edit && !!guidePlacements(element, construction),
+      readOnlyReason: runtime.edit ? 'This guide uses a driven or unsupported position. Edit its defining points or source inputs.' : 'This runtime cannot move construction guides.' }];
+  }) : [];
+  const moveGuide = (id: string, offset: [number, number]) => {
+    const element = elements.find(e => e.id === id);
+    if (!draftStage || !element || !construction || !runtime.edit) return;
+    const operations = translateGuide(element, construction, offset);
+    if (operations) void transactSteps([(text) => runtime.edit!(text, operations, document, String(index))]);
+  };
+  const navigateHistory = (next: number) => {
+    // Move focus before a history button disables itself at the end of the stack.
+    dialog.current?.focus(); setIndex(next);
+  };
   const pointLabels: { x: number; y: number; names: string[] }[] = [];
   for (const point of points) {
     const same = pointLabels.find(p => Math.abs(p.x - point.x) < 1e-8 && Math.abs(p.y - point.y) < 1e-8);
@@ -346,8 +377,8 @@ export function IntelliDraftPanel({ runtime, initialSource = blank, document = D
     if (target.closest('input, textarea, select, [contenteditable="true"]')) return;
     if (event.ctrlKey || event.metaKey) {
       const key = event.key.toLowerCase();
-      if (key === 'z' && !event.shiftKey && index > 0 && !busy && !pendingDimensions) { event.preventDefault(); setIndex(index - 1); }
-      if ((key === 'y' || key === 'z' && event.shiftKey) && index + 1 < history.length && !busy && !pendingDimensions) { event.preventDefault(); setIndex(index + 1); }
+      if (key === 'z' && !event.shiftKey && index > 0 && !busy && !pendingDimensions) { event.preventDefault(); navigateHistory(index - 1); }
+      if ((key === 'y' || key === 'z' && event.shiftKey) && index + 1 < history.length && !busy && !pendingDimensions) { event.preventDefault(); navigateHistory(index + 1); }
       return;
     }
     if (event.altKey || busy) return;
@@ -373,18 +404,19 @@ export function IntelliDraftPanel({ runtime, initialSource = blank, document = D
 
   const status = busy ? 'Checking with compiler…' : pendingDimensions ? 'Apply or discard dimension edits before building.'
     : body ? 'Ready to build · Build and use part checks the solid' : profile ? 'Outline traced · extrude it to make a part' : 'Draft · nothing is built until Build and use part';
-  const hint = drawing && drawKind === 'Arc' ? 'Drag from the arc centre to its start, then click its end. Points snap to named points.'
+  const hint = drawing && drawKind === 'Arc' ? 'Click the arc centre, then its start, then its end (counter-clockwise).'
+    : drawing && drawKind === 'Circle2' ? 'Click the circle centre, then click to set its radius.'
     : drawing && drawKind === 'Axis2' ? 'Drag through two points on the axis. Axis2 is a reference direction; it is not traced.'
     : drawing && drawKind === 'Line2' ? 'Drag from one end to the other. Ends snap to named points; Alt draws freely.'
-    : drawing ? `Drag to draw a ${shapeLabel(drawKind).toLowerCase()}. Esc returns to select.` : tool === 'Shapes' ? 'Drag a shape to move it. Pink guides line shapes up; Alt moves freely.' : tool === 'Trace' ? 'Click inside an area to trace it, or click edges in order around the outline.' : 'Middle-drag to pan.';
+    : drawing ? `Drag to draw a ${shapeLabel(drawKind).toLowerCase()}. Drag existing boundaries to move them. Esc returns to select.` : tool === 'Shapes' ? 'Drag shapes, lines, arcs or axes to move them. Pink guides line shapes up; Alt moves freely.' : tool === 'Trace' ? 'Construction is locked. Click an area or edges to trace; return to Draw to move elements.' : 'Construction is locked. Return to Draw to edit; middle-drag to pan.';
 
   return <dialog ref={dialog} tabIndex={-1} className="intellidraft" aria-label="IntelliDraft" onKeyDown={keyDown} onCancel={e => { e.preventDefault(); cancel(); }}>
     <header><strong>IntelliDraft</strong><span>Draw → Trace → Extrude</span>
       {!fresh && onNew && <button disabled={busy} onClick={() => { if (!index || confirm('Discard these staged edits and start a new part?')) onNew(); }}>New profile part</button>}
-      <button disabled={busy || pendingDimensions || index === 0} title="Undo · Ctrl+Z" onClick={() => setIndex(index - 1)}>Undo</button><button disabled={busy || pendingDimensions || index + 1 === history.length} title="Redo · Ctrl+Y" onClick={() => setIndex(index + 1)}>Redo</button><button disabled={busy} onClick={cancel}>Cancel</button>
+      <button disabled={busy || pendingDimensions || index === 0} title="Undo · Ctrl+Z" onClick={() => navigateHistory(index - 1)}>Undo</button><button disabled={busy || pendingDimensions || index + 1 === history.length} title="Redo · Ctrl+Y" onClick={() => navigateHistory(index + 1)}>Redo</button><button disabled={busy} onClick={cancel}>Cancel</button>
     </header>
     <div className="draft-body"><aside ref={inspector}>
-      <nav className="draft-steps" aria-label="Construction workflow">{([['Shapes', 'Draw'], ['Trace', 'Trace'], ['Extrude', 'Extrude']] as const).map(([t, label], i) => <button key={t} aria-pressed={tool === t || t === 'Shapes' && drawing}
+      <nav className="draft-steps" aria-label="Construction workflow">{([['Shapes', 'Draw'], ['Trace', 'Trace'], ['Extrude', 'Extrude']] as const).map(([t, label], i) => <button key={t} aria-pressed={tool === t || t === 'Shapes' && draftStage}
         disabled={busy || pendingDimensions || t === 'Trace' && !shapes.length && !paths.length && !guides.length || t === 'Extrude' && !profile} onClick={() => choose(t)}><span aria-hidden="true">{i + 1}</span> {label}</button>)}</nav>
       {(view?.profiles.length ?? 0) > 1 && <label className="draft-profile-choice">Profile<select aria-label="Profile" value={view?.node ?? ''} disabled={busy || pendingDimensions}
         onChange={e => { setNode(e.target.value); setSelectedShape(''); }}>{view!.profiles.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select></label>}
@@ -406,14 +438,14 @@ export function IntelliDraftPanel({ runtime, initialSource = blank, document = D
       </section>}
 
       {!!shapes.length && <ConstructionShapeList shapes={shapes} selected={selected?.id ?? ''} hidden={hidden} disabled={busy || pendingDimensions}
-        onSelect={id => { setSelectedShape(id); if (tool !== 'Shapes' && tool !== 'Trace' && !drawing) choose('Shapes'); }}
+        onSelect={id => { setSelectedShape(id); setPickedGuide(''); }}
         onToggle={id => setHidden(previous => { const next = new Set(previous); if (!next.delete(id)) next.add(id); return next; })} onShowAll={() => setHidden(new Set())} />}
 
-      {!!(strokeGuides.length) && (tool === 'Shapes' || drawing) && <section className="draft-guides" aria-label="Lines, arcs and axes">
+      {!!(strokeGuides.length) && <section className="draft-guides" aria-label="Lines, arcs and axes">
         <h3>Lines, arcs and axes ({strokeGuides.length})</h3>
-        <ul>{strokeGuides.map(g => <li key={g.id}><button type="button" aria-pressed={pickedGuide === g.name} disabled={busy} onClick={() => setPickedGuide(pickedGuide === g.name ? '' : g.name)}>
+        <ul>{strokeGuides.map(g => <li key={g.id}><button type="button" aria-pressed={pickedGuide === g.name} disabled={busy || pendingDimensions} onClick={() => setPickedGuide(pickedGuide === g.name ? '' : g.name)}>
           <b>{g.name}</b><small>{({ Circle2: 'Guide circle · Circle2', Arc2: 'Arc · Arc2', Axis2: 'Axis · Axis2', Line2: 'Line · Line2' } as Record<string, string>)[g.kind] ?? g.kind}</small></button>
-          <button type="button" aria-label={`Delete ${g.name}`} title="Delete · Del" disabled={busy || pendingDimensions || !runtime.edit} onClick={() => removeGuide(g)}>×</button></li>)}</ul>
+          <button type="button" aria-label={`Delete ${g.name}`} title="Delete · Del" disabled={!draftStage || busy || pendingDimensions || !runtime.edit} onClick={() => removeGuide(g)}>×</button></li>)}</ul>
       </section>}
 
       {(tool === 'Shapes' || drawing && !reference) && construction && selected && <>
@@ -496,23 +528,23 @@ export function IntelliDraftPanel({ runtime, initialSource = blank, document = D
       {profile && !body && tool === 'Extrude' && <form onSubmit={e => { e.preventDefault(); void apply({ action: 'extrude', parent: profile.id, name: freshLegacy('body'), length: height }); }}><h3>Extrude {profile.name}</h3>{numberField('Extrusion depth', height, setHeight)}<button className="draft-primary" disabled={busy}>Extrude Profile</button></form>}
       {tool === 'Extrude' && body && <p>The outline is extruded. Edit shapes in Draw, then Build and use part.</p>}
 
-      {!!view?.openingReferences.length && view.node && <ProfileOpening references={view.openingReferences} disabled={busy || pendingDimensions}
+      {!!view?.openingReferences.length && view.node && <ProfileOpening references={view.openingReferences} disabled={!draftStage || busy || pendingDimensions}
         onAdd={opening => void transact({ kind: 'opening', node: view.node, ...opening })} />}
       <details className="construction-advanced"><summary>Advanced: points, lines and Paths</summary><nav aria-label="Construction tools">{(['Layout', 'Point', 'Line', 'Circle', 'Path'] as const).map(t => <button key={t} disabled={busy} aria-pressed={tool === t} onClick={() => choose(t)}>{t}</button>)}</nav>
         {construction?.frames?.map(({ owner: id, frame }) => <small key={id}>{frame.name}: local X ({frame.x.join(', ')}), Y ({frame.y.join(', ')}), normal ({frame.normal.join(', ')})</small>)}</details>
       <details><summary>Advanced construction objects and dimensions</summary>{elements.filter(e => !['Model', 'Struct', 'Profile', 'Static'].includes(e.kind) && !shapes.some(shape => shape.id === e.id)).map(e => <div className="draft-object" key={e.id}><b>{e.name} · {e.kind}</b>
-        {e.kind === 'Point2' && <button disabled={busy} onClick={() => { const point = points.find(p => p.name === e.name); if (!point) return; setTool('Point'); setEditingPoint(e.id); setName(e.name); setX(point.x); setY(point.y); }}>Edit point {e.name}</button>}
-        {e.fields.filter(f => typeof f.number === 'number').map(f => <button key={f.name} disabled={busy || !f.editable || !['Line', 'Arc', 'Circle2', 'Path', 'Extrude'].includes(e.kind)} onClick={() => setDimension({ owner: e.id, field: f.name, value: f.number!, unit: f.unit! })}>{e.name}.{f.name}: {f.value}</button>)}
+        {e.kind === 'Point2' && <button disabled={!draftStage || busy || pendingDimensions} onClick={() => { const point = points.find(p => p.name === e.name); if (!point) return; setTool('Point'); setEditingPoint(e.id); setName(e.name); setX(point.x); setY(point.y); }}>Edit point {e.name}</button>}
+        {e.fields.filter(f => typeof f.number === 'number').map(f => <button key={f.name} disabled={!draftStage || busy || pendingDimensions || !f.editable || !['Line', 'Arc', 'Circle2', 'Path', 'Extrude'].includes(e.kind)} onClick={() => setDimension({ owner: e.id, field: f.name, value: f.number!, unit: f.unit! })}>{e.name}.{f.name}: {f.value}</button>)}
       </div>)}</details>
       {dimension && <form onSubmit={e => { e.preventDefault(); void apply({ action: 'dimension', parent: dimension.owner, field: dimension.field, value: dimension.value }); }}><h3>Edit {dimension.field}</h3>{numberField('Driving dimension', dimension.value, value => setDimension({ ...dimension, value }), dimension.unit)}<button disabled={busy}>Update dimension</button><button type="button" disabled={busy} onClick={() => setDimension(null)}>Cancel dimension edit</button></form>}
     </aside>
-    <ConstructionCanvas bounds={{ x: minX - margin, y: -maxY - margin, width: maxX - minX + margin * 2, height: maxY - minY + margin * 2 }} shapes={canvasShapes}
+    <ConstructionCanvas bounds={{ x: minX - margin, y: -maxY - margin, width: maxX - minX + margin * 2, height: maxY - minY + margin * 2 }} shapes={canvasShapes} guides={canvasGuides} onMoveGuide={moveGuide}
       autoFit={!fresh} fitRequest={fitRequest}
       stroke={stroking ? drawKind === 'Arc' ? 'arc' : drawKind === 'Axis2' ? 'axis' : 'segment' : undefined} snapPoints={points} snapCurves={snapCurves} onStroke={drawStroke}
       onArea={tool === 'Trace' ? at => { const area = areaAt(areas, at); if (area) traceArea(area); } : undefined}
       onHover={tool === 'Trace' ? at => { const area = at ? areaAt(areas, at) : null; setHoverArea(previous => previous?.polygon === area?.polygon ? previous : area); } : undefined}
-      revision={index} selected={selected?.id ?? ''} drawKind={drawKind} drawing={drawing && !reference} movable={tool === 'Shapes'} disabled={busy || pendingDimensions || !!alignPrompt}
-      onSelect={id => { setSelectedShape(id); setDimensionEdit(null); }} onDraw={rect => void apply(drawKind === 'Rect2' ? { action: 'rectangle', parent: selectedOwner?.id, name, ...rect } : {
+      revision={index} selected={pickedGuide ? strokeGuides.find(g => g.name === pickedGuide)?.id ?? '' : selected?.id ?? ''} drawKind={drawKind} drawing={drawing && !reference} movable={draftStage} disabled={busy || pendingDimensions || !!alignPrompt}
+      onSelect={id => { const guide = strokeGuides.find(g => g.id === id); setPickedGuide(guide?.name ?? ''); if (!guide) setSelectedShape(id); setDimensionEdit(null); }} onDraw={rect => void apply(drawKind === 'Rect2' ? { action: 'rectangle', parent: selectedOwner?.id, name, ...rect } : {
         action: 'shape', kind: drawKind, parent: selectedOwner?.id, name, ...rect,
         ...(drawKind === 'Slot2' ? { width: Math.max(rect.width, rect.height), height: Math.min(rect.width, rect.height), turn: rect.height > rect.width ? 90 : 0 } : {}),
         radius: Math.min(rect.width, rect.height) / (drawKind === 'Circle2' ? 2 : drawKind === 'SmoothRoundedRect2' ? 4 : 8),

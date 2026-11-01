@@ -9,6 +9,11 @@ layout only; it does not move a physical part or reorder source declarations.
 **Auto arrange** restores the automatic layout for the current graph view.
 Manual positions reset when the workspace is closed or the page is refreshed.
 
+The **Parts** graph's links display source dependencies. Cards have no draggable
+wire ports: use their fields and **+ Add** to author bodies and features. The
+**Assembly** graph retains frame-to-frame dragging to create a joint, with the
+joint type chosen before applying the compiler-checked edit.
+
 For a custom outline, use [IntelliDraft](intellidraft.md): named points and
 guides or distance-driven Paths, then Trace and Extrude. **Sketch** retains the
 closed-shape dimension workspace for rectangles, circles and slots.

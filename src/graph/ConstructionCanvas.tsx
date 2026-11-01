@@ -4,15 +4,17 @@ import { arcEnd, inferSnap, snap, snapStep, type Snap, type SnapCurve } from './
 
 type Point = [number, number];
 export type CanvasBounds = { x: number; y: number; width: number; height: number };
-export type CanvasShape = { shape: SketchShape; bounds: CanvasBounds; owner: string };
+export type CanvasShape = { shape: SketchShape; bounds: CanvasBounds; owner: string; outlines?: Point[][] };
+export type CanvasGuide = { shape: Pick<SketchShape, 'id' | 'name' | 'kind' | 'center'>; bounds: CanvasBounds; owner: string; points: Point[]; editable: boolean; readOnlyReason?: string };
+type MoveTarget = CanvasShape | CanvasGuide;
 type Alignment = { axis: 'x' | 'y'; value: number; label: string };
-type Gesture = { pointer: number; start: Point; current: Point; shape?: CanvasShape; pan?: { bounds: CanvasBounds; screen: Point; units: Point }; guides: Alignment[]; step: number; startName?: string; currentName?: string; snap?: Snap };
+type Gesture = { pointer: number; start: Point; current: Point; shape?: MoveTarget; pan?: { bounds: CanvasBounds; screen: Point; units: Point }; guides: Alignment[]; step: number; startName?: string; currentName?: string; snap?: Snap };
 type PointerSample = { clientX: number; clientY: number; altKey: boolean; pointerId: number };
 export type DrawnRectangle = { x: number; y: number; width: number; height: number };
 /** A picked stroke point: grid-snapped coordinates, or an existing named point it snapped onto. */
 export type StrokePoint = { at: Point; name?: string; snap?: Snap };
 export type StrokeKind = 'segment' | 'axis' | 'arc';
-type ArcStage = { center: StrokePoint; start: StrokePoint; end: StrokePoint | null };
+type RadialStage = { center: StrokePoint; start: StrokePoint | null; end: StrokePoint | null };
 
 // Presentation-only snapping. Results are coordinates for one placement transaction;
 // no reference or relationship is created, and no source expression is evaluated here.
@@ -37,15 +39,16 @@ const rectangle = (a: Point, b: Point): DrawnRectangle => ({ x: clean((a[0] + b[
 
 /** Pointer interaction over compiler-projected construction. Drag previews are disposable SVG
  * transforms. Only pointer-up submits dimensions to the existing compiler edit transaction. */
-export function ConstructionCanvas({ bounds, shapes, selected, drawing, movable, disabled, children, onSelect, onDraw, onMove, onPoint, hint, revision, drawKind = 'Rect2', autoFit = true, fitRequest = 0, header, overlay, layer, stroke, snapPoints = [], snapCurves = [], onStroke, onArea, onHover }: {
+export function ConstructionCanvas({ bounds, shapes, guides = [], selected, drawing, movable, disabled, children, onSelect, onDraw, onMove, onMoveGuide, onPoint, hint, revision, drawKind = 'Rect2', autoFit = true, fitRequest = 0, header, overlay, layer, stroke, snapPoints = [], snapCurves = [], onStroke, onArea, onHover }: {
   bounds: CanvasBounds; shapes: CanvasShape[]; selected: string; drawing: boolean; movable: boolean; disabled: boolean;
   children: ReactNode; onSelect(id: string): void; onDraw(rectangle: DrawnRectangle): void;
   onMove(shape: SketchShape, center: Point): void; onPoint?(point: Point): void; hint: string; revision: number; drawKind?: string;
+  guides?: CanvasGuide[]; onMoveGuide?(id: string, offset: Point): void;
   /** Fit once when existing construction first arrives. A fresh draft keeps its view so drawing never jumps. */
   autoFit?: boolean; fitRequest?: number; header?: ReactNode; overlay?: ReactNode;
   /** World-space annotations sized to the current zoom (scale is one percent of the visible width). */
   layer?: (scale: number) => ReactNode;
-  /** Line and axis strokes are one drag; an arc drags centre → start, then clicks where it ends. */
+  /** Lines and axes drag; arcs click centre → start → end. Circles click centre → radius. */
   stroke?: StrokeKind; snapPoints?: readonly { name: string; x: number; y: number }[]; onStroke?(points: StrokePoint[]): void;
   /** Curves drawing may snap onto (midpoints, on-curve). */
   snapCurves?: readonly SnapCurve[];
@@ -57,18 +60,18 @@ export function ConstructionCanvas({ bounds, shapes, selected, drawing, movable,
   const cancelFrame = () => { cancelAnimationFrame(frame.current); frame.current = 0; queued.current = null; };
   const [camera, setCamera] = useState<CanvasBounds>(bounds), [active, setActive] = useState<Gesture | null>(null);
   const [notice, setNotice] = useState('');
-  const [arcStage, setArcStage] = useState<ArcStage | null>(null);
+  const [radial, setRadial] = useState<RadialStage | null>(null);
   const [hover, setHover] = useState<Snap | null>(null);
-  useEffect(() => setArcStage(null), [stroke, revision, disabled]);
+  useEffect(() => { setRadial(null); setNotice(''); setHover(null); }, [stroke, drawKind, drawing, movable, revision, disabled]);
   const [pixels, setPixels] = useState(0);
   useEffect(() => {
     cancelFrame();
     const pointer = gesture.current?.pointer;
     gesture.current = null; setActive(null);
     if (pointer !== undefined && svg.current?.hasPointerCapture(pointer)) svg.current.releasePointerCapture(pointer);
-  }, [revision, disabled]);
+  }, [revision, disabled, drawing, movable, drawKind, stroke]);
   useEffect(() => cancelFrame, []);
-  useEffect(() => { if (!fitted.current && shapes.length) { setCamera(bounds); fitted.current = true; } }, [bounds, shapes.length]);
+  useEffect(() => { if (!fitted.current && (shapes.length || guides.length)) { setCamera(bounds); fitted.current = true; } }, [bounds, shapes.length, guides.length]);
   const latestBounds = useRef(bounds); latestBounds.current = bounds;
   useEffect(() => { if (fitRequest) setCamera(latestBounds.current); }, [fitRequest]);
   useEffect(() => {
@@ -92,29 +95,40 @@ export function ConstructionCanvas({ bounds, shapes, selected, drawing, movable,
     const found = event.altKey ? inferSnap(raw, reach, gridStep, { points: [], curves: [] }) : inferSnap(raw, reach, gridStep, { points: snapPoints, curves: snapCurves, from });
     return { at: [found.at[0], found.at[1]], name: found.kind === 'point' ? found.name : undefined, snap: found.kind === 'grid' ? undefined : found };
   };
-  const arcFinish = (stage: ArcStage, event: { clientX: number; clientY: number; altKey: boolean }): StrokePoint => {
+  const arcFinish = (stage: RadialStage & { start: StrokePoint }, event: { clientX: number; clientY: number; altKey: boolean }): StrokePoint => {
     const named = pick(event, step), radius = Math.hypot(stage.start.at[0] - stage.center.at[0], stage.start.at[1] - stage.center.at[1]);
     if (named.name && Math.abs(Math.hypot(named.at[0] - stage.center.at[0], named.at[1] - stage.center.at[1]) - radius) < 1e-6) return named;
     const [x, y] = arcEnd(stage.center.at, stage.start.at, position(event), 15, event.altKey); return { at: [x, y] };
   };
-  const begin = (event: PointerEvent<SVGElement>, shape?: CanvasShape) => {
+  const begin = (event: PointerEvent<SVGElement>, shape?: MoveTarget) => {
     if (disabled || gesture.current || ![0, 1].includes(event.button)) return;
     cancelFrame();
+    if (drawing && (stroke === 'arc' || drawKind === 'Circle2') && !shape && event.button === 0) {
+      event.preventDefault(); event.stopPropagation(); setNotice(''); svg.current!.focus();
+      if (!radial) { setRadial({ center: pick(event, stepFor(event)), start: null, end: null }); setNotice(''); return; }
+      if (!radial.start) {
+        const start = pick(event, stepFor(event)), radius = Math.hypot(start.at[0] - radial.center.at[0], start.at[1] - radial.center.at[1]);
+        if (radius < .1) { setNotice('Pick a radius greater than zero.'); return; }
+        if (drawKind === 'Circle2') { setRadial(null); onDraw({ x: radial.center.at[0], y: radial.center.at[1], width: radius * 2, height: radius * 2 }); }
+        else { setRadial({ ...radial, start, end: null }); setNotice(''); }
+        return;
+      }
+      const end = arcFinish({ ...radial, start: radial.start }, event);
+      if (Math.hypot(end.at[0] - radial.start.at[0], end.at[1] - radial.start.at[1]) < 1e-6) { setNotice('An arc needs an end point away from its start.'); return; }
+      setRadial(null); onStroke?.([radial.center, radial.start, end]); return;
+    }
     if (stroke && drawing && !shape && event.button === 0) {
       event.preventDefault(); event.stopPropagation(); setNotice(''); svg.current!.focus();
-      if (arcStage) {
-        const end = arcFinish(arcStage, event); setArcStage(null);
-        if (Math.hypot(end.at[0] - arcStage.start.at[0], end.at[1] - arcStage.start.at[1]) < 1e-6) { setNotice('An arc needs an end point away from its start.'); return; }
-        onStroke?.([arcStage.center, arcStage.start, end]); return;
-      }
       svg.current!.setPointerCapture(event.pointerId);
       const first = pick(event, stepFor(event)); setHover(null);
       change({ pointer: event.pointerId, start: first.at, current: first.at, startName: first.name, guides: [], step: stepFor(event), snap: first.snap }); return;
     }
     if (shape) {
+      if (!movable) return;
       onSelect(shape.shape.id);
-      if (!['Center X', 'Center Y'].every(label => shape.shape.controls.some(c => c.label === label && c.editable))) {
-        setNotice('This position is driven by an expression. Edit its inputs; dragging will not replace the expression.'); return;
+      const editable = 'points' in shape ? shape.editable : ['Center X', 'Center Y'].every(label => shape.shape.controls.some(c => c.label === label && c.editable));
+      if (!editable) {
+        setNotice(('points' in shape && shape.readOnlyReason) || 'This position is driven by an expression. Edit its inputs; dragging will not replace the expression.'); return;
       }
     }
     if (!shape && !drawing && event.button !== 1) return;
@@ -158,13 +172,15 @@ export function ConstructionCanvas({ bounds, shapes, selected, drawing, movable,
     if (final.pan) return;
     if (stroke && !final.shape) {
       const a: StrokePoint = { at: final.start, name: final.startName }, b: StrokePoint = { at: final.current, name: final.currentName };
-      if (Math.hypot(b.at[0] - a.at[0], b.at[1] - a.at[1]) < .1) { setNotice(stroke === 'arc' ? 'Drag from the arc centre to where it starts.' : 'Drag from one end to the other.'); return; }
-      if (stroke === 'arc') { setArcStage({ center: a, start: b, end: null }); setNotice('Click where the arc ends, counter-clockwise from its start. Esc cancels.'); }
-      else onStroke?.([a, b]);
+      if (Math.hypot(b.at[0] - a.at[0], b.at[1] - a.at[1]) < .1) { setNotice('Drag from one end to the other.'); return; }
+      onStroke?.([a, b]);
       return;
     }
     if (final.shape) {
-      if (final.current !== final.start && final.current.some((value, axis) => Math.abs(value - final.shape!.shape.center[axis]) > 1e-9)) onMove(final.shape.shape, final.current);
+      if (movable && final.current.some((value, axis) => Math.abs(value - final.shape!.shape.center[axis]) > 1e-9)) {
+        if ('points' in final.shape) onMoveGuide?.(final.shape.shape.id, [clean(final.current[0] - final.shape.shape.center[0]), clean(final.current[1] - final.shape.shape.center[1])]);
+        else onMove(final.shape.shape, final.current);
+      }
     } else {
       const rect = rectangle(final.start, final.current);
       if (rect.width >= .1 && rect.height >= .1) onDraw(rect);
@@ -182,7 +198,7 @@ export function ConstructionCanvas({ bounds, shapes, selected, drawing, movable,
   const move = useRef<(event: PointerSample) => void>(() => {});
   move.current = event => {
     if (disabled) return;
-    if (arcStage && !gesture.current) setArcStage({ ...arcStage, end: arcFinish(arcStage, event) });
+    if (radial && !gesture.current) { setNotice(''); setRadial({ ...radial, end: radial.start ? arcFinish({ ...radial, start: radial.start }, event) : pick(event, stepFor(event)) }); }
     else if (gesture.current) update(event);
     else {
       if (drawing) setHover(pick(event, stepFor(event)).snap ?? null);
@@ -190,7 +206,7 @@ export function ConstructionCanvas({ bounds, shapes, selected, drawing, movable,
     }
   };
   const scheduleMove = (event: PointerEvent<SVGElement>) => {
-    if (disabled || !gesture.current && !drawing && !arcStage && !onHover) return;
+    if (disabled || !gesture.current && !drawing && !radial && !onHover) return;
     queued.current = { clientX: event.clientX, clientY: event.clientY, altKey: event.altKey, pointerId: event.pointerId };
     if (!frame.current) frame.current = requestAnimationFrame(() => {
       frame.current = 0; const latest = queued.current; queued.current = null;
@@ -206,8 +222,8 @@ export function ConstructionCanvas({ bounds, shapes, selected, drawing, movable,
       viewBox={`${camera.x} ${camera.y} ${camera.width} ${camera.height}`} onPointerDown={event => begin(event)} onPointerUp={finish}
       onPointerMove={scheduleMove}
       onPointerLeave={() => { if (!gesture.current) cancelFrame(); setHover(null); onHover?.(null); }}
-      onPointerCancel={() => { cancelFrame(); change(null); }} onLostPointerCapture={() => { cancelFrame(); if (gesture.current) change(null); }}
-      onKeyDown={event => { if (event.key === 'Escape' && (gesture.current || arcStage)) { event.preventDefault(); event.stopPropagation(); cancelFrame(); change(null); setArcStage(null); setNotice(''); } }}
+      onPointerCancel={() => { cancelFrame(); change(null); setRadial(null); }} onLostPointerCapture={() => { cancelFrame(); if (gesture.current) change(null); }}
+      onKeyDown={event => { if (event.key === 'Escape' && (gesture.current || radial)) { event.preventDefault(); event.stopPropagation(); cancelFrame(); change(null); setRadial(null); setNotice(''); } }}
       onClick={event => {
         if (disabled) return;
         if (onArea) onArea(position(event));
@@ -221,12 +237,21 @@ export function ConstructionCanvas({ bounds, shapes, selected, drawing, movable,
       {children}
       {annotations}
       {movable && shapes.map(item => <g key={item.shape.id} className="draft-shape-target" role="button" tabIndex={disabled ? -1 : 0} aria-disabled={disabled} aria-label={`Move ${item.shape.name}`} aria-pressed={item.shape.id === selected}
-        onPointerDown={event => { if (event.button === 1) return; begin(event, item); }}
+        onPointerDown={event => { if (event.button === 1 || radial || drawing && (stroke || drawKind === 'Circle2')) return; begin(event, item); }}
         onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); if (!disabled) onSelect(item.shape.id); } }}>
-        <rect x={item.bounds.x} y={-item.bounds.y - item.bounds.height} width={item.bounds.width} height={item.bounds.height} fill="transparent" style={{ stroke: item.shape.id === selected ? 'var(--draft-construction)' : 'transparent' }} strokeWidth="1" strokeDasharray="4 4" vectorEffect="non-scaling-stroke" />
+        <rect x={item.bounds.x} y={-item.bounds.y - item.bounds.height} width={item.bounds.width} height={item.bounds.height} fill={drawing ? 'none' : 'transparent'} pointerEvents={drawing ? 'stroke' : 'all'} style={{ stroke: item.shape.id === selected ? 'var(--draft-construction)' : 'transparent' }} strokeWidth={drawing ? 10 : 1} strokeOpacity={drawing ? 0 : 1} strokeDasharray={drawing ? undefined : '4 4'} vectorEffect="non-scaling-stroke" />
         <title>Drag {item.shape.name}. Soft alignment only; hold Alt to bypass snapping.</title>
       </g>)}
-      {moving && <g pointerEvents="none" transform={`translate(${active!.current[0] - moving.shape.center[0]},${-(active!.current[1] - moving.shape.center[1])})`}><rect x={moving.bounds.x} y={-moving.bounds.y - moving.bounds.height} width={moving.bounds.width} height={moving.bounds.height} className="draft-gesture-preview" vectorEffect="non-scaling-stroke" /></g>}
+      {movable && !drawing && guides.map(item => <g key={item.shape.id} className="draft-shape-target" role="button" tabIndex={disabled ? -1 : 0} aria-disabled={disabled || !item.editable} aria-label={`Move ${item.shape.name}`} aria-pressed={item.shape.id === selected}
+        onPointerDown={event => { if (event.button !== 1 && !drawing && !radial) begin(event, item); }}
+        onKeyDown={event => { if ((event.key === 'Enter' || event.key === ' ') && !disabled) { event.preventDefault(); onSelect(item.shape.id); } }}>
+        <polyline points={item.points.map(p => `${p[0]},${-p[1]}`).join(' ')} fill="none" stroke="transparent" strokeWidth={12} pointerEvents={drawing ? 'none' : 'stroke'} vectorEffect="non-scaling-stroke" />
+        <title>Drag {item.shape.name}. Shared named points move together; Alt bypasses snapping.</title>
+      </g>)}
+      {moving && <g pointerEvents="none" transform={`translate(${active!.current[0] - moving.shape.center[0]},${-(active!.current[1] - moving.shape.center[1])})`}>{'points' in moving
+        ? <polyline points={moving.points.map(p => `${p[0]},${-p[1]}`).join(' ')} fill="none" className="draft-gesture-preview" vectorEffect="non-scaling-stroke" />
+        : moving.outlines?.length ? moving.outlines.map((points, i) => <polyline key={i} points={points.map(p => `${p[0]},${-p[1]}`).join(' ')} fill="none" className="draft-gesture-preview" vectorEffect="non-scaling-stroke" />)
+        : <rect x={moving.bounds.x} y={-moving.bounds.y - moving.bounds.height} width={moving.bounds.width} height={moving.bounds.height} className="draft-gesture-preview" vectorEffect="non-scaling-stroke" />}</g>}
       {preview && (drawKind === 'Circle2' || drawKind === 'Ellipse2' ? <ellipse cx={preview.x} cy={-preview.y}
         rx={drawKind === 'Circle2' ? Math.min(preview.width, preview.height) / 2 : preview.width / 2}
         ry={drawKind === 'Circle2' ? Math.min(preview.width, preview.height) / 2 : preview.height / 2}
@@ -239,27 +264,28 @@ export function ConstructionCanvas({ bounds, shapes, selected, drawing, movable,
         return <line x1={a[0] - u[0] * far} y1={-(a[1] - u[1] * far)} x2={a[0] + u[0] * far} y2={-(a[1] + u[1] * far)} className="draft-axis-preview" pointerEvents="none" vectorEffect="non-scaling-stroke" />; })()}
       {strokeLine && stroke === 'arc' && <g pointerEvents="none"><circle cx={strokeLine[0][0]} cy={-strokeLine[0][1]} r={Math.hypot(strokeLine[1][0] - strokeLine[0][0], strokeLine[1][1] - strokeLine[0][1])} className="draft-axis-preview" vectorEffect="non-scaling-stroke" />
         <line x1={strokeLine[0][0]} y1={-strokeLine[0][1]} x2={strokeLine[1][0]} y2={-strokeLine[1][1]} className="draft-gesture-preview" vectorEffect="non-scaling-stroke" /></g>}
-      {arcStage && <g pointerEvents="none">
-        <circle cx={arcStage.center.at[0]} cy={-arcStage.center.at[1]} r={Math.hypot(arcStage.start.at[0] - arcStage.center.at[0], arcStage.start.at[1] - arcStage.center.at[1])} className="draft-axis-preview" vectorEffect="non-scaling-stroke" />
-        {arcStage.end && <path className="draft-gesture-preview" fill="none" vectorEffect="non-scaling-stroke" d={arcPath(arcStage.center.at, arcStage.start.at, arcStage.end.at)} />}
+      {radial && <g pointerEvents="none">
+        <circle cx={radial.center.at[0]} cy={-radial.center.at[1]} r={scale * .5} className="draft-axis-preview" />
+        {(radial.start ?? radial.end) && <circle cx={radial.center.at[0]} cy={-radial.center.at[1]} r={Math.hypot((radial.start ?? radial.end)!.at[0] - radial.center.at[0], (radial.start ?? radial.end)!.at[1] - radial.center.at[1])} className={drawKind === 'Circle2' ? 'draft-gesture-preview' : 'draft-axis-preview'} vectorEffect="non-scaling-stroke" />}
+        {radial.start && radial.end && <path className="draft-gesture-preview" fill="none" vectorEffect="non-scaling-stroke" d={arcPath(radial.center.at, radial.start.at, radial.end.at)} />}
       </g>}
-      {(() => { const shown = active && !active.pan && !active.shape ? active.snap : arcStage ? arcStage.end?.snap : hover; return shown ? <SnapGlyph snap={shown} scale={scale} /> : null; })()}
+      {(() => { const shown = active && !active.pan && !active.shape ? active.snap : radial ? radial.end?.snap : hover; return shown ? <SnapGlyph snap={shown} scale={scale} /> : null; })()}
       {active?.guides.map(guide => <g key={guide.axis} pointerEvents="none" className="draft-alignment-guide">
         {guide.axis === 'x' ? <line x1={guide.value} x2={guide.value} y1={camera.y} y2={camera.y + camera.height} vectorEffect="non-scaling-stroke" /> : <line x1={camera.x} x2={camera.x + camera.width} y1={-guide.value} y2={-guide.value} vectorEffect="non-scaling-stroke" />}
         <text x={guide.axis === 'x' ? guide.value + scale : camera.x + scale} y={guide.axis === 'x' ? camera.y + 8 * scale : -guide.value - scale} fontSize={scale * 1.7}>{guide.label}</text>
       </g>)}
     </svg>
     {overlay}
-    <div className="draft-axes" aria-live="polite">{notice || (strokeLine ? strokeText(stroke!, strokeLine[0], strokeLine[1], active?.currentName) : preview ? `${preview.width} × ${preview.height} mm` : moving ? `Center ${active!.current.join(', ')} mm${active!.guides.length ? ' · aligned' : ''}` : hint)}<span className="draft-snap"> · Snap {step} mm · Alt: 0.1 mm</span></div>
+    <div className="draft-axes" aria-live="polite">{notice || (radial ? radial.start ? 'Click the arc end (counter-clockwise). Esc cancels.' : drawKind === 'Circle2' ? 'Click to set the circle radius. Esc cancels.' : 'Click the arc start to set its radius. Esc cancels.' : strokeLine ? strokeText(stroke!, strokeLine[0], strokeLine[1], active?.currentName) : preview ? `${preview.width} × ${preview.height} mm` : moving ? `Center ${active!.current.join(', ')} mm${active!.guides.length ? ' · aligned' : ''}` : hint)}<span className="draft-snap"> · Snap {step} mm · Alt: 0.1 mm</span></div>
   </div>;
 }
 
-/** Counter-clockwise arc (clockwise on screen, sweep flag 1, since the SVG frame is y-down), from `start` to `end` around `center`. */
+/** Counter-clockwise in model space is sweep flag 0 in the y-down SVG frame. */
 function arcPath(center: Point, start: Point, end: Point) {
   const r = Math.hypot(start[0] - center[0], start[1] - center[1]);
   let sweep = Math.atan2(end[1] - center[1], end[0] - center[0]) - Math.atan2(start[1] - center[1], start[0] - center[0]);
   while (sweep <= 0) sweep += 2 * Math.PI;
-  return `M ${start[0]} ${-start[1]} A ${r} ${r} 0 ${sweep > Math.PI ? 1 : 0} 1 ${end[0]} ${-end[1]}`;
+  return `M ${start[0]} ${-start[1]} A ${r} ${r} 0 ${sweep > Math.PI ? 1 : 0} 0 ${end[0]} ${-end[1]}`;
 }
 function strokeText(kind: StrokeKind, a: Point, b: Point, onto?: string) {
   const length = Number(Math.hypot(b[0] - a[0], b[1] - a[1]).toFixed(3)), angle = Number((Math.atan2(b[1] - a[1], b[0] - a[0]) * 180 / Math.PI).toFixed(1));

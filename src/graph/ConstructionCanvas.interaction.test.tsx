@@ -73,3 +73,35 @@ it('pans by the complete screen displacement when pointer events are coalesced',
   fireEvent.pointerUp(svg, pointer(35, 25, 1));
   expect(svg).toHaveAttribute('viewBox', '-30 -20 100 100'); expect(onMove).not.toHaveBeenCalled();
 });
+
+it('creates a circle by clicking its centre and a radius, including a horizontal radius', () => {
+  const ui = mount();
+  ui.rerender(<ConstructionCanvas {...ui.props} drawing drawKind="Circle2" />);
+  const click = (x: number, y: number) => { fireEvent.pointerDown(ui.svg, pointer(x, y)); fireEvent.pointerUp(ui.svg, pointer(x, y)); };
+  click(10, -20); expect(ui.props.onDraw).not.toHaveBeenCalled();
+  click(25, -20);
+  expect(ui.props.onDraw).toHaveBeenCalledExactlyOnceWith({ x: 10, y: 20, width: 30, height: 30 });
+});
+
+it('previews the compiler arc direction and commits only after centre, start and end clicks', () => {
+  const ui = mount(), onStroke = vi.fn();
+  ui.rerender(<ConstructionCanvas {...ui.props} drawing drawKind="Arc" stroke="arc" onStroke={onStroke} />);
+  fireEvent.pointerDown(ui.svg, pointer(0, 0)); fireEvent.pointerDown(ui.svg, pointer(10, 0));
+  expect(onStroke).not.toHaveBeenCalled();
+  fireEvent.pointerMove(ui.svg, pointer(0, -10)); flush();
+  expect(ui.container.querySelector('path.draft-gesture-preview')).toHaveAttribute('d', 'M 10 0 A 10 10 0 0 0 0 -10');
+  fireEvent.pointerDown(ui.svg, pointer(0, -10));
+  expect(onStroke).toHaveBeenCalledExactlyOnceWith([{ at: [0, 0], name: undefined, snap: undefined }, { at: [10, 0], name: undefined, snap: undefined }, { at: [0, 10] }]);
+});
+
+it('abandons an unfinished radial gesture when switching tools or stages', () => {
+  const ui = mount();
+  ui.rerender(<ConstructionCanvas {...ui.props} drawing drawKind="Circle2" />);
+  fireEvent.pointerDown(ui.svg, pointer(10, -20));
+  ui.rerender(<ConstructionCanvas {...ui.props} drawing drawKind="Ellipse2" />);
+  fireEvent.pointerDown(ui.svg, pointer(10, -20));
+  ui.rerender(<ConstructionCanvas {...ui.props} movable={false} />);
+  fireEvent.pointerUp(ui.svg, pointer(30, -30));
+  expect(ui.props.onDraw).not.toHaveBeenCalled(); expect(ui.onMove).not.toHaveBeenCalled();
+  expect(ui.queryByRole('button', { name: 'Move plate' })).toBeNull();
+});

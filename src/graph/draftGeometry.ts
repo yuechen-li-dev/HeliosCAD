@@ -164,6 +164,7 @@ export function explainRefusal(text: string): string {
   }
   if (/draft-name-exists|edit-name-taken/.test(text)) return 'That name is already used. Choose another.';
   if (/draft-point-driven|draft-dimension-driven|draft-parameter-driven/.test(text)) return 'That value is driven by an expression. Edit the dimensions it is built from instead.';
+  if (/profile-layout-arc-radius-mismatch/.test(text)) return 'An arc’s endpoints must stay at the same distance from its center. Move the arc as a whole, or edit its defining points together.';
   if (/still used by|no longer resolve/.test(text)) return 'This shape is part of the traced outline. Retrace the outline without it, then delete it.';
   if (/must be positive|Positive|greater than zero/i.test(text)) return 'Sizes must be greater than zero.';
   return text;

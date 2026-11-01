@@ -28,7 +28,7 @@ import type { GraphLayouts } from '../graph/useGraphNodes';
 import { IntelliDraftPanel } from '../graph/IntelliDraftPanel';
 import { NodeInspector, type GraphEditState } from '../graph/NodeInspector';
 import { outlineNode, spliceField } from '../graph/fieldEdit';
-import { bodyParent, featureTarget, paletteOperation, paletteUnavailable, wireOperation } from '../graph/graphAuthoring';
+import { bodyParent, featureTarget, paletteOperation, paletteUnavailable } from '../graph/graphAuthoring';
 import { editorFor, formatQuantity, parameterSource, vectorText, type Quantity } from '../graph/fieldEdit';
 import { startingValue } from '../graph/NodeInspector';
 import { parameterNodes, ParametersSheet } from '../graph/ParametersSheet';
@@ -537,13 +537,6 @@ export function HeliosApp({ project, initialWorkspace, chooseBase = false, onSho
         const where = operation.kind === 'insertFeature' && 'body' in target ? ` on ${target.body.name}` : '';
         void structuralEdit([operation], { nodeId: inspectedId ?? '', label: `Added ${item.label} ${'name' in operation ? operation.name ?? '' : ''}${where}` })
           .then(refused => { if (refused) pushOutput(`Add refused · ${refused}`); });
-      },
-      onWire: (provider: string, consumer: OutlineNode, choice: import('../graph/graphAuthoring').WireChoice) => {
-        const operation = wireOperation(provider, consumer, choice);
-        if ('reason' in operation) { pushOutput(operation.reason); return; }
-        const label = choice.kind === 'retarget' ? `${consumer.name ?? consumer.kind} now modifies ${provider}` : `${consumer.name ?? consumer.kind}.${choice.field.name}: ${choice.field.text} → ${provider}`;
-        void structuralEdit([operation], { nodeId: consumer.id, label, select: choice.kind === 'retarget' ? undefined : consumer.id })
-          .then(refused => { if (refused) pushOutput(`Connection refused · ${refused}`); });
       },
       onReorder: (operation: LanguageEditOperation, label: string) => {
         void structuralEdit([operation], { nodeId: 'node' in operation ? operation.node ?? '' : '', label })
