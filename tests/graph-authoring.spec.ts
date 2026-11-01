@@ -252,3 +252,26 @@ test('assembly card dragging survives switching to Parts and back without moving
   await page.getByRole('button', { name: 'Auto arrange', exact: true }).click();
   await expect(card).not.toHaveAttribute('style', moved!);
 });
+
+test('assembly ports create explicit Firmament mates and Parts exposes no wire ports', async ({ page }) => {
+  await page.goto('/'); await page.getByRole('button', { name: 'New assembly', exact: true }).click(); await page.getByRole('tab', { name: 'Graph', exact: true }).click(); await ready(page);
+  const from = await page.getByLabel('Mate from Fixed.Top', { exact: true }).boundingBox();
+  const to = await page.getByLabel('Mate to Moving.Bottom', { exact: true }).boundingBox();
+  expect(from).not.toBeNull(); expect(to).not.toBeNull();
+  await page.mouse.move(from!.x + from!.width / 2, from!.y + from!.height / 2); await page.mouse.down();
+  await page.mouse.move(to!.x + to!.width / 2, to!.y + to!.height / 2, { steps: 16 }); await page.mouse.up();
+  const menu = page.getByRole('menu', { name: 'Create mate', exact: true });
+  await expect(menu).toContainText('First frame is fixed; second is moving');
+  await menu.getByRole('menuitem', { name: 'Fixed rigid, no motion', exact: true }).click();
+  await expect(panel(page).getByLabel('Fixed frame', { exact: true }).locator('option:checked')).toHaveText('Fixed.Top');
+  await expect(panel(page).getByLabel('Moving frame', { exact: true }).locator('option:checked')).toHaveText('Moving.Bottom');
+  await applyPreview(page);
+  const result = await saveSource(page, 'explicit-frame-mate');
+  expect(result.source).toContain('Interface<Fixed>'); expect(result.source).toContain('Fixed.Top'); expect(result.source).toContain('Moving.Bottom');
+  await expect(page.locator('.assembly-joint')).toHaveCount(1);
+  await expect(page.getByText('2 parts, 1 mate.', { exact: false })).toBeVisible();
+  await page.screenshot({ path: resolve(output, 'explicit-frame-mate.png'), fullPage: true });
+  await page.getByRole('tab', { name: 'Parts', exact: true }).click();
+  await expect(page.locator('.react-flow__handle:visible')).toHaveCount(0);
+  await expect(page.locator('.react-flow__handle.connectable')).toHaveCount(0);
+});

@@ -1,10 +1,10 @@
-.intellidraft { position:fixed; inset:60px 12px 30px; margin:0; padding:0; max-width:none; max-height:none; width:auto; height:auto; z-index:40; display:flex; flex-direction:column; background:var(--draft-bg); color:var(--draft-ink); font:13px/1.45 var(--font-family); box-shadow:0 4px 28px var(--shadow); border:1px solid var(--draft-rule); border-radius:6px; overflow:hidden }
+.intellidraft { position:fixed; inset:60px 12px 30px; margin:0; padding:0; max-width:none; max-height:none; width:auto; height:auto; z-index:40; display:flex; flex-direction:column; background:var(--draft-bg); color:var(--draft-ink); font:13px/1.45 var(--font-family); box-shadow:0 4px 28px var(--shadow); border:1px solid var(--draft-rule); border-radius:var(--radius-card); overflow:hidden }
 .intellidraft:not([open]) { display:none }
 .intellidraft::backdrop { background:var(--draft-backdrop) }
 .intellidraft header,.intellidraft footer { display:flex; align-items:center; gap:10px; padding:10px 14px; border-bottom:1px solid var(--draft-rule) }
 .intellidraft header strong { font-size:17px }
 .intellidraft header span { color:var(--draft-muted); flex:1 }
-.intellidraft button,.intellidraft input,.intellidraft select { font:inherit; color:inherit; border:1px solid var(--draft-control-border); border-radius:4px; background:var(--draft-control-bg); padding:6px 9px; min-height:32px; box-sizing:border-box }
+.intellidraft button,.intellidraft input,.intellidraft select { font:inherit; color:inherit; border:1px solid var(--draft-control-border); border-radius:var(--radius-control); background:var(--draft-control-bg); padding:6px 9px; min-height:32px; box-sizing:border-box }
 .intellidraft button { cursor:pointer }
 .intellidraft button:disabled { opacity:.45; cursor:default }
 .intellidraft button:focus-visible,.intellidraft input:focus-visible,.intellidraft select:focus-visible { outline:2px solid var(--draft-focus); outline-offset:2px }
@@ -47,7 +47,7 @@
 .shape-cards span { font-size:11px; color:var(--draft-card-ink) }
 .construction-list { margin:12px 0; display:flex; flex-direction:column; gap:6px }
 .construction-list-title { display:flex; align-items:center; justify-content:space-between }
-.construction-list-rows { max-height:210px; overflow-y:auto; border:1px solid var(--draft-card-border); border-radius:4px; scrollbar-gutter:stable }
+.construction-list-rows { max-height:210px; overflow-y:auto; border:1px solid var(--draft-card-border); border-radius:var(--radius-control); scrollbar-gutter:stable }
 .construction-list-rows [role=listitem] { display:flex; align-items:center; gap:7px; padding:3px 5px; border-bottom:1px solid var(--draft-rule-soft) }
 .construction-list-rows input { width:17px; min-height:17px; flex:none; accent-color:var(--draft-construction) }
 .construction-list-rows button { flex:1; min-width:0; display:flex; flex-direction:column; align-items:flex-start; text-align:left; overflow-wrap:anywhere }
@@ -71,12 +71,15 @@
 
 /* Canvas-first drawing: hotbar, snap grid, selection, dimensions and the aligned-shape choice. */
 .draft-canvas-header { position:absolute; z-index:1; top:8px; left:8px; right:220px; display:flex; flex-wrap:wrap; align-items:center; gap:8px }
-.draft-hotbar { display:flex; flex-wrap:wrap; gap:4px; padding:3px; background:color-mix(in srgb, var(--draft-bg) 92%, transparent); border:1px solid var(--draft-rule); border-radius:6px }
+.draft-hotbar { display:flex; flex-wrap:wrap; gap:4px; padding:3px; background:color-mix(in srgb, var(--draft-bg) 92%, transparent); border:1px solid var(--draft-rule); border-radius:var(--radius-card)}
 .intellidraft .draft-hotbar button { min-height:28px; padding:3px 8px; display:inline-flex; align-items:center; gap:6px }
-.draft-hotbar kbd { font:600 10px/1 var(--font-mono); color:var(--draft-muted); border:1px solid var(--draft-rule); border-radius:3px; padding:2px 4px }
+.draft-hotbar kbd { font:600 10px/1 var(--font-mono); color:var(--draft-muted); border:1px solid var(--draft-rule); border-radius:var(--radius-control); padding:2px 4px }
 .intellidraft .draft-plane { flex-direction:row; align-items:center; gap:6px; color:var(--draft-muted) }
 .intellidraft .draft-plane select { width:auto; min-height:28px; padding:2px 6px }
 .draft-grid-dot { fill:var(--draft-dot) }
+.draft-coordinate-axes { fill:none; stroke:var(--draft-muted); stroke-width:.85; stroke-dasharray:16 4 2 4 }
+.draft-axis-marks { stroke-dasharray:none; stroke-width:1 }
+.draft-axis-marks text { fill:var(--draft-muted); stroke:var(--draft-bg); paint-order:stroke; font-family:var(--font-mono) }
 .draft-snap { color:var(--draft-muted); opacity:.8 }
 .draft-shape-name { fill:var(--draft-construction-label); cursor:pointer; font-family:var(--font-family) }
 .draft-shape-name.selected { fill:var(--draft-selected); font-weight:600 }
@@ -88,10 +91,10 @@
 .draft-dimension[role=button]:focus { outline:none }
 .draft-dimension.driven line { stroke:var(--draft-dimension-driven); stroke-dasharray:3 2 }
 .draft-dimension.driven text { fill:var(--draft-dimension-driven); font-weight:500 }
-.draft-dimension-input { position:absolute; z-index:3; transform:translate(-50%, -50%); display:flex; align-items:center; gap:4px; padding:3px 6px; background:var(--draft-control-bg); border:1px solid var(--draft-focus); border-radius:4px; box-shadow:0 2px 10px var(--shadow) }
+.draft-dimension-input { position:absolute; z-index:3; transform:translate(-50%, -50%); display:flex; align-items:center; gap:4px; padding:3px 6px; background:var(--draft-control-bg); border:1px solid var(--draft-focus); border-radius:var(--radius-control); box-shadow:0 2px 10px var(--shadow) }
 .intellidraft .draft-dimension-input input { width:88px; min-height:26px; padding:2px 6px }
 .draft-dimension-input span { color:var(--draft-muted) }
-.draft-align-prompt { position:absolute; z-index:3; left:50%; bottom:40px; transform:translateX(-50%); max-width:min(640px, 92%); padding:12px 14px; background:var(--draft-bg); border:1px solid var(--draft-pressed-border); border-radius:6px; box-shadow:0 4px 22px var(--shadow) }
+.draft-align-prompt { position:absolute; z-index:3; left:50%; bottom:40px; transform:translateX(-50%); max-width:min(640px, 92%); padding:12px 14px; background:var(--draft-bg); border:1px solid var(--draft-pressed-border); border-radius:var(--radius-card); box-shadow:0 4px 22px var(--shadow) }
 .draft-align-prompt p { margin:0 0 10px }
 .draft-align-prompt div { display:flex; flex-wrap:wrap; gap:6px }
 .draft-closed-fill { fill:var(--draft-fill) }
@@ -143,8 +146,8 @@
 .intellidraft .draft-dimension-input { flex-wrap:wrap; max-width:260px }
 .intellidraft .draft-dimension-input input { width:150px; font-family:var(--font-mono, monospace) }
 .draft-dimension-input small { flex-basis:100%; color:var(--draft-muted); font-size:11px }
-.draft-dimension-input ul { flex-basis:100%; list-style:none; margin:2px 0 0; padding:2px; border:1px solid var(--draft-rule); border-radius:4px; background:var(--draft-control-bg); max-height:150px; overflow:auto }
-.draft-dimension-input li { padding:3px 6px; border-radius:3px; cursor:pointer; font-family:var(--font-mono, monospace); font-size:12px }
+.draft-dimension-input ul { flex-basis:100%; list-style:none; margin:2px 0 0; padding:2px; border:1px solid var(--draft-rule); border-radius:var(--radius-control); background:var(--draft-control-bg); max-height:150px; overflow:auto }
+.draft-dimension-input li { padding:3px 6px; border-radius:var(--radius-control); cursor:pointer; font-family:var(--font-mono, monospace); font-size:12px }
 .draft-dimension-input li[aria-selected=true] { background:var(--draft-pressed-bg) }
 .draft-align-to { display:flex; flex-direction:column; gap:5px; padding:8px 0; border-bottom:1px solid var(--draft-rule-soft) }
 .draft-align-to label { display:flex; flex-direction:column; gap:3px }

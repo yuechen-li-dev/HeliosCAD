@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { shapeLabel } from './draftGeometry';
 
-export function ConstructionShapeList({ shapes, selected, hidden, disabled, onSelect, onToggle, onShowAll }: {
+export function ConstructionShapeList({ shapes, selected, selection = [], multiple = false, hidden, disabled, onSelect, onToggle, onShowAll }: {
   shapes: readonly { id: string; name: string; kind: string }[]; selected: string; hidden: ReadonlySet<string>; disabled: boolean;
-  onSelect(id: string): void; onToggle(id: string): void; onShowAll(): void;
+  selection?: readonly string[]; multiple?: boolean; onSelect(id: string, additive?: boolean): void; onToggle(id: string): void; onShowAll(): void;
 }) {
   const [filter, setFilter] = useState('');
   const list = useRef<HTMLDivElement>(null);
@@ -21,7 +21,7 @@ export function ConstructionShapeList({ shapes, selected, hidden, disabled, onSe
     <input type="search" aria-label="Filter construction shapes" placeholder="Find a shape…" value={filter} onChange={e => setFilter(e.target.value)} />
     <div ref={list} className="construction-list-rows" role="list" aria-label="Construction shape list">{visible.map(shape => <div role="listitem" key={shape.id} className={hidden.has(shape.id) ? 'shape-hidden' : ''}>
       <input type="checkbox" aria-label={`Show ${shape.name}`} title="Show construction in this workspace; source and Profile stay unchanged" checked={!hidden.has(shape.id)} disabled={disabled} onChange={() => onToggle(shape.id)} />
-      <button type="button" disabled={disabled} aria-pressed={selected === shape.id} aria-label={`Select ${shape.name}`} onClick={() => onSelect(shape.id)}><b>{shape.name}</b><small>{shapeLabel(shape.kind)}</small></button>
+      <button type="button" disabled={disabled} aria-pressed={selected === shape.id || selection.includes(shape.id)} aria-label={`Select ${shape.name}`} onClick={event => { if (multiple || event.shiftKey) onSelect(shape.id, true); else onSelect(shape.id); }}><b>{shape.name}</b><small>{shapeLabel(shape.kind)}</small></button>
     </div>)}</div>
     {!visible.length && <small>No matching shapes.</small>}
     <small>Checkboxes only show or hide shapes here; the part is unchanged.</small>

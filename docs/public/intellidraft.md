@@ -28,6 +28,37 @@ A circle's radius is the distance from its first click to its second, including 
 
 In **Draw**, choose **Select** (**V**) and drag a shape's body or a line, arc, or axis directly. Lines and arcs translate their defining named points together in one undoable edit; shared points remain shared. Expression-driven placements retain their expressions. **Trace** and **Extrude** lock construction movement and dimensions. Selecting a row in those stages does not unlock it: return to **Draw** to edit. Escape cancels a pending center/radius/arc gesture; changing tools also discards its preview.
 
+### Select and move a group
+
+Choose **Group select** (**G**). Drag a box that fully encloses the elements to
+select, click their sidebar rows, or use **Select all construction**. **Shift-click**
+adds or removes an element; holding Shift while boxing adds the enclosed elements.
+**Clear group selection** empties the selection. Infinite axes can be selected
+through their rows. Hidden construction is excluded from Select all and boxing.
+
+Drag a selected element to move the selection together, or enter exact **Move X/Y**
+distances and choose **Move selection**. This is one translation and one Undo step:
+shared named points and shared placement parameters move once. It creates no
+persistent group or relationship in Firmament. A shared driving parameter also
+affects its other dependants. Elements must belong to one layout.
+A driven placement, conflicting shared parameter, or invalid resulting Profile
+refuses the complete move and preserves the preceding source. Group movement is
+available in **Draw**; return there from Trace or Extrude to change construction.
+
+### Inspect a guide
+
+Select a line, arc, named circle or axis in **Draw** to open its **Guide inspector**.
+Lines expose Start/End X/Y, axes expose Origin X/Y, and arcs and circles expose
+Center X/Y and Radius. **Apply guide dimensions** submits one source transaction;
+**Discard guide edits** restores the current values. Apply or discard before
+changing tools or building. Undo and Redo refresh the displayed coordinates.
+
+Changing an arc's radius keeps its center, endpoint angles and sweep fixed. A
+center change translates it; both operations keep it circular. Shared endpoints
+remain shared, so a connected line can change when the arc radius changes. The
+compiler refuses an invalid result. Guides with driven or unsupported inputs show
+read-only guidance to edit their defining source inputs.
+
 In **Trace**, select the construction shape. **Use whole shape outline** traces a complete circle, ellipse, slot or rounded rectangle. Rectangles also offer named landmark spans as described below. Existing **Manual guide trace** exposes the compiler's named boundary guides for more detailed selection; curved span trimming uses its existing named-point controls rather than inventing intersection points.
 
 ## Draw, dimension, place, repeat, trace
@@ -44,6 +75,11 @@ The placement is a number, not a relationship. Moving or resizing `outer` later 
 **Hold Alt while dragging** to bypass alignment. **Escape** cancels the active gesture without closing the workspace or changing source. Pointer cancellation also abandons the preview. Drawing corners and unsnapped dragging use 0.1 mm authoring increments; an alignment uses the projected target position exactly. This increment is not a declared manufacturing tolerance. Explicit numeric fields can use finer precision.
 
 **Fit construction**, **+ / −**, and middle-button dragging navigate the canvas. Click a shape card to inspect its dimensions. Overlapping shapes can be selected through their cards; dragging the visible body uses the topmost shape under the pointer.
+
+Thin centerlines mark the drawing axes, with a small origin mark and positive
+direction arrows. Their labels follow the layout plane (for example, X/Z), and
+their weight and label size stay constant while zooming. They are reference
+graphics and do not create construction geometry.
 
 5. Choose **Trace**. Select a **Trace shape**, then click these spans in boundary order:
 

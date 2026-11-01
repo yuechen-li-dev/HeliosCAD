@@ -1,3 +1,6 @@
+// Make refresh initialization a dependency of the application module graph.
+// The separate HTML preamble can arrive late during a development reload.
+import '@vitejs/plugin-react/preamble';
 import { lazy, Suspense } from 'react';
 import ReactDOM from 'react-dom/client';
 import { CloudApp } from './cloud/CloudApp';

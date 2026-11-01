@@ -8,7 +8,7 @@ export type CanvasShape = { shape: SketchShape; bounds: CanvasBounds; owner: str
 export type CanvasGuide = { shape: Pick<SketchShape, 'id' | 'name' | 'kind' | 'center'>; bounds: CanvasBounds; owner: string; points: Point[]; editable: boolean; readOnlyReason?: string };
 type MoveTarget = CanvasShape | CanvasGuide;
 type Alignment = { axis: 'x' | 'y'; value: number; label: string };
-type Gesture = { pointer: number; start: Point; current: Point; shape?: MoveTarget; pan?: { bounds: CanvasBounds; screen: Point; units: Point }; guides: Alignment[]; step: number; startName?: string; currentName?: string; snap?: Snap };
+type Gesture = { pointer: number; start: Point; current: Point; shape?: MoveTarget; boxSelect?: boolean; additive?: boolean; pan?: { bounds: CanvasBounds; screen: Point; units: Point }; guides: Alignment[]; step: number; startName?: string; currentName?: string; snap?: Snap };
 type PointerSample = { clientX: number; clientY: number; altKey: boolean; pointerId: number };
 export type DrawnRectangle = { x: number; y: number; width: number; height: number };
 /** A picked stroke point: grid-snapped coordinates, or an existing named point it snapped onto. */
@@ -39,15 +39,17 @@ const rectangle = (a: Point, b: Point): DrawnRectangle => ({ x: clean((a[0] + b[
 
 /** Pointer interaction over compiler-projected construction. Drag previews are disposable SVG
  * transforms. Only pointer-up submits dimensions to the existing compiler edit transaction. */
-export function ConstructionCanvas({ bounds, shapes, guides = [], selected, drawing, movable, disabled, children, onSelect, onDraw, onMove, onMoveGuide, onPoint, hint, revision, drawKind = 'Rect2', autoFit = true, fitRequest = 0, header, overlay, layer, stroke, snapPoints = [], snapCurves = [], onStroke, onArea, onHover }: {
+export function ConstructionCanvas({ bounds, shapes, guides = [], selected, selection = [], groupSelecting = false, onSelectGroup, onMoveGroup, drawing, movable, disabled, children, onSelect, onDraw, onMove, onMoveGuide, onPoint, hint, revision, drawKind = 'Rect2', autoFit = true, fitRequest = 0, header, overlay, layer, stroke, snapPoints = [], snapCurves = [], onStroke, onArea, onHover, axisLabels = ['X', 'Y'] }: {
   bounds: CanvasBounds; shapes: CanvasShape[]; selected: string; drawing: boolean; movable: boolean; disabled: boolean;
-  children: ReactNode; onSelect(id: string): void; onDraw(rectangle: DrawnRectangle): void;
+  children: ReactNode; onSelect(id: string, additive?: boolean): void; onDraw(rectangle: DrawnRectangle): void;
+  selection?: readonly string[]; groupSelecting?: boolean; onSelectGroup?(ids: string[], additive: boolean): void; onMoveGroup?(ids: readonly string[], offset: Point): void;
   onMove(shape: SketchShape, center: Point): void; onPoint?(point: Point): void; hint: string; revision: number; drawKind?: string;
   guides?: CanvasGuide[]; onMoveGuide?(id: string, offset: Point): void;
   /** Fit once when existing construction first arrives. A fresh draft keeps its view so drawing never jumps. */
   autoFit?: boolean; fitRequest?: number; header?: ReactNode; overlay?: ReactNode;
   /** World-space annotations sized to the current zoom (scale is one percent of the visible width). */
   layer?: (scale: number) => ReactNode;
+  axisLabels?: readonly [string, string];
   /** Lines and axes drag; arcs click centre → start → end. Circles click centre → radius. */
   stroke?: StrokeKind; snapPoints?: readonly { name: string; x: number; y: number }[]; onStroke?(points: StrokePoint[]): void;
   /** Curves drawing may snap onto (midpoints, on-curve). */
@@ -63,24 +65,32 @@ export function ConstructionCanvas({ bounds, shapes, guides = [], selected, draw
   const [radial, setRadial] = useState<RadialStage | null>(null);
   const [hover, setHover] = useState<Snap | null>(null);
   useEffect(() => { setRadial(null); setNotice(''); setHover(null); }, [stroke, drawKind, drawing, movable, revision, disabled]);
-  const [pixels, setPixels] = useState(0);
+  const [viewport, setViewport] = useState({ width: 0, height: 0 });
   useEffect(() => {
     cancelFrame();
     const pointer = gesture.current?.pointer;
     gesture.current = null; setActive(null);
     if (pointer !== undefined && svg.current?.hasPointerCapture(pointer)) svg.current.releasePointerCapture(pointer);
-  }, [revision, disabled, drawing, movable, drawKind, stroke]);
+  }, [revision, disabled, drawing, movable, drawKind, stroke, groupSelecting]);
   useEffect(() => cancelFrame, []);
   useEffect(() => { if (!fitted.current && (shapes.length || guides.length)) { setCamera(bounds); fitted.current = true; } }, [bounds, shapes.length, guides.length]);
   const latestBounds = useRef(bounds); latestBounds.current = bounds;
   useEffect(() => { if (fitRequest) setCamera(latestBounds.current); }, [fitRequest]);
   useEffect(() => {
     const element = svg.current; if (!element) return;
-    const observer = new ResizeObserver(() => setPixels(element.clientWidth)); observer.observe(element); setPixels(element.clientWidth);
+    const resize = () => setViewport({ width: element.clientWidth, height: element.clientHeight });
+    const observer = new ResizeObserver(resize); observer.observe(element); resize();
     return () => observer.disconnect();
   }, []);
   // Round, zoom-dependent increments: the grid you see is the grid you snap to. Alt is fine (0.1 mm).
-  const pixelsPerMillimetre = pixels && camera.width ? pixels / camera.width : 8;
+  const pixelsPerMillimetre = viewport.width && camera.width ? viewport.width / camera.width : 8;
+  const displayScale = viewport.width && viewport.height ? Math.min(viewport.width / camera.width, viewport.height / camera.height) : pixelsPerMillimetre;
+  // SVG preserves aspect ratio. Include its letterboxed area in the background
+  // and axes and size labels in screen pixels. Keep the existing authoring snap
+  // calculation separate: changing reference graphics must not move geometry.
+  const visibleWidth = viewport.width ? viewport.width / displayScale : camera.width;
+  const visibleHeight = viewport.height ? viewport.height / displayScale : camera.height;
+  const visible = { x: camera.x + (camera.width - visibleWidth) / 2, y: camera.y + (camera.height - visibleHeight) / 2, width: visibleWidth, height: visibleHeight };
   const step = snapStep(pixelsPerMillimetre);
   const stepFor = (event: { altKey: boolean }) => event.altKey ? 0.1 : step;
   const change = (next: Gesture | null) => { gesture.current = next; setActive(next); };
@@ -103,6 +113,15 @@ export function ConstructionCanvas({ bounds, shapes, guides = [], selected, draw
   const begin = (event: PointerEvent<SVGElement>, shape?: MoveTarget) => {
     if (disabled || gesture.current || ![0, 1].includes(event.button)) return;
     cancelFrame();
+    if (movable && !drawing && event.button === 0 && (groupSelecting || event.shiftKey)) {
+      if (shape && (event.shiftKey || !selection.includes(shape.shape.id))) {
+        event.preventDefault(); event.stopPropagation(); svg.current!.focus(); onSelect(shape.shape.id, true); return;
+      }
+      if (!shape) {
+        event.preventDefault(); event.stopPropagation(); svg.current!.focus(); svg.current!.setPointerCapture(event.pointerId);
+        const start = position(event); change({ pointer: event.pointerId, start, current: start, boxSelect: true, additive: event.shiftKey, guides: [], step }); return;
+      }
+    }
     if (drawing && (stroke === 'arc' || drawKind === 'Circle2') && !shape && event.button === 0) {
       event.preventDefault(); event.stopPropagation(); setNotice(''); svg.current!.focus();
       if (!radial) { setRadial({ center: pick(event, stepFor(event)), start: null, end: null }); setNotice(''); return; }
@@ -125,7 +144,7 @@ export function ConstructionCanvas({ bounds, shapes, guides = [], selected, draw
     }
     if (shape) {
       if (!movable) return;
-      onSelect(shape.shape.id);
+      if (!(groupSelecting && selection.includes(shape.shape.id))) onSelect(shape.shape.id);
       const editable = 'points' in shape ? shape.editable : ['Center X', 'Center Y'].every(label => shape.shape.controls.some(c => c.label === label && c.editable));
       if (!editable) {
         setNotice(('points' in shape && shape.readOnlyReason) || 'This position is driven by an expression. Edit its inputs; dragging will not replace the expression.'); return;
@@ -148,6 +167,7 @@ export function ConstructionCanvas({ bounds, shapes, guides = [], selected, draw
       setCamera({ ...bounds, x: bounds.x - (event.clientX - screen[0]) / units[0], y: bounds.y - (event.clientY - screen[1]) / units[1] }); return;
     }
     const matrix = svg.current!.getScreenCTM()!, p = position(event, matrix);
+    if (previous.boxSelect) { change({ ...previous, current: p }); return; }
     if (previous.shape && Math.hypot(p[0] - previous.start[0], p[1] - previous.start[1]) < 1e-9) {
       change({ ...previous, current: [...previous.shape.shape.center] as Point, guides: [] }); return;
     }
@@ -159,7 +179,7 @@ export function ConstructionCanvas({ bounds, shapes, guides = [], selected, draw
       const shape = previous.shape, center = shape.shape.center;
       current = [snap(center[0] + p[0] - previous.start[0], gestureStep), snap(center[1] + p[1] - previous.start[1], gestureStep)];
       const moving = { ...shape.bounds, x: shape.bounds.x + current[0] - center[0], y: shape.bounds.y + current[1] - center[1] };
-      const alignment = alignPlacement(moving, shapes.filter(s => s.shape.id !== shape.shape.id && s.owner === shape.owner), 7 / Math.abs(matrix.a), event.altKey);
+      const alignment = alignPlacement(moving, shapes.filter(s => s.shape.id !== shape.shape.id && (!groupSelecting || !selection.includes(s.shape.id)) && s.owner === shape.owner), 7 / Math.abs(matrix.a), event.altKey);
       current = [clean(current[0] + alignment.offset[0]), clean(current[1] + alignment.offset[1])]; guides = alignment.guides;
     }
     change({ ...previous, current, guides, snap: picked });
@@ -170,6 +190,11 @@ export function ConstructionCanvas({ bounds, shapes, guides = [], selected, draw
     const final = gesture.current; if (!final || final.pointer !== event.pointerId) return;
     change(null); svg.current!.releasePointerCapture(event.pointerId);
     if (final.pan) return;
+    if (final.boxSelect) {
+      const box = rectangle(final.start, final.current);
+      const inside = (b: CanvasBounds) => b.x >= box.x - box.width / 2 && b.y >= box.y - box.height / 2 && b.x + b.width <= box.x + box.width / 2 && b.y + b.height <= box.y + box.height / 2;
+      onSelectGroup?.([...shapes, ...guides].filter(item => inside(item.bounds)).map(item => item.shape.id), !!final.additive); return;
+    }
     if (stroke && !final.shape) {
       const a: StrokePoint = { at: final.start, name: final.startName }, b: StrokePoint = { at: final.current, name: final.currentName };
       if (Math.hypot(b.at[0] - a.at[0], b.at[1] - a.at[1]) < .1) { setNotice('Drag from one end to the other.'); return; }
@@ -178,7 +203,8 @@ export function ConstructionCanvas({ bounds, shapes, guides = [], selected, draw
     }
     if (final.shape) {
       if (movable && final.current.some((value, axis) => Math.abs(value - final.shape!.shape.center[axis]) > 1e-9)) {
-        if ('points' in final.shape) onMoveGuide?.(final.shape.shape.id, [clean(final.current[0] - final.shape.shape.center[0]), clean(final.current[1] - final.shape.shape.center[1])]);
+        if (groupSelecting && selection.includes(final.shape.shape.id)) onMoveGroup?.(selection, [clean(final.current[0] - final.shape.shape.center[0]), clean(final.current[1] - final.shape.shape.center[1])]);
+        else if ('points' in final.shape) onMoveGuide?.(final.shape.shape.id, [clean(final.current[0] - final.shape.shape.center[0]), clean(final.current[1] - final.shape.shape.center[1])]);
         else onMove(final.shape.shape, final.current);
       }
     } else {
@@ -189,7 +215,7 @@ export function ConstructionCanvas({ bounds, shapes, guides = [], selected, draw
   };
   const zoom = (factor: number) => setCamera(c => ({ x: c.x + c.width * (1 - factor) / 2, y: c.y + c.height * (1 - factor) / 2, width: c.width * factor, height: c.height * factor }));
   const moving = active?.shape;
-  const preview = active && !moving && !active.pan && !stroke ? rectangle(active.start, active.current) : null;
+  const preview = active && !active.boxSelect && !moving && !active.pan && !stroke ? rectangle(active.start, active.current) : null;
   const strokeLine = active && !moving && !active.pan && stroke ? [active.start, active.current] as const : null;
   const far = Math.max(camera.width, camera.height) * 4;
   const scale = camera.width / 100;
@@ -214,7 +240,7 @@ export function ConstructionCanvas({ bounds, shapes, guides = [], selected, draw
     });
   };
   // Show the snap grid when its dots are far enough apart; otherwise a coarser multiple of it.
-  const shownStep = [1, 5, 10].map(n => n * step).find(s => s * pixelsPerMillimetre >= 12) ?? step * 10;
+  const shownStep = [1, 5, 10].map(n => n * step).find(s => s * displayScale >= 12) ?? step * 10;
   return <div className="draft-canvas">
     {header && <div className="draft-canvas-header">{header}</div>}
     <div className="draft-canvas-tools"><button type="button" disabled={!!active} title="Fit construction · F" onClick={() => setCamera(bounds)}>Fit construction</button><button type="button" aria-label="Zoom in construction" disabled={!!active} onClick={() => zoom(.8)}>+</button><button type="button" aria-label="Zoom out construction" disabled={!!active} onClick={() => zoom(1.25)}>−</button></div>
@@ -230,24 +256,45 @@ export function ConstructionCanvas({ bounds, shapes, guides = [], selected, draw
         if (onPoint) { const p = position(event), s = stepFor(event); onPoint([snap(p[0], s), snap(p[1], s)]); }
       }}>
       <defs><pattern id="draft-grid" patternUnits="userSpaceOnUse" x={0} y={0} width={shownStep} height={shownStep}>
-        <circle cx={0} cy={0} r={1 / pixelsPerMillimetre} className="draft-grid-dot" /><circle cx={shownStep} cy={0} r={1 / pixelsPerMillimetre} className="draft-grid-dot" />
-        <circle cx={0} cy={shownStep} r={1 / pixelsPerMillimetre} className="draft-grid-dot" /><circle cx={shownStep} cy={shownStep} r={1 / pixelsPerMillimetre} className="draft-grid-dot" />
+        <circle cx={0} cy={0} r={1 / displayScale} className="draft-grid-dot" /><circle cx={shownStep} cy={0} r={1 / displayScale} className="draft-grid-dot" />
+        <circle cx={0} cy={shownStep} r={1 / displayScale} className="draft-grid-dot" /><circle cx={shownStep} cy={shownStep} r={1 / displayScale} className="draft-grid-dot" />
       </pattern></defs>
-      <rect x={camera.x} y={camera.y} width={camera.width} height={camera.height} fill="url(#draft-grid)" pointerEvents="none" />
+      <rect x={visible.x} y={visible.y} width={visible.width} height={visible.height} fill="url(#draft-grid)" pointerEvents="none" />
+      <g className="draft-coordinate-axes" aria-label={`Drawing axes ${axisLabels.join(' / ')}`} pointerEvents="none">
+        <line x1={visible.x} x2={visible.x + visible.width} y1={0} y2={0} vectorEffect="non-scaling-stroke" />
+        <line x1={0} x2={0} y1={visible.y} y2={visible.y + visible.height} vectorEffect="non-scaling-stroke" />
+        {(() => {
+          const u = 1 / displayScale, x = visible.x + visible.width - 24 * u, y = visible.y + 76 * u;
+          return <g className="draft-axis-marks">
+            <path d={`M ${x - 6 * u} ${-3 * u} L ${x} 0 L ${x - 6 * u} ${3 * u} M ${-3 * u} ${y + 6 * u} L 0 ${y} L ${3 * u} ${y + 6 * u}`} vectorEffect="non-scaling-stroke" />
+            <text x={x + 8 * u} y={4 * u} fontSize={11 * u} strokeWidth={3 * u}>{axisLabels[0]}</text>
+            <text x={8 * u} y={y + 4 * u} fontSize={11 * u} strokeWidth={3 * u}>{axisLabels[1]}</text>
+            <path d={`M ${-5 * u} 0 H ${5 * u} M 0 ${-5 * u} V ${5 * u}`} vectorEffect="non-scaling-stroke" />
+            <text x={7 * u} y={14 * u} fontSize={10 * u} strokeWidth={3 * u}>0</text>
+          </g>;
+        })()}
+      </g>
       {children}
       {annotations}
-      {movable && shapes.map(item => <g key={item.shape.id} className="draft-shape-target" role="button" tabIndex={disabled ? -1 : 0} aria-disabled={disabled} aria-label={`Move ${item.shape.name}`} aria-pressed={item.shape.id === selected}
+      {movable && shapes.map(item => <g key={item.shape.id} className="draft-shape-target" role="button" tabIndex={disabled ? -1 : 0} aria-disabled={disabled} aria-label={`Move ${item.shape.name}`} aria-pressed={item.shape.id === selected || selection.includes(item.shape.id)}
         onPointerDown={event => { if (event.button === 1 || radial || drawing && (stroke || drawKind === 'Circle2')) return; begin(event, item); }}
-        onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); if (!disabled) onSelect(item.shape.id); } }}>
-        <rect x={item.bounds.x} y={-item.bounds.y - item.bounds.height} width={item.bounds.width} height={item.bounds.height} fill={drawing ? 'none' : 'transparent'} pointerEvents={drawing ? 'stroke' : 'all'} style={{ stroke: item.shape.id === selected ? 'var(--draft-construction)' : 'transparent' }} strokeWidth={drawing ? 10 : 1} strokeOpacity={drawing ? 0 : 1} strokeDasharray={drawing ? undefined : '4 4'} vectorEffect="non-scaling-stroke" />
+        onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); if (!disabled) onSelect(item.shape.id, groupSelecting || event.shiftKey); } }}>
+        <rect x={item.bounds.x} y={-item.bounds.y - item.bounds.height} width={item.bounds.width} height={item.bounds.height} fill={drawing ? 'none' : 'transparent'} pointerEvents={drawing ? 'stroke' : 'all'} style={{ stroke: item.shape.id === selected || selection.includes(item.shape.id) ? 'var(--draft-construction)' : 'transparent' }} strokeWidth={drawing ? 10 : 1} strokeOpacity={drawing ? 0 : 1} strokeDasharray={drawing ? undefined : '4 4'} vectorEffect="non-scaling-stroke" />
         <title>Drag {item.shape.name}. Soft alignment only; hold Alt to bypass snapping.</title>
       </g>)}
-      {movable && !drawing && guides.map(item => <g key={item.shape.id} className="draft-shape-target" role="button" tabIndex={disabled ? -1 : 0} aria-disabled={disabled || !item.editable} aria-label={`Move ${item.shape.name}`} aria-pressed={item.shape.id === selected}
+      {movable && !drawing && guides.map(item => <g key={item.shape.id} className="draft-shape-target" role="button" tabIndex={disabled ? -1 : 0} aria-disabled={disabled || !item.editable} aria-label={`Move ${item.shape.name}`} aria-pressed={item.shape.id === selected || selection.includes(item.shape.id)}
         onPointerDown={event => { if (event.button !== 1 && !drawing && !radial) begin(event, item); }}
-        onKeyDown={event => { if ((event.key === 'Enter' || event.key === ' ') && !disabled) { event.preventDefault(); onSelect(item.shape.id); } }}>
+        onKeyDown={event => { if ((event.key === 'Enter' || event.key === ' ') && !disabled) { event.preventDefault(); onSelect(item.shape.id, groupSelecting || event.shiftKey); } }}>
         <polyline points={item.points.map(p => `${p[0]},${-p[1]}`).join(' ')} fill="none" stroke="transparent" strokeWidth={12} pointerEvents={drawing ? 'none' : 'stroke'} vectorEffect="non-scaling-stroke" />
         <title>Drag {item.shape.name}. Shared named points move together; Alt bypasses snapping.</title>
       </g>)}
+      {active?.boxSelect && <rect className="draft-gesture-preview draft-selection-box" x={Math.min(active.start[0], active.current[0])} y={-Math.max(active.start[1], active.current[1])}
+        width={Math.abs(active.current[0] - active.start[0])} height={Math.abs(active.current[1] - active.start[1])} pointerEvents="none" vectorEffect="non-scaling-stroke" />}
+      {moving && groupSelecting && selection.length > 1 && <g pointerEvents="none" transform={`translate(${active!.current[0] - moving.shape.center[0]},${-(active!.current[1] - moving.shape.center[1])})`}>
+        {[...shapes, ...guides].filter(item => item.shape.id !== moving.shape.id && selection.includes(item.shape.id)).map(item => 'points' in item
+          ? <polyline key={item.shape.id} points={item.points.map(p => `${p[0]},${-p[1]}`).join(' ')} fill="none" className="draft-gesture-preview" vectorEffect="non-scaling-stroke" />
+          : <rect key={item.shape.id} x={item.bounds.x} y={-item.bounds.y - item.bounds.height} width={item.bounds.width} height={item.bounds.height} className="draft-gesture-preview" vectorEffect="non-scaling-stroke" />)}
+      </g>}
       {moving && <g pointerEvents="none" transform={`translate(${active!.current[0] - moving.shape.center[0]},${-(active!.current[1] - moving.shape.center[1])})`}>{'points' in moving
         ? <polyline points={moving.points.map(p => `${p[0]},${-p[1]}`).join(' ')} fill="none" className="draft-gesture-preview" vectorEffect="non-scaling-stroke" />
         : moving.outlines?.length ? moving.outlines.map((points, i) => <polyline key={i} points={points.map(p => `${p[0]},${-p[1]}`).join(' ')} fill="none" className="draft-gesture-preview" vectorEffect="non-scaling-stroke" />)

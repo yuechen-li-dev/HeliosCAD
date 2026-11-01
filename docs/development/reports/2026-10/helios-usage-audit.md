@@ -1,5 +1,8 @@
 # Helios usage audit — 2026-10-31
 
+The decisions below were implemented in the
+[group movement, guide inspector and mates follow-up](../2026-11/group-guides-mates-usage.md).
+
 ## Method
 
 Used the local application through installed Edge as a user: welcome screen,

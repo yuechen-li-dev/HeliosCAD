@@ -150,7 +150,7 @@ export function CloudApp() {
   const model = page.kind === 'detail' ? (detailPublication?.id === page.id ? detailPublication : [...publicModels, ...galleryModels].find(item => item.id === page.id)) : undefined;
   const visible = searchGallery([...publicModels, ...galleryModels], query, category);
   return <div className="discovery-page">
-    <header className="discovery-header"><button className="discovery-brand" onClick={() => navigate('/discover')} aria-label="Helios Discover"><strong>H</strong><span>HELIOS<small>by Aetheris</small></span></button>
+    <header className="discovery-header"><button className="discovery-brand" onClick={() => navigate('/discover')} aria-label="Aetheris Helios Discover"><strong aria-hidden="true">H</strong><span><small>AETHERIS</small>HELIOS</span></button>
       <nav aria-label="Main"><button className={page.kind === 'discover' ? 'selected' : ''} onClick={() => navigate('/discover')}>Discover</button><button className={page.kind === 'projects' ? 'selected' : ''} onClick={() => user ? navigate('/projects') : setAuthIntent('projects')}>My Projects</button><LocalHostControl /></nav>
       <div className="discovery-account"><select aria-label="Theme" value={theme} onChange={event => setTheme(event.target.value)}><option value="bronze-age">Bronze Age</option><option value="apollonia">Apollonia</option></select>{user ? <><span>{localHost ? 'On this computer' : user.displayName}</span>{!localHost && <button onClick={() => void logout()}>Sign out</button>}</> : <button onClick={() => setAuthIntent('projects')}>Sign in</button>}</div>
     </header>
@@ -169,7 +169,7 @@ export function CloudApp() {
 
 function AuthScreen({ busy, error, onCancel, onRegister, onSignIn }: { busy: boolean; error: string; onCancel: () => void; onRegister: (email: string, password: string, name: string) => void; onSignIn: (email: string, password: string) => void }) {
   const [mode, setMode] = useState<'sign-in' | 'register'>('sign-in');
-  return <div className="cloud-page"><div className="cloud-card auth-card"><button className="cloud-text-button" onClick={onCancel}>← Continue browsing</button><span className="cloud-eyebrow">HELIOS · BY AETHERIS</span><h1>{mode === 'sign-in' ? 'Sign in to continue' : 'Create your workspace'}</h1><p>Your model will be ready after you sign in.</p>
+  return <div className="cloud-page"><div className="cloud-card auth-card"><button className="cloud-text-button" onClick={onCancel}>← Continue browsing</button><span className="cloud-eyebrow">AETHERIS HELIOS</span><h1>{mode === 'sign-in' ? 'Sign in to continue' : 'Create your workspace'}</h1><p>Your model will be ready after you sign in.</p>
     <form onSubmit={event => { event.preventDefault(); const fields = new FormData(event.currentTarget); const email = String(fields.get('email')); const password = String(fields.get('password')); if (mode === 'register') onRegister(email, password, String(fields.get('name'))); else onSignIn(email, password); }}>
       {mode === 'register' && <label>Name<input name="name" autoComplete="name" required maxLength={120} /></label>}
       <label>Email<input type="email" name="email" autoComplete="email" required /></label>

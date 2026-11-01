@@ -152,7 +152,7 @@ function Canvas({ outline, error, diagnostics, selection, theme, onSelect, onOpe
     const active = !!selection && (link.from === selection.unitId || link.to === selection.unitId);
     return { id: link.id, source: link.from, target: link.to, label: link.label, type: 'smoothstep',
       className: active ? 'graph-link active' : 'graph-link', markerEnd: { type: MarkerType.ArrowClosed, width: 14, height: 14 },
-      labelBgPadding: [4, 2] as [number, number], labelBgBorderRadius: 3 };
+      labelBgPadding: [4, 2] as [number, number], labelBgBorderRadius: 0 };
   }), [laid, selection]);
 
   // Refit when the pane is resized (the workbench splitter, the dock): the view was framed for another size.
@@ -246,8 +246,8 @@ export function GraphPanel(props: Props) {
           ? <select aria-label="Assembly" disabled={props.pendingFields} value={asm.graph.assembly.id} onChange={event => asm.onPickAssembly(event.target.value)}>
               {asm.assemblies.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}</select>
           : asm.graph.assembly.name}</span>
-        <small>{count(asm.graph.parts.filter(p => p.kind !== 'ground').length, 'part')}, {count(asm.graph.joints.length, 'joint')}. {asm.authoring
-          ? 'Drag from one frame to another to join them; click a joint to edit it.' : 'Click a part or a joint to see it.'}</small>
+        <small>{count(asm.graph.parts.filter(p => p.kind !== 'ground').length, 'part')}, {count(asm.graph.joints.length, 'mate')}. {asm.authoring
+          ? 'Drag between named frames to create a mate; click a mate to edit it.' : 'Click a part or a mate to see it.'}</small>
       </div> : <div>
         {summary ? <><span>{summary.containers.length ? summary.containers.join(', ') : props.outline?.document}</span>
           <small>{count(summary.units, 'authoring step')}, {count(summary.links, 'dependency')}. {props.authoring

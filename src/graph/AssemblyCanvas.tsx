@@ -43,10 +43,10 @@ const PartNode = memo(function PartNode({ data }: NodeProps<Node<PartData>>) {
     <ol className="assembly-ports">
       {part.ports.length === 0 && <li className="assembly-port empty">No named frames</li>}
       {part.ports.map(port => <li key={port.key} className={`assembly-port${activePorts.has(port.key) ? ' active' : ''}`}>
-        <Handle id={`in:${port.key}`} type="target" position={Position.Left} isConnectable={editable} />
+        <Handle id={`in:${port.key}`} type="target" position={Position.Left} isConnectable={editable} aria-label={`Mate to ${part.name}.${port.key}`} title={`Mate frame ${part.name}.${port.key}`} />
         <span>{port.key}</span>
         {port.joints.length > 0 && <small>{port.joints.length}</small>}
-        <Handle id={`out:${port.key}`} type="source" position={Position.Right} isConnectable={editable} />
+        <Handle id={`out:${port.key}`} type="source" position={Position.Right} isConnectable={editable} aria-label={`Mate from ${part.name}.${port.key}`} title={`Mate frame ${part.name}.${port.key}`} />
       </li>)}
     </ol>
   </div>;
@@ -79,7 +79,7 @@ export function AssemblyCanvas({ graph, theme, selectedId, onSelect, onOpenSourc
     const selected = joint.id === selectedId;
     return [{ id: joint.id, source: joint.a.part, sourceHandle: `out:${from.key}`, target: joint.b.part, targetHandle: `in:${to.key}`, type: 'smoothstep',
       label: `${joint.name} · ${joint.kind}`, className: `assembly-joint joint-${joint.kind.toLowerCase()}${selected ? ' selected' : ''}`,
-      markerEnd: { type: MarkerType.ArrowClosed, width: 12, height: 12 }, labelBgPadding: [5, 3] as [number, number], labelBgBorderRadius: 3, interactionWidth: 18 }];
+      markerEnd: { type: MarkerType.ArrowClosed, width: 12, height: 12 }, labelBgPadding: [5, 3] as [number, number], labelBgBorderRadius: 0, interactionWidth: 18 }];
   }), [graph, selectedId]);
 
   useEffect(() => {
@@ -120,14 +120,15 @@ export function AssemblyCanvas({ graph, theme, selectedId, onSelect, onOpenSourc
       <Background variant={BackgroundVariant.Dots} gap={18} size={1} />
       <Controls showInteractive={false} position="bottom-right" />
     </ReactFlow>
-    {authoring && pending && targetPart && <div className="graph-wire-menu assembly-join" role="menu" aria-label="Join" style={{ left: pending.x, top: pending.y }}
+    {authoring && pending && targetPart && <div className="graph-wire-menu assembly-join" role="menu" aria-label="Create mate" style={{ left: pending.x, top: pending.y }}
       onKeyDown={event => { if (event.key === 'Escape') setPending(null); }}>
-      <p>Join <b>{nameOf(pending.a.part)}.{pending.a.port}</b> to <b>{targetPart.name}</b>
+      <p>Mate <b>{nameOf(pending.a.part)}.{pending.a.port}</b> to <b>{targetPart.name}</b>
         {pendingTarget ? <b>.{pendingTarget.port}</b> : targetPart.ports.length > 0
-          ? <select aria-label="Port" value={targetPort} onChange={event => setTargetPort(event.target.value)}>{targetPart.ports.map(port => <option key={port.key} value={port.key}>{port.key}</option>)}</select>
+          ? <select aria-label="Moving mate frame" value={targetPort} onChange={event => setTargetPort(event.target.value)}>{targetPart.ports.map(port => <option key={port.key} value={port.key}>{port.key}</option>)}</select>
           : null} as…</p>
+      <small>First frame is fixed; second is moving. Choose a mate type, then Preview and Apply. Connections write Firmament mates.</small>
       {targetPart.ports.length === 0 && !pendingTarget
-        ? <p className="graph-wire-none">{targetPart.name} has no named frame to join. Add a Semantic frame to its definition first.</p>
+        ? <p className="graph-wire-none">{targetPart.name} has no named mate frame. Add a Semantic frame to its definition first.</p>
         : authoring.kinds.map((kind, index) => <button key={kind} role="menuitem" autoFocus={index === 0} onClick={() => {
           setPending(null);
           authoring.onJoin(kind, pending.a, { part: targetPart.id, port: pendingTarget?.port ?? targetPort });

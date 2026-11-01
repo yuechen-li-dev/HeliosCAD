@@ -27,6 +27,23 @@ function mount() {
 const pointer = (x: number, y: number, button = 0) => ({ clientX: x, clientY: y, altKey: true, button });
 function flush() { act(() => { const pending = [...frames.values()]; frames.clear(); pending.forEach(callback => callback(0)); }); }
 
+it('marquee selects enclosed elements and never draws or moves geometry', () => {
+  const ui = mount(), selectGroup = vi.fn();
+  ui.rerender(<ConstructionCanvas {...ui.props} groupSelecting onSelectGroup={selectGroup} />);
+  fireEvent.pointerDown(ui.svg, pointer(10, -10)); fireEvent.pointerMove(ui.svg, pointer(30, -30)); flush();
+  expect(ui.container.querySelector('.draft-selection-box')).not.toBeNull();
+  fireEvent.pointerUp(ui.svg, pointer(30, -30));
+  expect(selectGroup).toHaveBeenCalledExactlyOnceWith(['rect'], false);
+  expect(ui.props.onDraw).not.toHaveBeenCalled(); expect(ui.onMove).not.toHaveBeenCalled();
+});
+it('moves the selected group in one callback while retaining the grab offset', () => {
+  const ui = mount(), moveGroup = vi.fn();
+  ui.rerender(<ConstructionCanvas {...ui.props} groupSelecting selection={['rect', 'other']} onMoveGroup={moveGroup} />);
+  fireEvent.pointerDown(ui.target, pointer(17, -23)); fireEvent.pointerUp(ui.svg, pointer(22, -26));
+  expect(moveGroup).toHaveBeenCalledExactlyOnceWith(['rect', 'other'], [5, 3]);
+  expect(ui.onMove).not.toHaveBeenCalled();
+});
+
 it('coalesces pointer bursts, keeps the grab offset, and commits the final drop exactly once', () => {
   const { target, svg, onMove, layer, container } = mount();
   fireEvent.pointerDown(target, pointer(17, -23));

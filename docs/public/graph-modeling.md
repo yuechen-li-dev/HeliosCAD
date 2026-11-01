@@ -11,8 +11,15 @@ Manual positions reset when the workspace is closed or the page is refreshed.
 
 The **Parts** graph's links display source dependencies. Cards have no draggable
 wire ports: use their fields and **+ Add** to author bodies and features. The
-**Assembly** graph retains frame-to-frame dragging to create a joint, with the
-joint type chosen before applying the compiler-checked edit.
+**Assembly** graph retains frame-to-frame dragging to create a mate, with the
+mate type chosen before applying the compiler-checked edit.
+
+Assembly ports represent named **mate frames**. Drag from the first, fixed frame
+to the second, moving frame, then choose a mate type in **Create mate**. The dialog
+shows both frame references; dropping on a part card lets you choose its moving
+frame. **Preview → Apply** writes the compiler-checked Firmament `Interface<…>`
+and mate definition. These connections have physical assembly meaning. Firmament
+source remains authoritative for the graph, fields and resulting placement.
 
 For a custom outline, use [IntelliDraft](intellidraft.md): named points and
 guides or distance-driven Paths, then Trace and Extrude. **Sketch** retains the

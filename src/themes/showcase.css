@@ -6,10 +6,10 @@ button, a, select { -webkit-tap-highlight-color: transparent; }
 button { cursor: pointer; } button:disabled { cursor: default; opacity: .5; }
 button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible, [tabindex]:focus-visible { outline: 3px solid var(--accent); outline-offset: -3px; }
 button, a { transition: background-color 100ms, border-color 100ms, color 100ms; }
-.helios-symbol { display: grid; place-items: center; width: 30px; height: 30px; border: 2px solid var(--accent); color: var(--accent); font: 600 21px var(--font-family); }
+.helios-symbol { display: grid; place-items: center; flex: none; width: 30px; height: 30px; border: 2px solid currentColor; color: inherit; font: 600 21px var(--font-family); letter-spacing: 0; }
 .welcome-shell { height: 100%; overflow: auto; color: var(--catalog-ink); background: var(--catalog-bg); }
 .welcome-header { min-height: 76px; padding: 12px 28px; display: flex; align-items: center; justify-content: space-between; gap: 24px; border-bottom: 3px solid var(--catalog-rule); }
-.welcome-brand { color: inherit; text-decoration: none; font-size: 25px; font-weight: 850; letter-spacing: -.06em; }
+.welcome-brand { display: flex; align-items: center; gap: 12px; color: inherit; text-decoration: none; font-size: 22px; font-weight: 600; letter-spacing: -.04em; }
 .welcome-header nav { display: flex; align-items: center; gap: 28px; font-size: 14px; font-weight: 500; }
 .welcome-header nav a { color: inherit; text-decoration: none; }
 .welcome-header nav a:hover { text-decoration: underline; text-underline-offset: 5px; }
@@ -21,7 +21,7 @@ button, a { transition: background-color 100ms, border-color 100ms, color 100ms;
 .welcome-main { width: 100%; margin: 0 auto; padding: 0 24px 32px; container-type: inline-size; }
 .welcome-hero { padding: 40px 0 40px; text-align: center; }
 .welcome-wordmark { font-size: clamp(52px, 7vw, 112px); font-weight: 500; letter-spacing: -.055em; line-height: 1.1; margin: 0 0 8px; }
-.welcome-cad { font-weight: 250; letter-spacing: -.035em; }
+.welcome-family { font-weight: 250; }
 .hero-statements { display: flex; justify-content: center; align-items: center; gap: 8px; margin: 0 auto 20px; color: var(--text-secondary); }
 .hero-statement-window { height: 32px; overflow: hidden; }
 .hero-statement-track { animation: hero-roll-up 15s cubic-bezier(.65, 0, .35, 1) infinite; }
@@ -74,7 +74,7 @@ button, a { transition: background-color 100ms, border-color 100ms, color 100ms;
 .export-popover small { display: block; margin-top: 2px; font-size: var(--type-caption); line-height: 1.4; color: var(--text-secondary); }
 .workspace-tabs .export-popover .export-download { width: 100%; height: 36px; background: var(--accent); color: var(--accent-contrast); }
 .workspace-tabs .export-popover .export-download:disabled { opacity: .45; }
-.toolbar .palette-trigger { min-width: 150px; }.palette-trigger kbd { display: none; }.top-actions { border: 0; padding: 0 10px; }.top-actions select { padding: 5px; font-size: var(--type-caption); border-radius: 3px; }.top-actions button { font-size: 16px; }
+.toolbar .palette-trigger { min-width: 150px; }.palette-trigger kbd { display: none; }.top-actions { border: 0; padding: 0 10px; }.top-actions select { padding: 5px; font-size: var(--type-caption); border-radius:var(--radius-control); }.top-actions button { font-size: 16px; }
 .workspace > .resize-horizontal { z-index: 8; }
 .resize-handle { position: absolute; z-index: 8; touch-action: none; background: transparent; }.resize-handle:hover, .resize-handle:focus-visible { background: var(--accent); }.resize-horizontal { width: 5px; transform: translateX(-3px); cursor: col-resize; }.resize-vertical { height: 5px; top: -3px; left: 0; right: 0; cursor: row-resize; }
 /* Monaco overlays its vertical scrollbar on the horizontal text viewport.
@@ -126,7 +126,7 @@ button, a { transition: background-color 100ms, border-color 100ms, color 100ms;
 .reference-body input[type="file"] { max-width: 100%; margin-top: 8px; }
 .reference-item { display: flex; align-items: flex-start; gap: 8px; }
 .reference-item small { display: block; color: var(--text-secondary); font-size: var(--type-caption); margin-top: 4px; }
-.gallery-backdrop { position: fixed; z-index: 40; inset: 0; background: #080b10b0; display: grid; place-items: center; padding: 28px; }.gallery-dialog { position: relative; max-width: 1250px; width: 100%; max-height: 90vh; overflow: auto; padding: 32px; box-sizing: border-box; background: var(--app-bg); border: 1px solid var(--border-strong); border-radius: 6px; box-shadow: 0 18px 50px #0007; }.dialog-close { position: absolute; top: 12px; right: 12px; background: transparent; color: var(--text-secondary); padding: 4px 9px; font-size: 22px; }.gallery-dialog .showcase-image { height: 160px; }
+.gallery-backdrop { position: fixed; z-index: 40; inset: 0; background: #080b10b0; display: grid; place-items: center; padding: 28px; }.gallery-dialog { position: relative; max-width: 1250px; width: 100%; max-height: 90vh; overflow: auto; padding: 32px; box-sizing: border-box; background: var(--app-bg); border: 1px solid var(--border-strong); border-radius:var(--radius-card); box-shadow: 0 18px 50px #0007; }.dialog-close { position: absolute; top: 12px; right: 12px; background: transparent; color: var(--text-secondary); padding: 4px 9px; font-size: 22px; }.gallery-dialog .showcase-image { height: 160px; }
 .dock-gallery { padding: 14px; }.dock-gallery .showcase-grid { grid-template-columns: 1fr; }.dock-gallery .gallery-heading { display: block; }.dock-gallery .gallery-heading h2 { font-size: 18px; }.dock-gallery .gallery-heading input { box-sizing: border-box; width: 100%; margin-top: 14px; }.dock-gallery .category-tabs button { padding: 6px; font-size: var(--type-ui); }.dock-gallery .showcase-image { height: 135px; }
 @media (min-width: 1500px) { .showcase-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
 @media (max-width: 1350px) { .toolbar { display: none; }.workspace-tabs { margin-left: auto; }.workspace-identity { max-width: 150px; padding: 0 12px; }.brand { min-width: 110px; }.top-actions { padding: 0 6px; }.workspace-tabs button { padding: 0 8px; }.statusbar .status-revisions { display: none; } }
