@@ -43,6 +43,8 @@ test('AOT worker repeatedly traces fresh curved drafts without terminating the r
         const result = await request({ ...current, operation: 'languageSketchEdit', sketchEdit: {
           kind: 'construction', construction: { action: 'trace', parent: 'DraftPart/layout', name: 'section', trace: i % 2 === 0 ? trace : trace.toReversed() },
         } });
+        if (result.document !== current.sourceName || result.revision !== current.sourceRevision)
+          throw new Error(`Trace ${i} lost its document or revision during winding correction`);
         if (!result.changed || !result.text.includes('Profile section')) throw new Error(`Trace ${i} did not produce its profile`);
       }
       return 128;
