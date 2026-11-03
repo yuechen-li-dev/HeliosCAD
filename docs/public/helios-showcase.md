@@ -1,4 +1,4 @@
-# Helios Preview 4
+# Aetheris Helios workspace
 
 The front page is an object catalog: natural Inter lettering, monochrome wireframe
 cards on warm paper and short model names. **New part** opens a base-shape chooser with a box starter;
@@ -8,7 +8,7 @@ Search or filter, then click a card to open its intact source project. New brows
 the white **Apollonia** theme; **Dark** switches to the green-and-gold **Bronze Age**
 palette. The choice follows you into the editor and is remembered across reloads.
 
-The **HeliosCAD** hero sets CAD in a lighter Inter weight. A short statement rolls
+The **Aetheris Helios** hero uses the gold knot mark and Inter lettering. A short statement rolls
 up every five seconds, with one line visible at a time. Hover, keyboard focus or
 the pause control stops it; reduced-motion preferences keep the first line static.
 

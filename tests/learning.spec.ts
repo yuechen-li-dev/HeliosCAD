@@ -1,0 +1,97 @@
+import { expect, test } from '@playwright/test';
+import { lessons, lessonPage } from '../src/learn/lessons';
+import { replaceEditorSource } from './editor';
+import { mkdir } from 'node:fs/promises';
+
+test('browse, search, internal source links, code copying, contents and deep links', async ({ page, context }) => {
+  await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+  await page.goto('/learn');
+  await expect(page.getByRole('heading', { name: 'Learn Firmament in Helios', exact: true })).toBeVisible();
+  await mkdir('artifacts/local/learning', { recursive: true });
+  await page.screenshot({ path: 'artifacts/local/learning/learning-center.png' });
+  await page.getByRole('searchbox').fill('hole counterbore');
+  await expect(page.locator('.learn-result').first()).toBeVisible();
+  await page.getByRole('searchbox').fill('no-such-feature-xyz');
+  await expect(page.getByText('0 pages found')).toBeVisible();
+  await page.getByRole('searchbox').fill('');
+  await page.locator('.learn-course button').first().click();
+  await expect(page.getByRole('heading', { name: '1. A first part', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Copy code' }).first().click();
+  await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toContain('Model Plate');
+  await page.locator('.learn-contents').getByRole('button', { name: 'Try it', exact: true }).click();
+  await expect(page.locator('.learn-article h2#try-it')).toBeInViewport();
+  await page.getByRole('button', { name: 'Previous documentation page' }).click();
+  await page.locator('.learn-markdown a[data-doc="fixtures/Canonical/Learn/01-plate.firmament"]').click();
+  await expect(page.getByRole('heading', { name: '01-plate.firmament' })).toBeVisible();
+  await page.reload();
+  await expect(page.getByRole('heading', { name: '01-plate.firmament' })).toBeVisible();
+  await page.getByRole('button', { name: 'Reference', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Firmament language reference', exact: true })).toBeVisible();
+});
+
+test('practice opens separately, source edits build, modal focus and progress survive reopening', async ({ page, context }) => {
+  await page.goto('/learn#page=' + encodeURIComponent(lessonPage(lessons[0])));
+  const popup = page.waitForEvent('popup');
+  await page.getByRole('link', { name: 'Practice in new tab' }).click();
+  const practice = await popup;
+  await expect(practice.locator('.status-ready')).toContainText('Ready');
+  await expect(practice.getByRole('tab', { name: 'Source', exact: true })).toHaveAttribute('aria-selected', 'true');
+  await expect(practice.getByRole('region', { name: 'Tutorial checklist' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '1. A first part', exact: true })).toBeVisible();
+  const check = practice.getByRole('checkbox');
+  await check.nth(0).check(); await check.nth(1).check();
+  await expect(practice.getByText('2 of 3 steps checked')).toBeVisible();
+  await practice.getByRole('button', { name: 'Read full lesson' }).click();
+  const dialog = practice.getByRole('dialog', { name: 'Learn Firmament', exact: true });
+  await expect(dialog).toBeVisible();
+  await practice.keyboard.press('Escape'); await expect(dialog).not.toBeVisible();
+  await expect(practice.getByRole('button', { name: 'Read full lesson' })).toBeFocused();
+  await practice.locator('.monaco-editor .view-lines').click();
+  await practice.keyboard.press('F1'); await expect(dialog).toBeVisible();
+  await practice.keyboard.press('Escape'); await expect(dialog).not.toBeVisible();
+  await replaceEditorSource(practice, 'Model Plate { units: mm Box stock { size: [80mm, 50mm, 8mm] } Modify stock { Hole<Shaft> mount { on: +Z center: Point2(0mm, 0mm) diameter: 12mm end: ThroughAll } } }');
+  await practice.getByRole('button', { name: 'Learn', exact: true }).click();
+  await practice.getByRole('button', { name: 'Close learning center' }).click();
+  const downloading = practice.waitForEvent('download');
+  await practice.getByRole('button', { name: 'Save source', exact: true }).click();
+  const sourceDownload = await downloading;
+  await expect((await import('node:fs/promises')).readFile(await sourceDownload.path(), 'utf8')).resolves.toContain('diameter: 12mm');
+  await practice.getByRole('button', { name: 'Build', exact: true }).click();
+  await expect(practice.getByText('✓ Current source built successfully.')).toBeVisible();
+  await check.nth(2).check();
+  await page.getByRole('button', { name: 'Start here', exact: true }).click();
+  await expect(page.locator('.learn-course button').first()).toContainText('Completed ✓');
+  await practice.reload();
+  await expect(practice.getByText('Lesson checklist complete. Save your source to keep your work.')).toBeVisible();
+  await expect(practice.locator('.status-ready')).toContainText('Ready');
+  await practice.keyboard.press('F1'); await expect(practice.getByRole('dialog', { name: 'Learn Firmament', exact: true })).toBeVisible();
+  await practice.getByRole('button', { name: 'Close learning center' }).click();
+  await mkdir('artifacts/local/learning', { recursive: true });
+  await practice.screenshot({ path: 'artifacts/local/learning/practice.png' });
+  await practice.close();
+});
+
+for (const lesson of lessons) test(`canonical lesson builds through browser runtime: ${lesson.title}`, async ({ page }) => {
+  await page.goto('/learn?practice=' + lesson.id);
+  await expect(page.locator('.status-ready')).toContainText('Ready');
+  await expect(page.getByText('✓ Current source built successfully.')).toBeVisible();
+  await expect(page.locator('.viewport-caption')).toContainText('Compiled geometry');
+  await expect(page.getByRole('button', { name: /^Export/ })).toBeEnabled();
+  await mkdir('artifacts/local/learning/previews', { recursive: true });
+  await page.locator('.viewport-canvas').screenshot({ path: `artifacts/local/learning/previews/${lesson.id}.png` });
+});
+
+test('mobile navigation, light appearance and no external requests are needed to read', async ({ page, context }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.addInitScript(() => localStorage.setItem('helios-theme', 'apollonia'));
+  await page.goto('/learn');
+  await expect(page.getByRole('heading', { name: 'Learn Firmament in Helios', exact: true })).toBeVisible();
+  await context.setOffline(true);
+  await page.getByRole('button', { name: 'Browse', exact: true }).click();
+  await page.locator('.learn-navigation').getByRole('button', { name: '1. A first part', exact: true }).click();
+  await expect(page.getByRole('heading', { name: '1. A first part', exact: true })).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await mkdir('artifacts/local/learning', { recursive: true });
+  await page.screenshot({ path: 'artifacts/local/learning/mobile.png' });
+  await context.setOffline(false);
+});

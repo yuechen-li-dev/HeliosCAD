@@ -12,6 +12,18 @@ The **Export** picker offers STEP, GLB, USDA, STL, OBJ and PDF/SVG/PPTX drawings
 Choose one format for a direct download or several for a ZIP. Availability follows
 the compiled product kind; see [export formats and limits](docs/public/exports.md).
 
+**Learn** in the header, **F1**, or `/learn` opens the bundled Firmament manual:
+searchable reference, modeling guides, and six guided lessons. Each lesson opens
+its complete source in a separate practice tab, with a checklist beside the
+compiled model. See [learning in Helios](docs/public/learning.md).
+
+For maintainers: `npm run docs:sync` refreshes the offline snapshot from sibling
+`Aetheris/docs/public`, linked fixture sources and Helios's public guides.
+`npm run docs:check` detects content drift and runs before frontend builds;
+`npm run test:learning` exercises the docs and all six lessons in the real browser
+runtime. The older GitHub Pages Preview 2 snapshot is not imported as current
+syntax. Firmament semantics and diagnostics remain compiler-owned.
+
 ## Concept Struct visualization
 
 In the editor, **Concepts** toggles compiler-retained Concept Struct geometry as

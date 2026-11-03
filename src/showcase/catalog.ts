@@ -13,6 +13,7 @@ export interface WorkspaceProject {
   root: string;
   documents: Record<string, string>;
   exampleId?: string;
+  lessonId?: string;
 }
 
 export const showcaseExamples: readonly ShowcaseExample[] = [

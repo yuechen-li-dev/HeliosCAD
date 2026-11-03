@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ConstructProjection, Diagnostic, EditableProperty, FieldProjection, LanguageOutline, ModelSession, LanguageEditOperation, LanguageField, MotionPose, OutlineField, OutlineNode, PaletteItem, SelectionDescription, SemanticSchema, UnitValue } from '@aetheris/cad';
 import { WebSdkCadRuntime } from '../sdk/CadRuntime';
 import { AetherisWorkerClient, type BuildResult } from '../sdk/AetherisWorkerClient';
@@ -44,13 +44,17 @@ import { importedProject, isStep, packProject, sourceFiles, unpackProject } from
 import { registerRecoverableSource } from './crashRecovery';
 import { PmiAuthor } from '../inspector/PmiAuthor';
 import { AuthoringPanel, type AuthoringAction, type PendingAuthoring } from '../graph/AuthoringPanel';
+import { TutorialPanel } from '../learn/TutorialPanel';
 
-type UtilityTab = { kind: 'files' } | { kind: 'inspector' } | { kind: 'examples' } | { kind: 'llm' } | { kind: 'version-control' };
+const LearnCenter = lazy(() => import('../learn/LearnCenter').then(m => ({ default: m.LearnCenter })));
+
+type UtilityTab = { kind: 'files' } | { kind: 'inspector' } | { kind: 'examples' } | { kind: 'llm' } | { kind: 'version-control' } | { kind: 'tutorial' };
 
 export function HeliosApp({ project, initialWorkspace, chooseBase = false, onShowcase, onSave, onPublish, onBack, onSignOut }: { project?: Project; initialWorkspace?: WorkspaceProject; chooseBase?: boolean; onShowcase?: () => void; onSave?: (source: string) => Promise<void>; onPublish?: (payload: { expectedRevisionId: string; title: string; description: string; category: string; tags: string[]; previewPngBase64: string }) => Promise<void>; onBack?: () => void; onSignOut?: () => void } = {}) {
+  const [learnPage, setLearnPage] = useState<string | null>(null);
   const [runtime] = useState(() => new WebSdkCadRuntime());
   const [buildClient] = useState(() => new AetherisWorkerClient(runtime));
-  const [editorMode, setEditorMode] = useState<'graph' | 'source'>(() => chooseBase ? 'graph' : readEditorMode());
+  const [editorMode, setEditorMode] = useState<'graph' | 'source'>(() => chooseBase ? 'graph' : initialWorkspace?.lessonId ? 'source' : readEditorMode());
   const [intelliDraft, setIntelliDraft] = useState<{ revision: number; source?: string; node?: string | null } | null>(null);
   const openIntelliDraftRef = useRef<(node?: string | null) => void>(() => {});
   const shellLayout = useShellLayout(editorMode);
@@ -124,7 +128,8 @@ export function HeliosApp({ project, initialWorkspace, chooseBase = false, onSho
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [publishOpen, setPublishOpen] = useState(false);
   const [publishState, setPublishState] = useState('');
-  const [utilityTab, setUtilityTab] = useState<UtilityTab>({ kind: 'inspector' });
+  const [utilityTab, setUtilityTab] = useState<UtilityTab>({ kind: initialWorkspace?.lessonId ? 'tutorial' : 'inspector' });
+  useEffect(() => { if (initialWorkspace?.lessonId) shellLayout.setUtilityOpen(true); }, []);
   const [outline, setOutline] = useState<LanguageOutline | null>(null);
   const [outlineError, setOutlineError] = useState<string | null>(null);
   const [graphSelection, setGraphSelection] = useState<GraphSelection | null>(null);
@@ -247,15 +252,17 @@ export function HeliosApp({ project, initialWorkspace, chooseBase = false, onSho
   useEffect(() => { if (buildStarted === null) return; const timer = setInterval(() => setElapsedSeconds((performance.now() - buildStarted) / 1000), 250); return () => clearInterval(timer); }, [buildStarted]);
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
+      if (learnPage !== null) { if (event.key === 'F1') event.preventDefault(); return; }
+      if (event.key === 'F1') { event.preventDefault(); setLearnPage('helios/learning.md'); return; }
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's') { event.preventDefault(); if (onSave) void save(); else downloadSource(); }
-      if (((event.ctrlKey || event.metaKey) && event.shiftKey && event.key.toLowerCase() === 'p') || event.key === 'F1') { event.preventDefault(); if (canLeaveGraphFields()) setPaletteOpen(true); }
+      if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.key.toLowerCase() === 'p') { event.preventDefault(); if (canLeaveGraphFields()) setPaletteOpen(true); }
       if (event.key.toLowerCase() === 'f' && !isTyping(event.target)) setViewCommand(`fit-${Date.now()}`);
       if ((event.ctrlKey || event.metaKey) && !isTyping(event.target) && ['z', 'y'].includes(event.key.toLowerCase())) {
         event.preventDefault(); void runHistory(event.key.toLowerCase() === 'y' || event.shiftKey ? 'redo' : 'undo');
       }
     };
     addEventListener('keydown', onKey); return () => removeEventListener('keydown', onKey);
-  }, [source, sourceName, onSave, busy, buildStarted, pendingAuthoring]);
+  }, [source, sourceName, onSave, busy, buildStarted, pendingAuthoring, learnPage]);
 
   const save = async () => {
     if (!canLeaveGraphFields()) return;
@@ -763,6 +770,7 @@ export function HeliosApp({ project, initialWorkspace, chooseBase = false, onSho
     if (closest && (closest.id !== selectedEntityId || selectedFaceId)) select(closest.id);
   };
   const paletteCommands: PaletteCommand[] = [
+    { id: 'learn', label: 'Learn Firmament', detail: 'Tutorials and full language reference · F1', run: () => setLearnPage('helios/learning.md') },
     { id: 'new-sketch', label: 'New IntelliDraft part', detail: 'Draw a profile, trace it and extrude it', run: newIntelliDraft },
     { id: 'edit-sketch', label: 'Edit profile in IntelliDraft', detail: "Edit this part's Profile dimensions and construction", run: () => void openIntelliDraft() },
     { id: 'insert-box', label: 'Insert Box', detail: 'Insert a 30 × 20 × 10 mm Box inside Model', run: addBox },
@@ -791,7 +799,7 @@ export function HeliosApp({ project, initialWorkspace, chooseBase = false, onSho
         <LocalHostControl />
         <button className="palette-trigger" disabled={pendingGraphFields} onClick={() => setPaletteOpen(true)}>⌕ <span>Command palette</span><kbd>Ctrl+Shift+P</kbd></button>
       </div>
-      <div className="top-actions"><button title="Toggle utility dock" aria-label="Toggle utility dock" aria-pressed={shellLayout.utilityOpen} onClick={() => shellLayout.setUtilityOpen(value => !value)}>▥</button><select aria-label="Theme" value={theme} onChange={event => setTheme(event.target.value as ThemeName)}><option value="bronze-age">Bronze Age</option><option value="apollonia">Apollonia</option></select></div>
+      <div className="top-actions"><button title="Tutorials and Firmament reference · F1" onClick={() => setLearnPage('helios/learning.md')}>Learn</button><button title="Toggle utility dock" aria-label="Toggle utility dock" aria-pressed={shellLayout.utilityOpen} onClick={() => shellLayout.setUtilityOpen(value => !value)}>▥</button><select aria-label="Theme" value={theme} onChange={event => setTheme(event.target.value as ThemeName)}><option value="bronze-age">Bronze Age</option><option value="apollonia">Apollonia</option></select></div>
       <input ref={fileInput} hidden type="file" multiple accept=".firmament,.firmasm,.step,.stp,.zip" onChange={async event => {
         const files = Array.from(event.target.files ?? []); if (!files.length) return;
         event.target.value = '';
@@ -895,9 +903,10 @@ export function HeliosApp({ project, initialWorkspace, chooseBase = false, onSho
         <div className="viewport-caption" style={shellLayout.place('caption')}><span>{partName}</span><span>{previewModel ? 'Preview · source unchanged' : ghosted ? 'Last good model · the current draft does not build' : displayRevision !== sourceRevision && model ? 'Last valid model · source changed' : model ? 'Compiled geometry' : 'Waiting for geometry'}</span></div>
         </div>
       <aside className="utility-dock" aria-label="Utility panel" style={shellLayout.place('utility')} hidden={!shellLayout.utilityOpen}>
-        <div className="dock-tabs" role="tablist" aria-label="Utilities">{([['files', 'Files'], ['inspector', 'Inspector'], ['examples', 'Examples'], ['llm', 'AI Author'], ['version-control', 'Version Control']] as const).map(([id, label]) => <button key={id} role="tab" aria-selected={utilityTab.kind === id} className={utilityTab.kind === id ? 'active' : ''} onClick={() => setUtilityTab({ kind: id })}>{label}</button>)}</div>
+        <div className="dock-tabs" role="tablist" aria-label="Utilities">{([['files', 'Files'], ['inspector', 'Inspector'], ['tutorial', 'Tutorial'], ['examples', 'Examples'], ['llm', 'AI Author'], ['version-control', 'Version Control']] as const).map(([id, label]) => <button key={id} role="tab" aria-selected={utilityTab.kind === id} className={utilityTab.kind === id ? 'active' : ''} onClick={() => setUtilityTab({ kind: id })}>{label}</button>)}</div>
         <div className="utility-content">
           {matchKind(utilityTab, {
+            tutorial: () => <TutorialPanel lessonId={projectRoot.current === initialWorkspace?.root ? initialWorkspace?.lessonId : undefined} buildCurrent={!!model && sourceRevision === displayRevision && buildStarted === null && !busy && !shownDiagnostics.some(d => d.severity === 'error')} onRead={setLearnPage} />,
             files: () => <><ProjectExplorer projectName={workspaceTitle} fileName={sourceName} dirty={dirtyFiles.has(sourceName)} dirtyFiles={dirtyFiles} documents={projectFileNames.length ? projectFileNames : [sourceName]} cloud={!!project} onSelectFile={projectFileNames.length ? switchFile : undefined} onOpen={() => fileInput.current?.click()} onNew={() => loadSample('new')} onReveal={() => sourcePanel.current?.focusAt()} /><ModelTree tree={model?.tree ?? null} selectedId={selectedEntityId} onSelect={id => select(id)} /></>,
             inspector: () => <><ModelTree tree={model?.tree ?? null} selectedId={selectedEntityId} onSelect={id => select(id)} /><Inspector model={model} schema={semanticSchema} projection={fieldProjection} projectionCurrent={source === model?.source} entityId={selectedEntityId} faceId={selectedFaceId} selection={selectedSelection} diagnostics={diagnostics} onApply={applyProperty} onRewriteField={rewriteField} onGoToSource={navigateSource} onReferenceFace={referenceFace} onReferenceHoleWall={referenceHoleWall}
               annotationEditor={selectedSelection?.sourceAddressability === 'ImportedStable' && selectedSelection.selector && ['Plane', 'Cylinder'].includes(selectedSelection.surfaceKind ?? '') ?
@@ -934,6 +943,7 @@ export function HeliosApp({ project, initialWorkspace, chooseBase = false, onSho
     </main>
     <WorkspaceStatus busy={busy ?? (workerFailed ? 'Worker failed' : null)} elapsed={elapsedSeconds} runtimeName={runtimeName} model={model} sourceRevision={sourceRevision} displayRevision={displayRevision} diagnostics={shownDiagnostics} timing={lastTiming} theme={theme} viewMode={viewMode} onRestart={() => { void buildClient.restart().then(() => submitBuild(source, sourceName)).catch(error => setDiagnostics([toDiagnostic(error, 'HELIOS-WORKER-RESTART')])); }} />
     {paletteOpen && <CommandPalette commands={paletteCommands} onClose={() => setPaletteOpen(false)} />}
+    {learnPage !== null && <Suspense fallback={<div className="app-loading" role="status">Opening Firmament manual…</div>}><LearnCenter initialPage={learnPage} onClose={() => setLearnPage(null)} /></Suspense>}
     {examplesOpen && <ExampleDialog onClose={() => setExamplesOpen(false)}><ExampleGallery onOpen={id => void openExample(id)} opening={openingExample} unavailableReason={busy ? "A project operation is running. Open another example when it finishes." : undefined} /></ExampleDialog>}
     {publishOpen && onPublish && project && <div className="publish-backdrop"><form className="publish-dialog" aria-label="Publish model" onSubmit={event => { event.preventDefault(); const fields = new FormData(event.currentTarget); if (saveState !== 'Saved' || !model || model.source !== source || displayRevision !== sourceRevision) { setPublishState('Save and rebuild the current source before publishing.'); return; } const png = capturePreview.current?.(); if (!png?.startsWith('data:image/png;base64,')) { setPublishState('A preview could not be captured.'); return; } setPublishState('Publishing…'); void onPublish({ expectedRevisionId: project.revisionId, title: String(fields.get('title')).trim(), description: String(fields.get('description')).trim(), category: String(fields.get('category')), tags: String(fields.get('tags')).split(',').map(x => x.trim()).filter(Boolean), previewPngBase64: png.slice('data:image/png;base64,'.length) }).then(() => { setPublishOpen(false); setPublishState(''); }).catch(error => setPublishState(error instanceof Error ? error.message : 'Publish failed')); }}><h2>Publish model</h2><p>Publish the saved revision and this viewport view. Later edits stay private until you publish again.</p><label>Title<input name="title" defaultValue={project.name} maxLength={160} required /></label><label>Description<textarea name="description" maxLength={2000} /></label><label>Category<select name="category"><option>Mechanical</option><option>Assemblies</option><option>Sheet Metal</option><option>Surface</option><option>Furniture</option><option>Architecture</option><option>Game Assets</option></select></label><label>Tags, separated by commas<input name="tags" /></label>{publishState && <p role="status">{publishState}</p>}<div><button type="button" onClick={() => setPublishOpen(false)}>Cancel</button><button type="submit">Publish</button></div></form></div>}
   </div>;
