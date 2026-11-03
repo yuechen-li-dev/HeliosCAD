@@ -6,7 +6,8 @@
 blocker is fixed. The freshly extracted self-contained package passes all 62
 browser usage cases, including both previously crashing workflows and 128 fresh
 traces alternating pick order. The production SDK remains stock .NET WASM AOT.
-Nothing was published, pushed or tagged.
+This report records pre-release qualification. Publication of 0.1.0 is covered
+by the [release notes](../../../release/0.1.0.md) and its attached qualification.
 
 ## Cause and fix
 
@@ -107,4 +108,5 @@ not rerun. The operating-system default-browser launch remains a manual check:
 automatic approval review previously rejected that Windows launch command with
 only "blocked by policy"; it was not retried through another tool. Native startup
 was tested with `--no-browser`, then the authenticated package UI was tested in
-Chrome and manually in Edge. Version remains `0.1.0-preview.1` pending release.
+Chrome and manually in Edge. The candidate recorded here is `0.1.0-preview.1`;
+the 0.1.0 Windows release is built and qualified separately.

@@ -1,15 +1,15 @@
-# Helios desktop preview
+# Aetheris Helios 0.1.0
 
 Helios is a CAD workspace for building parametric parts and assemblies with the
 Aetheris kernel. Edit Firmament source or use the node graph, inspect the result
-in 3D, and export engineering and presentation files. This preview runs locally
+in 3D, and export engineering and presentation files. Helios runs locally
 and opens your existing browser. It does not install another browser.
 
 ## Start
 
 Extract the **entire** archive to a folder, then run `Helios.exe` on Windows or
 `./Helios` from a terminal on Linux/macOS. A modern browser is required; Chrome
-and Edge are the browser qualification targets for this preview. No .NET, Node,
+and Edge are the browser qualification targets. No .NET, Node,
 database server, account registration, or API key is needed for modeling.
 
 The launcher opens the example gallery at `http://127.0.0.1:4180`. Choose **New
@@ -73,9 +73,9 @@ folder** and edit `helios.toml`. Keys remain on this computer; API billing is
 separate from chat subscriptions. See the public AI connections guide in the
 HeliosCAD repository for configuration examples and native-client setup.
 
-## Preview limits and troubleshooting
+## Limits and troubleshooting
 
-- This is an unsigned preview. Windows SmartScreen or macOS Gatekeeper may
+- This is an unsigned release. Windows SmartScreen or macOS Gatekeeper may
   prompt or block execution. There is no installer or automatic updater.
 - Browser-only presentation is intentional; there is no embedded native window
   and no bundled Chromium/WebView runtime. The launcher is a console process.

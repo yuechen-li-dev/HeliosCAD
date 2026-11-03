@@ -1,10 +1,9 @@
 # HeliosCAD
 
-**Desktop preview:** [download a standalone bundle](https://github.com/yuechen-li-dev/HeliosCAD/releases).
-Extract it and run **Helios.exe** (Windows) or **Helios** (Linux/macOS). It opens
-your existing browser, includes its runtime, and needs no developer setup or
-account for local modeling. See [running Helios locally](docs/public/standalone.md)
-for saving, optional AI connections, and preview limits.
+**Aetheris Helios 0.1.0 for Windows:** [download the portable ZIP](https://github.com/yuechen-li-dev/HeliosCAD/releases/download/v0.1.0/Helios-0.1.0-win-x64.zip).
+Extract the entire archive and run **Helios.exe**. It opens your existing browser,
+includes its runtime, and needs no developer setup or account for local modeling.
+See [getting started](docs/public/standalone.md) and the [0.1.0 release notes](docs/release/0.1.0.md).
 
 Helios is a human-facing 3D design studio using the public `@aetheris/cad` browser runtime. Leviathan owns sign-in, accounts, project ownership, revision metadata, and object storage. Firmament source is the saved project truth; the editor rebuilds geometry and exports engineering and presentation artifacts from that source.
 

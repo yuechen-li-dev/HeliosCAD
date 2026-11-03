@@ -1,13 +1,13 @@
 # Run Helios on your computer
 
-The standalone preview combines Helios, its CAD browser runtime, and a local
+Helios 0.1.0 combines the CAD workspace, its browser runtime, and a local
 Leviathan host. It opens your installed browser instead of installing another
 Chromium runtime. No developer tools or cloud account are needed to model parts.
 
-1. Download the archive for your platform from
-   [Helios releases](https://github.com/yuechen-li-dev/HeliosCAD/releases).
-2. Extract the whole archive. Run **Helios.exe** on Windows or `./Helios` from
-   a terminal on Linux/macOS. Keep the companion files beside the launcher.
+1. Download the [Windows x64 ZIP](https://github.com/yuechen-li-dev/HeliosCAD/releases/download/v0.1.0/Helios-0.1.0-win-x64.zip).
+   Windows x64 is the packaged platform for 0.1.0.
+2. Extract the whole archive and run **Helios.exe**. Keep the companion files
+   beside the launcher.
 3. Choose **New part**, **New assembly**, or a gallery example. Use the graph or
    Firmament source, then **Build**. Open existing source/workspaces or supported
    STEP parts with **Open file**.
@@ -46,12 +46,12 @@ See [AI connections](ai-connections.md) for the separate Codex, Claude Code,
 Claude Desktop Chat, Antigravity and provider API setup paths. Helios does not
 install those clients, sign in to them, or certify their account entitlements.
 
-## Preview limits
+## Limits
 
 The package is unsigned and has no installer or automatic updater. SmartScreen
 or Gatekeeper may prompt. A modern Chrome/Edge browser is the primary browser
 qualification target. There is no embedded native window, bundled browser, or
-development terminal in this preview.
+development terminal in this release.
 
 If port 4180 is occupied, Helios stops with a diagnostic instead of moving your
 browser history to another origin. You can explicitly run `Helios --port 4183`
