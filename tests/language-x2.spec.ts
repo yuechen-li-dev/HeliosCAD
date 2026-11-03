@@ -46,6 +46,7 @@ test('Aetheris language intelligence drives Monaco at 1440p', async ({ page }) =
   await page.getByRole('button', { name: 'Build', exact: true }).click();
   await expect(page.locator('.status-ready')).toContainText('Ready', { timeout: 120_000 });
   await expect(page.locator('.statusbar')).toContainText('1 definition ');
-  await page.getByRole('tab', { name: 'Terminal · local' }).click();
+  // Standalone packages intentionally omit the developer-only Vite terminal.
+  if (!process.env.HELIOS_RELEASE_BASE_URL) await page.getByRole('tab', { name: 'Terminal · local' }).click();
   await page.screenshot({ path: 'artifacts/local/p4-03/HELIOS-LANGUAGE-X2-2560x1440.png', fullPage: true });
 });

@@ -6,7 +6,16 @@ import { resolve } from 'node:path';
 const output = resolve('artifacts/local/intellidraft');
 const cli = resolve('../Aetheris/Aetheris.CLI/bin/Release/net10.0/aetheris.dll');
 const panel = (page: Page) => page.getByRole('dialog', { name: 'IntelliDraft', exact: true });
-test.beforeEach(async () => { await mkdir(output, { recursive: true }); });
+test.beforeEach(async ({ page }) => {
+  await mkdir(output, { recursive: true });
+  if (process.env.HELIOS_AOT_DIAGNOSTICS === '1') {
+    await page.route('**/assets/worker-*.js', async route => {
+      const response = await route.fetch();
+      await route.fulfill({ response, body: `Error.stackTraceLimit = 1000; self.addEventListener('message', e => console.debug('AOT_REQUEST:' + JSON.stringify(e.data.request)));\n${await response.text()}` });
+    });
+    page.on('console', message => { if (message.type() === 'error' || message.text().startsWith('AOT_REQUEST:')) console.log(message.text()); });
+  }
+});
 async function start(page: Page) {
   await page.goto('/'); await page.getByRole('button', { name: 'New part', exact: true }).click();
   await expect(page.locator('.status-ready')).toContainText('Ready', { timeout: 120_000 });

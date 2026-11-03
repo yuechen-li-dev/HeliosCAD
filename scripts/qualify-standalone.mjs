@@ -58,10 +58,10 @@ async function exited(process) {
   for (let i = 0; i < 100; i++) { if (process.exitCode !== null) return process.exitCode; await delay(100); }
   throw Error('Host did not terminate after Quit');
 }
-async function runBrowserSuite(config, environment) {
+async function runBrowserSuite(config, environment, extraArgs = []) {
   // Keep pumping host stdout/stderr while the suite runs. Blocking this parent
   // with spawnSync can fill the host's pipes during a long browser usage pass.
-  const runner = spawn(process.execPath, [join(root, 'node_modules/@playwright/test/cli.js'), 'test', '--config', config], {
+  const runner = spawn(process.execPath, [join(root, 'node_modules/@playwright/test/cli.js'), 'test', '--config', config, ...extraArgs], {
     cwd: root, stdio: 'inherit', windowsHide: true, env: { ...process.env, ...environment },
   });
   return await new Promise((resolve, reject) => { runner.once('error', reject); runner.once('exit', code => resolve(code)); });
@@ -226,18 +226,21 @@ try {
     assert.equal(result, 0, 'Packaged graph authoring qualification failed.');
   }
   const usageQualification = process.argv.includes('--usage');
-  if (usageQualification) {
+  {
     const state = join(working, 'browser-state.json');
     await context.storageState({ path: state });
+    // Even the default native CI smoke must exercise curved source editing in
+    // AOT. Box-only compilation did not expose the parser-cache runtime abort.
     const result = await runBrowserSuite('playwright.release.config.ts', {
-      HELIOS_RELEASE_BASE_URL: address, HELIOS_RELEASE_STORAGE_STATE: state, HELIOS_RELEASE_RESULTS: join(working, 'usage-tests') });
+      HELIOS_RELEASE_BASE_URL: address, HELIOS_RELEASE_STORAGE_STATE: state, HELIOS_RELEASE_RESULTS: join(working, 'usage-tests') },
+      usageQualification ? [] : ['--grep', 'AOT worker repeatedly traces']);
     assert.equal(result, 0, 'Extracted production usage qualification failed.');
   }
   const cookies = await context.cookies(); cookie = cookies.map(value => `${value.name}=${value.value}`).join('; ');
   await stop(cookie);
   const log = await readFile(join(data, 'logs/helios.log'), 'utf8'); assert.ok(!log.includes(session.Token));
   await writeFile(join(working, 'QUALIFICATION.json'), JSON.stringify({ verdict: 'passed', archive: basename(archive), manifest,
-    browser: browser.version(), checks: ['inventory', 'self-contained startup', 'authentication and CSRF', 'loopback origin guard', 'single host', 'production AOT native worker load/build', 'STEP bounds/topology/reopening', 'GLB/PDF export', 'local projects restart', 'browser checkpoint restart/restore', 'AI settings', 'Quit and process exit', ...(graphQualification ? ['graph-only part authoring and recovery'] : []), ...(usageQualification ? ['production learning, language, graph, draft, gallery, imported PMI and project usage suite'] : [])], errors }, null, 2));
+    browser: browser.version(), checks: ['inventory', 'self-contained startup', 'authentication and CSRF', 'loopback origin guard', 'single host', 'production AOT native worker load/build', '128 fresh curved AOT draft traces', 'STEP bounds/topology/reopening', 'GLB/PDF export', 'local projects restart', 'browser checkpoint restart/restore', 'AI settings', 'Quit and process exit', ...(graphQualification ? ['graph-only part authoring and recovery'] : []), ...(usageQualification ? ['production learning, language, graph, draft, gallery, imported PMI and project usage suite'] : [])], errors }, null, 2));
   await writeFile(join(root, 'artifacts/local/standalone/qualified.json'), JSON.stringify({ working, archive }, null, 2));
   console.log(`Standalone qualification passed: ${working}`);
 } finally {

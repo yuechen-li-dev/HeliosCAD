@@ -1,0 +1,15 @@
+Model DraftPart {
+  units: mm
+  Concept Struct layout on XY {
+    Point2 line1Start { position: [-20mm, 0mm] }
+    Point2 line1End { position: [20mm, 0mm] }
+    Line2 line1 { from: line1Start; to: line1End }
+    Point2 line2End { position: [20mm, 20mm] }
+    Line2 line2 { from: line1End; to: line2End }
+    Point2 line3Start { position: [-20mm, 20mm] }
+    Line2 line3 { from: line3Start; to: line1Start }
+    Point2 arc1Center { position: [0mm, 20mm] }
+    Point2 arc1End { position: [-20mm, 20mm] }
+    Arc2 arc1 { center: arc1Center; from: line2End; to: arc1End }
+  }
+}

@@ -7,7 +7,7 @@ export default defineConfig({
   testDir: './tests',
   testMatch: ['learning.spec.ts', 'language-experience.spec.ts', 'language-x2.spec.ts',
     'graph-authoring.spec.ts', 'intellidraft.spec.ts', 'gallery.spec.ts', 'solidworks.spec.ts',
-    'project-loading.spec.ts', 'field-rewrite-x1.spec.ts', 'branding.spec.ts'],
+    'project-loading.spec.ts', 'field-rewrite-x1.spec.ts', 'branding.spec.ts', 'worker-aot-cache.spec.ts'],
   workers: 1, maxFailures: 3, timeout: 180_000, expect: { timeout: 30_000 },
   outputDir: process.env.HELIOS_RELEASE_RESULTS ?? 'artifacts/local/0.1-qualification/usage-tests',
   reporter: [['list'], ['json', { outputFile: 'artifacts/local/0.1-qualification/usage-results.json' }]],
