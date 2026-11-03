@@ -441,7 +441,7 @@ test('line and arc tools draft a door outline that traces by clicking in any ord
   await stroke(page, p, [20, 0], [20, 20]); await stroke(page, p, [-20, 20], [-20, 0]);
   await page.keyboard.press('a'); await expect(p.getByRole('button', { name: 'Draw arc', exact: true })).toHaveAttribute('aria-pressed', 'true');
   await clickAt(page, p, [0, 20]); await clickAt(page, p, [20, 20]);
-  await clickAt(page, p, [-20, 21]);
+  await clickAt(page, p, [-20, 20]);
   await expect(p.getByRole('status')).not.toContainText('Checking with compiler'); await expect(p.getByRole('alert')).toHaveCount(0);
   const guides = p.getByRole('region', { name: 'Lines, arcs and axes' });
   await expect(guides.getByRole('listitem')).toHaveCount(4);
@@ -460,6 +460,7 @@ test('line and arc tools draft a door outline that traces by clicking in any ord
   expect(source).toMatch(/arc1 from line2End to line3Start/);
   const validation = JSON.parse(execFileSync('dotnet', [cli, 'validate', sourcePath, '--json'], { encoding: 'utf8' }));
   expect(validation.firmamentV2Validation.status).toBe('valid');
+  await page.screenshot({ path: resolve(output, 'line-arc-door-built.png') });
 });
 
 test('the line menu declares an Axis2 and the rounded menu draws a SmoothRoundedRect2', async ({ page }) => {
