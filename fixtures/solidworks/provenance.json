@@ -1,0 +1,14 @@
+{
+  "outerDiameterMm": 40,
+  "innerDiameterMm": 10,
+  "depthMm": 9,
+  "expectedVolumeMm3": 10602.875205865552,
+  "exporter": "SolidWorks 2026 SP4.0 (34.4.0)",
+  "configuration": "Default",
+  "profile": "annulus",
+  "files": {
+    "part.step": "d48a08356a0904b5d0fd120a0cd6fc286aa903266841de612aeb553d4ca9acab",
+    "part.firmament": "6e116b68c563b5604191bc139b06ee7bd00e318e8a8851b8f9baa73c29a59bab",
+    "solidworks-ap214.step": "5600a569737d8532f48285c1b8579ec7172c2b285a628b54319895ee84452b80"
+  }
+}

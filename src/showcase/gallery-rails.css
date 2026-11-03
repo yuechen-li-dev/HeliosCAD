@@ -1,0 +1,49 @@
+.example-gallery .gallery-heading { gap:16px; margin-bottom:24px; }
+.gallery-tools { display:flex; align-items:center; gap:18px; }
+.gallery-tools > button,.gallery-edit-group,.gallery-group-buttons button,.gallery-group-undo button { padding:7px 10px; border:1px solid var(--border-strong); border-radius:var(--radius-control); background:transparent; color:inherit; font:inherit; }
+.gallery-row { min-width:0; margin:0 0 30px; }
+.gallery-row-heading { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:12px; }
+.gallery-row-heading h3 { min-width:0; overflow-wrap:anywhere; margin:0; font-size:19px; font-weight:600; letter-spacing:-.025em; }
+.gallery-row-heading h3 small { margin-left:10px; color:var(--text-secondary); font-size:11px; font-weight:400; letter-spacing:0; white-space:nowrap; }
+.gallery-row-actions,.gallery-row-controls { display:flex; align-items:center; gap:6px; }
+.gallery-row-actions { flex:none; }
+.gallery-row-controls button { width:32px; height:30px; border:1px solid var(--catalog-rule); border-radius:var(--radius-control); background:transparent; color:inherit; font:18px/1 var(--font-family); }
+.gallery-row-controls button:hover:not(:disabled),.gallery-tools > button:hover,.gallery-edit-group:hover { background:var(--panel-elevated); }
+.gallery-row-controls button:disabled { opacity:.25; }
+.example-gallery .gallery-row .gallery-rail { display:grid; grid-template-columns:none; grid-auto-flow:column; grid-auto-columns:clamp(240px,31%,400px); justify-content:start; gap:18px; overflow-x:auto; padding:3px 3px 12px; scroll-snap-type:x proximity; scroll-padding-inline:3px; overscroll-behavior-x:contain; scrollbar-width:thin; scrollbar-color:var(--border-strong) transparent; }
+.gallery-rail > .showcase-card { min-width:0; scroll-snap-align:start; }
+.example-gallery .gallery-row .showcase-image { height:auto; aspect-ratio:8/5; }
+.gallery-rail .showcase-copy { min-height:60px; padding:12px 14px; }
+.gallery-rail .showcase-copy h4 { margin:0; font-size:22px; font-weight:600; letter-spacing:-.035em; }
+.gallery-rail:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+.gallery-empty-group { color:var(--text-secondary); font-size:12px; }
+.gallery-group-editor { display:grid; gap:14px; padding:18px; margin-bottom:24px; border:1px solid var(--border-strong); background:var(--panel-bg); color:var(--text-primary); }
+.gallery-group-editor > label { display:grid; gap:6px; max-width:360px; }
+.gallery-group-editor input:not([type=checkbox]) { padding:8px; border:1px solid var(--border-strong); border-radius:var(--radius-control); background:var(--control-bg); color:inherit; }
+.gallery-group-editor fieldset { display:flex; flex-wrap:wrap; gap:10px 20px; margin:0; padding:12px 0 0; border:0; border-top:1px solid var(--border); }
+.gallery-group-editor fieldset label { display:flex; align-items:center; gap:6px; font-size:12px; }
+.gallery-group-editor fieldset input { accent-color:var(--gold); }
+.gallery-group-editor small { color:var(--text-secondary); }
+.gallery-group-editor [role=alert] { margin:0; color:var(--error); }
+.gallery-group-buttons { display:flex; flex-wrap:wrap; gap:8px; }
+.gallery-group-buttons button[type=submit] { color:var(--accent-contrast); background:var(--accent); }
+.gallery-group-undo { display:flex; flex-wrap:wrap; align-items:center; gap:10px; margin-bottom:18px; font-size:12px; }
+@media(max-width:760px) {
+  .example-gallery .gallery-heading { align-items:flex-start; flex-direction:column; }
+  .gallery-tools { width:100%; gap:10px; }
+  .example-gallery .gallery-tools input { min-width:0; width:auto; flex:1; margin:0; }
+  .gallery-tools > button { flex:none; }
+  .example-gallery .gallery-row .gallery-rail { grid-auto-columns:min(78vw,320px); gap:12px; }
+  .gallery-row-heading h3 { font-size:17px; }
+  .gallery-row-actions { gap:4px; }
+  .gallery-edit-group { font-size:11px; padding:6px; }
+}
+.example-gallery { container-type:inline-size; min-width:0; }
+@container(max-width:560px) {
+  .example-gallery .gallery-heading { align-items:flex-start; flex-direction:column; }
+  .gallery-tools { width:100%; gap:10px; }
+  .example-gallery .gallery-tools input { min-width:0; width:auto; flex:1; margin:0; }
+  .gallery-tools > button { flex:none; }
+  .example-gallery .gallery-row .gallery-rail { grid-auto-columns:min(80cqw,320px); gap:12px; }
+  .gallery-edit-group { font-size:11px; padding:6px; }
+}

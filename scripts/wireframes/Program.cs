@@ -13,13 +13,17 @@ var output = Path.Combine(helios, "public/previews/showcase/wireframes");
 var evidence = Path.Combine(helios, "artifacts/local/showcase-wireframes");
 Directory.CreateDirectory(output); Directory.CreateDirectory(evidence);
 var records = new List<object>();
+var selectedIds = args.Skip(1).ToHashSet(StringComparer.Ordinal);
 foreach (var (id, root, kind) in new[] {
+    ("basic-bracket", "bracket.firmament", "Part"),
+    ("paperclip", "paperclip.firmament", "Part"),
     ("atlas", "atlas-industrial.firmament", "Assembly"),
     ("guitar", "guitar.firmasm", "Assembly"),
     ("house", "house.firmament", "Scene"),
     ("bracket", "bracket.firmament", "Part"),
     ("bolt", "hexbolt-showcase.firmament", "Part") })
 {
+    if (selectedIds.Count > 0 && !selectedIds.Contains(id)) continue;
     var source = Path.Combine(helios, "fixtures/showcase", id, root);
     var state = id == "atlas" ? new Dictionary<string, double> { ["Shoulder"] = -65, ["Elbow"] = 100, ["GripLeft"] = 4, ["GripRight"] = 4 } : new Dictionary<string, double>();
     var options = new BrepWireframeOptions(View: WireframeView.IsometricZUp, Density: 2, Width: 900, Height: 900, Background: "#f4f0e6",
@@ -77,4 +81,9 @@ foreach (var (id, root, kind) in new[] {
         sha256 = Convert.ToHexString(SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(svg))).ToLowerInvariant() });
     Console.WriteLine($"{id}: {occurrences} placed bodies, {edgeCount} topology edges.");
 }
-await File.WriteAllTextAsync(Path.Combine(output, "provenance.json"), JsonSerializer.Serialize(records, new JsonSerializerOptions { WriteIndented = true }) + "\n");
+var receipt = Path.Combine(output, "provenance.json");
+if (selectedIds.Count > 0 && File.Exists(receipt)) {
+    var previous = JsonSerializer.Deserialize<List<JsonElement>>(await File.ReadAllTextAsync(receipt)) ?? [];
+    records.InsertRange(0, previous.Where(item => !selectedIds.Contains(item.GetProperty("id").GetString()!)).Select(item => (object)item));
+}
+await File.WriteAllTextAsync(receipt, JsonSerializer.Serialize(records, new JsonSerializerOptions { WriteIndented = true }) + "\n");

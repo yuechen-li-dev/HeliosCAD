@@ -16,10 +16,12 @@ export interface WorkspaceProject {
 }
 
 export const showcaseExamples: readonly ShowcaseExample[] = [
+  { id: 'basic-bracket', title: 'Simple bracket', category: 'Mechanical', description: 'A small angle bracket: one L-shaped profile and one extrusion.', root: 'bracket.firmament', thumbnail: '/previews/showcase/wireframes/basic-bracket.svg', kind: 'Part' },
+  { id: 'paperclip', title: 'Paperclip', category: 'Mechanical', description: 'A single WireForm made from straight lengths and three bends.', root: 'paperclip.firmament', thumbnail: '/previews/showcase/wireframes/paperclip.svg', kind: 'Part' },
   { id: 'atlas', title: 'Industrial ATLAS', category: 'Robotics', description: 'An industrial robot assembly with shared components and precise placement.', root: 'atlas-industrial.firmament', thumbnail: '/previews/showcase/wireframes/atlas.svg', kind: 'Assembly' },
   { id: 'guitar', title: 'Sunburst electric guitar', category: 'Product design', description: 'Carved surfaces, hardware and strings composed from a real multi-file project.', root: 'guitar.firmasm', thumbnail: '/previews/showcase/wireframes/guitar.svg', kind: 'Assembly' },
   { id: 'house', title: 'Warm-modern house', category: 'Spatial design', description: 'Rooms, openings, furniture and authored cameras in a composed Scene.', root: 'house.firmament', thumbnail: '/previews/showcase/wireframes/house.svg', kind: 'Scene' },
-  { id: 'bracket', title: 'Mounting plate', category: 'Mechanical', description: 'A readable first model. Exact solid geometry and a source-linked through hole.', root: 'bracket.firmament', thumbnail: '/previews/showcase/wireframes/bracket.svg', kind: 'Part' },
+  { id: 'bracket', title: 'Mounting plate', category: 'Mechanical', description: 'Exact solid geometry and a source-linked through hole.', root: 'bracket.firmament', thumbnail: '/previews/showcase/wireframes/bracket.svg', kind: 'Part' },
   { id: 'bolt', title: 'CODEX threaded bolt', category: 'Mechanical', description: 'Continuous threaded stock, a hex head and an authored maker mark.', root: 'hexbolt-showcase.firmament', thumbnail: '/previews/showcase/wireframes/bolt.svg', kind: 'Part' },
 ];
 

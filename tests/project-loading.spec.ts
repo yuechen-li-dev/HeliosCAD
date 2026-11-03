@@ -6,7 +6,7 @@ test('project root builds included definitions, preserves module edits and diagn
   await page.goto('/local');
   await expect(page.locator('.status-ready')).toContainText('Ready');
   // The existing browser-local file input carries explicit documents to the SDK.
-  await page.locator('input[type=file]').setInputFiles(['fixtures/project-loading/root.firmasm', 'fixtures/project-loading/block.firmament']);
+  await page.getByRole('banner').locator('input[type=file]').setInputFiles(['fixtures/project-loading/root.firmasm', 'fixtures/project-loading/block.firmament']);
   await expect(page.locator('.status-ready')).toContainText('Ready');
   // The display snapshot includes the assembly root plus two shared instances.
   await expect(page.locator('.statusbar')).toContainText('1 definition · 3 occurrences');

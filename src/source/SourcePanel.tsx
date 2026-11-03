@@ -1,10 +1,17 @@
-import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react';
+import { forwardRef, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState } from 'react';
 import Editor, { loader, type OnMount } from '@monaco-editor/react';
 import * as editorApi from '../../node_modules/monaco-editor/esm/vs/editor/editor.api.js';
 import '../../node_modules/monaco-editor/esm/vs/editor/contrib/suggest/browser/suggestController.js';
 import '../../node_modules/monaco-editor/esm/vs/editor/contrib/semanticTokens/browser/documentSemanticTokens.js';
 import '../../node_modules/monaco-editor/esm/vs/editor/contrib/hover/browser/hoverContribution.js';
 import '../../node_modules/monaco-editor/esm/vs/editor/contrib/gotoSymbol/browser/goToCommands.js';
+import '../../node_modules/monaco-editor/esm/vs/editor/contrib/format/browser/formatActions.js';
+import '../../node_modules/monaco-editor/esm/vs/editor/contrib/comment/browser/comment.js';
+import '../../node_modules/monaco-editor/esm/vs/editor/contrib/find/browser/findController.js';
+import '../../node_modules/monaco-editor/esm/vs/editor/contrib/folding/browser/folding.js';
+import '../../node_modules/monaco-editor/esm/vs/editor/contrib/gotoError/browser/gotoError.js';
+import '../../node_modules/monaco-editor/esm/vs/editor/contrib/bracketMatching/browser/bracketMatching.js';
+import '../../node_modules/monaco-editor/esm/vs/editor/contrib/snippet/browser/snippetController2.js';
 import type * as Monaco from 'monaco-editor';
 import EditorWorker from '../../node_modules/monaco-editor/esm/vs/editor/editor.worker.js?worker';
 import type { Diagnostic, ModelSession, SourceReference } from '@aetheris/cad';
@@ -16,7 +23,22 @@ let nextDocumentId = 0;
 globalThis.MonacoEnvironment = { getWorker: () => new EditorWorker() };
 loader.config({ monaco });
 monaco.languages.register({ id: 'firmament' });
-monaco.languages.setLanguageConfiguration('firmament', { brackets: [['{', '}'], ['(', ')'], ['[', ']']], autoClosingPairs: [{ open: '{', close: '}' }, { open: '(', close: ')' }, { open: '[', close: ']' }] });
+// Immediate lexical colors and quote/comment behavior while compiler semantic
+// tokens are in flight. All Firmament vocabulary and meaning stay in Aetheris.
+monaco.languages.setMonarchTokensProvider('firmament', {
+  tokenizer: {
+    root: [[/\/\/.*$/, 'comment'], [/\/\*/, 'comment', '@comment'], [/"/, 'string', '@string'],
+      [/\b\d+(?:\.\d+)?(?:[eE][+-]?\d+)?/, 'number'], [/[{}()[\]]/, '@brackets'], [/[A-Za-z_]\w*/, 'identifier']],
+    comment: [[/[^*/]+/, 'comment'], [/\*\//, 'comment', '@pop'], [/[*/]/, 'comment']],
+    string: [[/[^\\"]+/, 'string'], [/\\./, 'string.escape'], [/"/, 'string', '@pop']],
+  }
+});
+monaco.languages.setLanguageConfiguration('firmament', {
+  comments: { lineComment: '//', blockComment: ['/*', '*/'] },
+  brackets: [['{', '}'], ['(', ')'], ['[', ']']],
+  autoClosingPairs: [{ open: '{', close: '}', notIn: ['string', 'comment'] }, { open: '(', close: ')', notIn: ['string', 'comment'] }, { open: '[', close: ']', notIn: ['string', 'comment'] }, { open: '"', close: '"', notIn: ['string', 'comment'] }],
+  surroundingPairs: [{ open: '{', close: '}' }, { open: '(', close: ')' }, { open: '[', close: ']' }, { open: '"', close: '"' }],
+});
 monaco.editor.defineTheme('helios-bronze-age', {
   base: 'vs-dark', inherit: true,
   rules: [
@@ -86,17 +108,22 @@ monaco.editor.defineTheme('helios-apollonia', {
 });
 
 export interface SourcePanelHandle { focusAt(reference?: SourceReference): void; cursor(): number; insert(value: string, offset?: number): void; replace(reference: SourceReference, expected: string, replacement: string): boolean; formatDocument(): Promise<void>; history(direction: 'undo' | 'redo'): Promise<void> }
+// Monaco stores one EOL style per document; normalize before starting builds so
+// opening or applying external edits cannot invalidate their source revision.
+export function editorSource(source: string): string { return source.replace(/\r\n?|\n/g, source.includes('\r\n') ? '\r\n' : '\n'); }
 interface Props {
   disabled?: boolean; source: string; diagnostics: readonly Diagnostic[]; runtime?: CadRuntime; model?: ModelSession | null;
-  selectedSelector?: string | null; theme?: 'bronze-age' | 'apollonia'; onSourceChange(value: string): void; onRebuild(): void;
+  selectedSelector?: string | null; theme?: 'bronze-age' | 'apollonia'; onSourceChange(value: string): number | void; onRebuild(): void;
   onDiagnosticClick(diagnostic: Diagnostic): void; onCursorChange?(offset: number): void; onInsert?(value: string, offset: number): void;
   onLiveDiagnostics?(diagnostics: readonly Diagnostic[]): void; onLanguageError?(error: unknown): void;
+  onNavigateSource?(reference: SourceReference): void;
   fileName?: string; dirty?: boolean;
+  sourceRevision?: number;
   onHistoryState?(state: { undo: boolean; redo: boolean }): void;
   onHistoryApplied?(source: string): void;
 }
 
-export const SourcePanel = forwardRef<SourcePanelHandle, Props>(function SourcePanel({ source, diagnostics, runtime, model, selectedSelector, theme = 'bronze-age', onSourceChange, onRebuild, onDiagnosticClick, onCursorChange, onInsert, onLiveDiagnostics, onLanguageError, onHistoryState, onHistoryApplied, fileName = 'model.firmament', dirty, disabled = false }, ref) {
+export const SourcePanel = forwardRef<SourcePanelHandle, Props>(function SourcePanel({ source, diagnostics, runtime, model, selectedSelector, theme = 'bronze-age', onSourceChange, onRebuild, onDiagnosticClick, onCursorChange, onInsert, onLiveDiagnostics, onLanguageError, onNavigateSource, onHistoryState, onHistoryApplied, fileName = 'model.firmament', dirty, sourceRevision, disabled = false }, ref) {
   const [tab, setTab] = useState<'source' | 'diagnostics'>('source');
   const [wordWrap, setWordWrap] = useState(() => localStorage.getItem('helios-word-wrap') === 'on');
   useEffect(() => { localStorage.setItem('helios-word-wrap', wordWrap ? 'on' : 'off'); }, [wordWrap]);
@@ -106,23 +133,61 @@ export const SourcePanel = forwardRef<SourcePanelHandle, Props>(function SourceP
   const client = useRef(runtime ? new FirmamentLanguageClient(runtime) : null);
   const lastCursor = useRef(-1);
   const sourceRef = useRef(source);
+  const sourceState = useRef({ source, fileName, sourceRevision, model, selectedSelector });
+  const onSourceChangeRef = useRef(onSourceChange); onSourceChangeRef.current = onSourceChange;
+  const localEdit = useRef<{ fileName: string; revision: number } | null>(null);
+  const syncingSource = useRef(false);
   const onCursorChangeRef = useRef(onCursorChange);
   const onRebuildRef = useRef(onRebuild);
   const onLiveDiagnosticsRef = useRef(onLiveDiagnostics);
   const onLanguageErrorRef = useRef(onLanguageError);
+  const onNavigateSourceRef = useRef(onNavigateSource); onNavigateSourceRef.current = onNavigateSource;
   const historyCallbacks = useRef({ onHistoryState, onHistoryApplied }); historyCallbacks.current = { onHistoryState, onHistoryApplied };
   const reportHistory = () => { const document = editor.current?.getModel(); historyCallbacks.current.onHistoryState?.({ undo: document?.canUndo() ?? false, redo: document?.canRedo() ?? false }); };
   useEffect(() => { queueMicrotask(reportHistory); }, [source, fileName]);
-  sourceRef.current = source;
+  const freshSnapshot = localEdit.current?.fileName !== fileName || sourceRevision === undefined || sourceRevision >= localEdit.current.revision;
+  if (freshSnapshot) { sourceRef.current = source; sourceState.current = { source, fileName, sourceRevision, model, selectedSelector }; }
   onCursorChangeRef.current = onCursorChange;
   onRebuildRef.current = onRebuild;
   onLiveDiagnosticsRef.current = onLiveDiagnostics;
   onLanguageErrorRef.current = onLanguageError;
-  client.current?.update(source, fileName, model ?? null, selectedSelector ?? null);
-  useEffect(() => { const registration = client.current?.register(monaco); return () => registration?.dispose(); }, []);
-  useEffect(() => { const document = editor.current?.getModel(); if (document) monaco.editor.setModelMarkers(document, 'aetheris', diagnosticMarkers(monaco, document, diagnostics)); }, [diagnostics, fileName]);
+  if (freshSnapshot) client.current?.update(source, fileName, model ?? null, selectedSelector ?? null);
+  const publishEditorSource = (value: string) => {
+    const state = sourceState.current;
+    sourceRef.current = value;
+    sourceState.current = { ...state, source: value };
+    client.current?.update(value, state.fileName, state.model ?? null, state.selectedSelector ?? null);
+    const revision = onSourceChangeRef.current(value);
+    if (typeof revision === 'number') localEdit.current = { fileName: state.fileName, revision };
+  };
+  const syncSourceFromProps = () => {
+    const state = sourceState.current, instance = editor.current, document = instance?.getModel();
+    if (!instance || !document || document.uri.path !== `/document-${documentId.current}/${state.fileName}` ||
+        localEdit.current?.fileName === state.fileName && state.sourceRevision !== undefined && state.sourceRevision < localEdit.current.revision) return;
+    if (document.getValue() !== state.source) {
+      syncingSource.current = true;
+      try {
+        instance.pushUndoStop();
+        document.setEOL(state.source.includes('\r\n') ? monaco.editor.EndOfLineSequence.CRLF : monaco.editor.EndOfLineSequence.LF);
+        instance.executeEdits('helios-source', [{ range: document.getFullModelRange(), text: state.source }]); instance.pushUndoStop();
+      } finally { syncingSource.current = false; }
+    }
+    // Monaco uses one line ending per document. Publish any normalization so
+    // compiler offsets, project snapshots and editor requests see the same text.
+    if (document.getValue() !== state.source) publishEditorSource(document.getValue());
+  };
+  useLayoutEffect(syncSourceFromProps, [source, fileName, sourceRevision]);
   useEffect(() => {
-    if (!client.current || !onLiveDiagnosticsRef.current) return;
+    const registration = client.current?.register(monaco, {
+      ownsDocument: document => editor.current?.getModel() === document,
+      onFormatError: error => onLanguageErrorRef.current?.(error),
+      onNavigate: reference => onNavigateSourceRef.current?.(reference),
+    });
+    return () => registration?.dispose();
+  }, []);
+  useEffect(() => { const document = editor.current?.getModel(); if (document) monaco.editor.setModelMarkers(document, 'aetheris', diagnosticMarkers(monaco, document, diagnostics, fileName)); }, [diagnostics, fileName]);
+  useEffect(() => {
+    if (!freshSnapshot || !client.current || !onLiveDiagnosticsRef.current) return;
     let current = true;
     const timer = setTimeout(() => { void client.current?.analyze(source).then(result => {
       if (current && result) onLiveDiagnosticsRef.current?.(result.diagnostics);
@@ -133,12 +198,19 @@ export const SourcePanel = forwardRef<SourcePanelHandle, Props>(function SourceP
   const focusAt = (reference?: SourceReference) => {
     setTab('source');
     requestAnimationFrame(() => {
-      const instance = editor.current; const document = instance?.getModel(); if (!instance || !document) return;
+      const instance = editor.current; const document = instance?.getModel(); if (!instance || !document || document.isDisposed()) return;
       const start = document.getPositionAt(reference?.start ?? Math.max(0, lastCursor.current));
       const end = document.getPositionAt((reference?.start ?? Math.max(0, lastCursor.current)) + (reference?.length ?? 0));
       instance.setSelection(new monaco.Range(start.lineNumber, start.column, end.lineNumber, end.column));
       instance.revealLineInCenter(start.lineNumber); instance.focus();
     });
+  };
+  const formatDocument = async () => {
+    const instance = editor.current;
+    if (!instance || disabled) return;
+    setTab('source');
+    await instance.getAction('editor.action.formatDocument')?.run();
+    instance.focus();
   };
   useImperativeHandle(ref, () => ({ focusAt, cursor: () => lastCursor.current,
     history: async direction => {
@@ -148,22 +220,7 @@ export const SourcePanel = forwardRef<SourcePanelHandle, Props>(function SourceP
       if (direction === 'redo' && document.canRedo()) await document.redo();
       reportHistory();
     },
-    formatDocument: async () => {
-      const instance = editor.current, document = instance?.getModel();
-      if (!instance || !document || !client.current) return;
-      const original = document.getValue();
-      const position = instance.getPosition();
-      const offset = position ? document.getOffsetAt(position) : 0;
-      try {
-        const result = await client.current.format(original);
-        if (!result?.changed || document.isDisposed() || document.getValue() !== original) return;
-        instance.pushUndoStop();
-        instance.executeEdits('aetheris-format', [{ range: document.getFullModelRange(), text: result.text }]);
-        instance.pushUndoStop();
-        instance.setPosition(document.getPositionAt(Math.min(offset, result.text.length)));
-        instance.focus();
-      } catch (error) { onLanguageErrorRef.current?.(error); }
-    },
+    formatDocument,
     replace: (reference, expected, replacement) => {
       const instance = editor.current; const document = instance?.getModel();
       if (!instance || !document || document.getValue() !== sourceRef.current ||
@@ -183,9 +240,10 @@ export const SourcePanel = forwardRef<SourcePanelHandle, Props>(function SourceP
   }), [onInsert, disabled]);
   const onMount: OnMount = instance => {
     editor.current = instance;
-    instance.onDidChangeModel(reportHistory);
+    instance.onDidChangeModel(() => { syncSourceFromProps(); reportHistory(); });
     instance.onDidChangeModelContent(event => {
       const document = instance.getModel(), value = document?.getValue();
+      if (!syncingSource.current && value !== undefined) publishEditorSource(value);
       queueMicrotask(() => {
         reportHistory();
         if ((event.isUndoing || event.isRedoing) && document === instance.getModel() && value === document?.getValue())
@@ -193,6 +251,7 @@ export const SourcePanel = forwardRef<SourcePanelHandle, Props>(function SourceP
       });
     });
     reportHistory();
+    syncSourceFromProps();
     instance.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, () => onRebuildRef.current());
     instance.addCommand(monaco.KeyMod.Alt | monaco.KeyCode.KeyZ, () => setWordWrap(value => !value));
     // A self-hosted proportional font can arrive after Monaco's first measurement.
@@ -203,7 +262,7 @@ export const SourcePanel = forwardRef<SourcePanelHandle, Props>(function SourceP
     const reportCursor = () => { const position = instance.getPosition(); const offset = position ? instance.getModel()?.getOffsetAt(position) ?? -1 : -1; if (offset >= 0) { lastCursor.current = offset; onCursorChangeRef.current?.(offset); } };
     instance.onDidChangeCursorPosition(() => { if (instance.hasTextFocus()) reportCursor(); });
     instance.onDidFocusEditorText(reportCursor);
-    const document = instance.getModel(); if (document) monaco.editor.setModelMarkers(document, 'aetheris', diagnosticMarkers(monaco, document, diagnostics));
+    const document = instance.getModel(); if (document) monaco.editor.setModelMarkers(document, 'aetheris', diagnosticMarkers(monaco, document, diagnostics, fileName));
   };
   const jumpToDiagnostic = (diagnostic: Diagnostic) => { onDiagnosticClick(diagnostic); if (diagnostic.source) focusAt(diagnostic.source); };
   return <section className="panel source-panel" aria-label="Firmament source and diagnostics">
@@ -211,11 +270,12 @@ export const SourcePanel = forwardRef<SourcePanelHandle, Props>(function SourceP
       <button className={tab === 'source' ? 'active' : ''} onClick={() => setTab('source')}>{fileName} {dirty ? '●' : ''}</button>
       <button className={tab === 'diagnostics' ? 'active' : ''} onClick={() => setTab('diagnostics')}>Problems <span className={diagnostics.some(item => item.severity === 'error') ? 'badge error' : 'badge'}>{diagnostics.length}</span></button>
       <button className="word-wrap-toggle" aria-label="Toggle word wrap" aria-pressed={wordWrap} title="Word wrap · Alt+Z" onClick={() => { setTab('source'); setWordWrap(value => !value); }}>{wordWrap ? 'Wrap on' : 'Wrap'}</button>
+      <button title="Format document · Shift+Alt+F" aria-label="Format document" disabled={disabled || !runtime} onClick={() => void formatDocument()}>Format</button>
       <button className="rebuild-inline" onClick={onRebuild} disabled={disabled}>↻ Rebuild</button>
     </div>
     <div className="code-editor" style={{ display: tab === 'source' ? undefined : 'none' }} aria-label="Firmament editor">
-      <Editor path={`/document-${documentId.current}/${fileName}`} language="firmament" theme={theme === 'apollonia' ? 'helios-apollonia' : 'helios-bronze-age'} value={source} onChange={value => { client.current?.update(value ?? '', fileName, model ?? null, selectedSelector ?? null); onSourceChange(value ?? ''); }} onMount={onMount}
-        options={{ fontFamily: '"Inter Variable", Inter, sans-serif', fontSize: 14, fontWeight: '400', fontLigatures: '"cv05", "cv08"', lineNumbers: 'on', minimap: { enabled: false }, automaticLayout: true, readOnly: false, wordWrap: wordWrap ? 'on' : 'off', wrappingStrategy: 'advanced', scrollbar: { vertical: 'visible', verticalScrollbarSize: 14, horizontalScrollbarSize: 10, useShadows: false }, tabSize: 2, scrollBeyondLastLine: false, quickSuggestions: true, suggestOnTriggerCharacters: true, wordBasedSuggestions: 'off', 'semanticHighlighting.enabled': true }} />
+      <Editor path={`/document-${documentId.current}/${fileName}`} language="firmament" theme={theme === 'apollonia' ? 'helios-apollonia' : 'helios-bronze-age'} defaultValue={source} onMount={onMount}
+        options={{ fontFamily: '"Inter Variable", Inter, sans-serif', fontSize: 14, fontWeight: '400', fontLigatures: '"cv05", "cv08"', lineNumbers: 'on', minimap: { enabled: false }, automaticLayout: true, readOnly: false, wordWrap: wordWrap ? 'on' : 'off', wrappingStrategy: 'advanced', scrollbar: { vertical: 'visible', verticalScrollbarSize: 14, horizontalScrollbarSize: 10, useShadows: false }, tabSize: 2, insertSpaces: true, detectIndentation: false, scrollBeyondLastLine: false, quickSuggestions: { other: true, comments: false, strings: false }, suggestOnTriggerCharacters: true, wordBasedSuggestions: 'off', snippetSuggestions: 'top', 'semanticHighlighting.enabled': true }} />
     </div>
     {tab === 'diagnostics' && <div className="diagnostic-list">
       {diagnostics.length ? diagnostics.map((diagnostic, index) => <button key={`${diagnostic.code}-${index}`} className={`diagnostic ${diagnostic.severity}`} onClick={() => jumpToDiagnostic(diagnostic)}>

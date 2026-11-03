@@ -4,6 +4,7 @@ import { WebSdkCadRuntime } from '../sdk/CadRuntime';
 import { AetherisWorkerClient, type BuildResult } from '../sdk/AetherisWorkerClient';
 import { assemblySource, bracketSource, emptyModelSource } from '../sdk/samples';
 import { LocalHostControl } from '../desktop/LocalHostControl';
+import { KnotLogo } from '../branding/KnotLogo';
 import { appendCenteredHole, appendFaceDatum, appendHoleWallDiameter, insertBox } from '../commands/sourceAuthoring';
 import { CommandPalette, type PaletteCommand } from '../commands/CommandPalette';
 import { ProjectExplorer } from '../explorer/ProjectExplorer';
@@ -11,7 +12,7 @@ import { Inspector } from '../inspector/Inspector';
 import { BottomDock } from './BottomDock';
 import { useShellLayout } from './shellLayout';
 import { matchKind } from 'machinalayout/match';
-import { SourcePanel, type SourcePanelHandle } from '../source/SourcePanel';
+import { editorSource, SourcePanel, type SourcePanelHandle } from '../source/SourcePanel';
 import { Viewport } from '../viewport/Viewport';
 import type { BusyState, DisplayMode, ThemeName, ViewMode } from './types';
 import type { Project } from '../cloud/api';
@@ -59,7 +60,7 @@ export function HeliosApp({ project, initialWorkspace, chooseBase = false, onSho
   const [semanticSchema, setSemanticSchema] = useState<SemanticSchema | null>(null);
   const [fieldProjection, setFieldProjection] = useState<ConstructProjection | null>(null);
   const initialName = initialWorkspace?.root ?? (project ? `${project.name}.firmament` : 'editable-bracket.firmament');
-  const initialSource = initialWorkspace?.documents[initialName] ?? project?.source ?? bracketSource;
+  const initialSource = editorSource(initialWorkspace?.documents[initialName] ?? project?.source ?? bracketSource);
   const [source, setSource] = useState(initialSource);
   const [sourceName, setSourceName] = useState(initialName);
   const [workspaceTitle, setWorkspaceTitle] = useState(initialWorkspace?.title ?? project?.name ?? 'Mounting plate');
@@ -93,9 +94,9 @@ export function HeliosApp({ project, initialWorkspace, chooseBase = false, onSho
   const [lastTiming, setLastTiming] = useState<{ label: string; milliseconds: number } | null>(null);
   const [phaseTiming, setPhaseTiming] = useState<string | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
-  const projectDocuments = useRef<Record<string,string>>(initialWorkspace?.documents ?? {});
+  const projectDocuments = useRef<Record<string,string>>(Object.fromEntries(Object.entries(initialWorkspace?.documents ?? {}).map(([name, text]) => [name, editorSource(text)])));
   const projectRoot = useRef<string | null>(initialWorkspace?.root ?? null);
-  const savedSources = useRef<Record<string,string>>({ ...initialWorkspace?.documents, [initialName]: initialSource });
+  const savedSources = useRef<Record<string,string>>({ ...projectDocuments.current, [initialName]: initialSource });
   const [projectFileNames, setProjectFileNames] = useState<string[]>(Object.keys(initialWorkspace?.documents ?? {}));
   runtime.setProjectContext?.(projectRoot.current, projectDocuments.current);
   // The crash screen reads the latest source through this registry, after the editor has unmounted.
@@ -148,6 +149,7 @@ export function HeliosApp({ project, initialWorkspace, chooseBase = false, onSho
   };
 
   const editSource = (value: string, name = sourceName) => {
+    value = editorSource(value);
     sourceRevisionRef.current++;
     setSourceRevision(sourceRevisionRef.current);
     setSource(value);
@@ -157,6 +159,7 @@ export function HeliosApp({ project, initialWorkspace, chooseBase = false, onSho
     setDirtyFiles(files => { const next = new Set(files); if (value === savedSources.current[name]) next.delete(name); else next.add(name); return next; });
     setDiagnostics([]);
     setLiveDiagnostics([]);
+    return sourceRevisionRef.current;
   };
   useEffect(() => { if (pendingAuthoring && pendingAuthoring.revision !== sourceRevision) setPendingAuthoring(null); }, [sourceRevision, pendingAuthoring]);
   function beginAuthoring(action: AuthoringAction, mate?: PendingAuthoring['mate']) {
@@ -196,6 +199,7 @@ export function HeliosApp({ project, initialWorkspace, chooseBase = false, onSho
   };
 
   const submitBuild = async (value: string, name: string, revision = sourceRevisionRef.current) => {
+    value = editorSource(value);
     const submission = ++latestSubmission.current;
     setBusy(runtime.info ? 'Building' : 'Initializing Aetheris Worker');
     setElapsedSeconds(0);
@@ -223,6 +227,7 @@ export function HeliosApp({ project, initialWorkspace, chooseBase = false, onSho
   };
 
   const open = useCallback(async (nextSource: string, nextName: string) => {
+    nextSource = editorSource(nextSource);
     if (nextSource !== source || nextName !== sourceName) editSource(nextSource, nextName);
     setSaveState(project ? 'Unsaved' : 'Saved');
     setDirtyFiles(project ? new Set([nextName]) : new Set());
@@ -293,9 +298,9 @@ export function HeliosApp({ project, initialWorkspace, chooseBase = false, onSho
       .catch(() => { if (current) setFieldProjection(null); });
     return () => { current = false; };
   }, [model, selectedEntityId]);
-  // The graph view reads the compiler's declaration outline of the open document.
+  // Imported PMI also inserts compiler-owned declarations while Source is open.
   useEffect(() => {
-    if (editorMode !== 'graph') return;
+    if (editorMode !== 'graph' && !model?.mesh.importedAsset) return;
     let current = true;
     const timer = setTimeout(() => {
       void runtime.outline(source, sourceName, String(sourceRevision))
@@ -303,7 +308,7 @@ export function HeliosApp({ project, initialWorkspace, chooseBase = false, onSho
         .catch(error => { if (current) setOutlineError(error instanceof Error ? error.message : String(error)); });
     }, 200);
     return () => { current = false; clearTimeout(timer); };
-  }, [editorMode, source, sourceName, sourceRevision]);
+  }, [editorMode, source, sourceName, sourceRevision, model?.mesh.importedAsset?.sha256]);
   // Reopen the draft over an existing Profile. Asked fresh: the graph outline is only kept in graph mode.
   // Opens over the document's Profiles (any part, not only drafts made here), or a new draft without one.
   const openIntelliDraft = async (node: string | null = null) => {
@@ -705,6 +710,8 @@ export function HeliosApp({ project, initialWorkspace, chooseBase = false, onSho
     setLiveDiagnostics([]);
   };
   const navigateSource = (reference: import('@aetheris/cad').SourceReference) => {
+    if (!canLeaveGraphFields()) return;
+    setEditorMode('source');
     if (reference.source !== sourceName && reference.source in projectDocuments.current) switchFile(reference.source);
     requestAnimationFrame(() => sourcePanel.current?.focusAt(reference));
   };
@@ -765,7 +772,7 @@ export function HeliosApp({ project, initialWorkspace, chooseBase = false, onSho
     }),
     { id: 'insert-hole', label: 'Insert Hole', detail: 'Append a centered through hole', run: addHole },
     { id: 'rebuild', label: 'Rebuild model', detail: 'Ctrl+Enter', run: () => void rebuildSource() },
-    { id: 'format', label: 'Format document', detail: 'Aetheris canonical formatter', run: () => void sourcePanel.current?.formatDocument() },
+    { id: 'format', label: 'Format document', detail: 'Shift+Alt+F · Aetheris formatter', run: () => { setEditorMode('source'); void sourcePanel.current?.formatDocument(); } },
     ...(model ? [{ id: 'export', label: 'Export model…', run: () => setExportOpen(true) }] : []),
     { id: 'save', label: 'Save', detail: onSave ? 'Save project source' : 'Download Firmament source', run: () => onSave ? void save() : downloadSource() },
     { id: 'open', label: 'Open file', run: () => fileInput.current?.click() },
@@ -777,7 +784,7 @@ export function HeliosApp({ project, initialWorkspace, chooseBase = false, onSho
 
   return <div className={`helios-app${project ? ' cloud-mode' : ''}`}>
     <header className="topbar">
-      <button className="brand" disabled={pendingGraphFields} onClick={() => project ? location.assign('/') : onShowcase ? onShowcase() : setExamplesOpen(true)} aria-label="Aetheris Helios home"><span className="helios-symbol" aria-hidden="true">H</span><div><small>AETHERIS</small><strong>HELIOS</strong></div></button>
+      <button className="brand" disabled={pendingGraphFields} onClick={() => project ? location.assign('/') : onShowcase ? onShowcase() : setExamplesOpen(true)} aria-label="Aetheris Helios home"><KnotLogo /><div><small>AETHERIS</small><strong>HELIOS</strong></div></button>
       <div className="workspace-identity"><strong title={partName}>{partName}</strong><small>{sourceName} · {project ? 'Saved project' : 'Local workspace'}</small></div>
       <nav className="workspace-tabs" aria-label="Workspace"><button aria-label="Undo" title="Undo · Ctrl+Z" disabled={!historyState.undo || !!busy || !!pendingAuthoring || pendingGraphFields} onClick={() => void runHistory('undo')}>↶</button><button aria-label="Redo" title="Redo · Ctrl+Shift+Z" disabled={!historyState.redo || !!busy || !!pendingAuthoring || pendingGraphFields} onClick={() => void runHistory('redo')}>↷</button><button disabled={pendingGraphFields} onClick={() => setExamplesOpen(true)}>Examples</button><button disabled={pendingGraphFields} onClick={() => fileInput.current?.click()}>Open file</button><button disabled={pendingGraphFields} onClick={() => fileInput.current?.click()} title="Import a supported canonical STEP part as immutable geometry">Import STEP</button><button disabled={pendingGraphFields} title="Download source, or a portable workspace with all imported assets · Ctrl+S" onClick={() => onSave ? void save() : downloadSource()}>{!onSave && Object.keys(projectDocuments.current).length > 1 ? 'Save workspace' : 'Save source'}</button><button className="build-action" disabled={buildStarted !== null || !!busy || !!pendingAuthoring || pendingGraphFields} title="Build project · Ctrl+Enter" onClick={() => void rebuildSource()}>{buildStarted !== null ? `Building · ${elapsedSeconds.toFixed(1)} s` : 'Build'}</button><ExportPicker formats={model?.exportFormats ?? []} disabled={!model || !!busy || buildStarted !== null || !!pendingAuthoring} open={exportOpen} onOpen={setExportOpen} onExport={exportSelected} /></nav>
       <div className="toolbar">
@@ -845,7 +852,7 @@ export function HeliosApp({ project, initialWorkspace, chooseBase = false, onSho
                   onAdd={parameterActions.onAdd} onSelect={selectGraphNode} />}</>}
           </div>} />}
         <div className="source-host" hidden={editorMode !== 'source'}>
-        <SourcePanel ref={sourcePanel} onHistoryState={setHistoryState} onHistoryApplied={value => { setGraphEdit(null); void submitBuild(value, sourceName, sourceRevisionRef.current); }} disabled={!!busy} fileName={sourceName} dirty={dirtyFiles.has(sourceName)} source={source} diagnostics={shownDiagnostics.filter(item => !item.source || item.source.source === sourceName)} runtime={runtime} model={model} selectedSelector={selectedSelection?.selector} theme={theme} onSourceChange={value => editSource(value)} onCursorChange={onSourceCursor} onRebuild={() => void rebuildSource()} onLiveDiagnostics={setLiveDiagnostics} onLanguageError={error => { setDiagnostics([toDiagnostic(error, 'FIRMAMENT-FORMAT')]); pushOutput(`Format refused · ${error instanceof Error ? error.message : String(error)}`); }} onDiagnosticClick={diagnostic => { if (diagnostic.source) setSelectedEntityId(null); }} />
+        <SourcePanel ref={sourcePanel} sourceRevision={sourceRevision} onNavigateSource={navigateSource} onHistoryState={setHistoryState} onHistoryApplied={value => { setGraphEdit(null); void submitBuild(value, sourceName, sourceRevisionRef.current); }} disabled={!!busy} fileName={sourceName} dirty={dirtyFiles.has(sourceName)} source={source} diagnostics={shownDiagnostics.filter(item => !item.source || item.source.source === sourceName)} runtime={runtime} model={model} selectedSelector={selectedSelection?.selector} theme={theme} onSourceChange={value => editSource(value)} onCursorChange={onSourceCursor} onRebuild={() => void rebuildSource()} onLiveDiagnostics={setLiveDiagnostics} onLanguageError={error => { setDiagnostics([toDiagnostic(error, 'FIRMAMENT-FORMAT')]); pushOutput(`Format refused · ${error instanceof Error ? error.message : String(error)}`); }} onDiagnosticClick={diagnostic => { if (diagnostic.source) setSelectedEntityId(null); }} />
         </div>
         </div>
         <ResizeHandle axis="horizontal" label="Resize source and viewport" value={shellLayout.editorPercent} onResize={shellLayout.resizeEditor} style={shellLayout.splitter} />
@@ -894,7 +901,7 @@ export function HeliosApp({ project, initialWorkspace, chooseBase = false, onSho
             files: () => <><ProjectExplorer projectName={workspaceTitle} fileName={sourceName} dirty={dirtyFiles.has(sourceName)} dirtyFiles={dirtyFiles} documents={projectFileNames.length ? projectFileNames : [sourceName]} cloud={!!project} onSelectFile={projectFileNames.length ? switchFile : undefined} onOpen={() => fileInput.current?.click()} onNew={() => loadSample('new')} onReveal={() => sourcePanel.current?.focusAt()} /><ModelTree tree={model?.tree ?? null} selectedId={selectedEntityId} onSelect={id => select(id)} /></>,
             inspector: () => <><ModelTree tree={model?.tree ?? null} selectedId={selectedEntityId} onSelect={id => select(id)} /><Inspector model={model} schema={semanticSchema} projection={fieldProjection} projectionCurrent={source === model?.source} entityId={selectedEntityId} faceId={selectedFaceId} selection={selectedSelection} diagnostics={diagnostics} onApply={applyProperty} onRewriteField={rewriteField} onGoToSource={navigateSource} onReferenceFace={referenceFace} onReferenceHoleWall={referenceHoleWall}
               annotationEditor={selectedSelection?.sourceAddressability === 'ImportedStable' && selectedSelection.selector && ['Plane', 'Cylinder'].includes(selectedSelection.surfaceKind ?? '') ?
-                <PmiAuthor key={`${model?.revision}:${selectedSelection.selector}`} selection={selectedSelection} outline={outline} disabled={!!busy || sourceRevision !== displayRevision} onApply={(operations, label) => structuralEdit(operations, { nodeId: '', label })} /> : undefined} /></>,
+                <PmiAuthor key={`${model?.revision}:${selectedSelection.selector}`} selection={selectedSelection} outline={outline?.document === sourceName && outline.revision === String(sourceRevision) ? outline : null} disabled={!!busy || sourceRevision !== displayRevision} onApply={(operations, label) => structuralEdit(operations, { nodeId: '', label })} /> : undefined} /></>,
             examples: () => <div className="dock-gallery"><ExampleGallery onOpen={id => void openExample(id)} opening={openingExample} unavailableReason={busy ? "A project operation is running. Open another example when it finishes." : undefined} /></div>,
             llm: () => null,
             'version-control': () => null,

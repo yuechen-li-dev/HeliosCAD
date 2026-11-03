@@ -72,5 +72,31 @@
     "background": "#f4f0e6",
     "view": "IsometricZUp",
     "sha256": "0799bb21bd9b74a14f0e967140726a831278425e26c157d0dde35f80094e2264"
+  },
+  {
+    "id": "basic-bracket",
+    "source": "fixtures/showcase/basic-bracket/bracket.firmament",
+    "kind": "Part",
+    "projection": "exact-brep-edges-and-trimmed-isolines",
+    "hiddenBoundaries": [],
+    "occurrences": 1,
+    "edgeCount": 18,
+    "state": {},
+    "background": "#f4f0e6",
+    "view": "IsometricZUp",
+    "sha256": "2f9e859fa9f2a9edfed79505d4daa99995d33c3f869854d8f6af4004f3fb551e"
+  },
+  {
+    "id": "paperclip",
+    "source": "fixtures/showcase/paperclip/paperclip.firmament",
+    "kind": "Part",
+    "projection": "exact-brep-edges-and-trimmed-isolines",
+    "hiddenBoundaries": [],
+    "occurrences": 1,
+    "edgeCount": 15,
+    "state": {},
+    "background": "#f4f0e6",
+    "view": "IsometricZUp",
+    "sha256": "10b09f1c69fde164754bdcc854691505aabb5ac9c707fd46c0fbed3e98ac9c49"
   }
 ]

@@ -1,0 +1,3 @@
+# Preserve the vendor specimen and canonical asset byte hashes used by InlineStep.
+fixtures/solidworks/*.step -text
+fixtures/solidworks/*.firmament -text

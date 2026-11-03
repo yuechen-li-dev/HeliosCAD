@@ -13,12 +13,12 @@ test('Aetheris language intelligence drives Monaco at 1440p', async ({ page }) =
 
   await replaceEditorSource(page, 'Model M {\n Units: mm\n Thread T {\n Maj');
   await page.keyboard.press('ControlOrMeta+Space');
-  await expect(page.locator('.suggest-widget')).toContainText('MajorDiameter');
+  await expect(page.locator('.suggest-widget')).toContainText('majorDiameter');
   await page.keyboard.press('Escape');
 
   await replaceEditorSource(page, 'Model M {\n Units: mm\n Thread T {\n Wrong: 1mm\n }\n Box Body { Size: [8mm, 8mm, 8mm] }\n}');
   await page.getByRole('tab', { name: /Problems/ }).click();
-  await expect(page.locator('.dock-errors')).toContainText('thread field invalid', { timeout: 30_000 });
+  await expect(page.locator('.dock-errors')).toContainText("Unknown Thread field 'Wrong'", { timeout: 30_000 });
   await page.locator('.dock-errors button').first().click();
   await expect(page.getByRole('textbox', { name: 'Editor content' })).toBeFocused();
 
@@ -27,7 +27,8 @@ test('Aetheris language intelligence drives Monaco at 1440p', async ({ page }) =
   await expect(page.locator('.dock-errors')).toContainText('No problems.');
   const format = async () => { await page.getByRole('button', { name: /Command palette/ }).click(); await page.getByRole('dialog', { name: 'Command palette' }).getByRole('button', { name: /Format document/ }).click(); };
   await format();
-  await expect(page.locator('.view-lines')).toContainText('keep this comment');
+  await expect(page.locator('.view-lines')).toContainText('units: mm');
+  await expect(page.locator('.view-lines')).toContainText('size:');
   const once = await page.locator('.view-lines').innerText();
   await format();
   const twice = await page.locator('.view-lines').innerText();

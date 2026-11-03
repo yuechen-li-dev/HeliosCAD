@@ -1,0 +1,6 @@
+// Exported from SolidWorks; original geometry is retained in solidworks-ap214.step.
+// Configuration: Default
+Model SolidWorksPart {
+    units: mm
+    InlineStep part { path: "part.step" sha256: "d48a08356a0904b5d0fd120a0cd6fc286aa903266841de612aeb553d4ca9acab" }
+}

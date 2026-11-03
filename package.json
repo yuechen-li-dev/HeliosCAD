@@ -7,6 +7,7 @@
     "sdk:install": "node scripts/install-local-sdk.mjs",
     "sdk:install:production": "node scripts/install-local-sdk.mjs --production",
     "dev": "vite --config vite.config.ts",
+    "branding:export": "node scripts/export-branding.mjs",
     "build": "tsc -b && vite build --config vite.config.ts && node scripts/stamp-standalone.mjs",
     "build:fast": "tsc -b && vite build --config vite.config.ts --mode development",
     "test": "vitest run",

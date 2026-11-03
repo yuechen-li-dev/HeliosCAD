@@ -4,6 +4,7 @@ import { galleryModels, searchGallery, type GalleryModel } from '../discovery/ca
 import { ApiError, createProject, currentUser, deleteProject, forkPublication, getPublication, listProjects, listPublications, openProject, publishProject, register, saveProject, signIn, signOut, type Project, type ProjectSummary, type PublicModel, type User } from './api';
 import './cloud.css';
 import { LocalHostControl, useLocalHost } from '../desktop/LocalHostControl';
+import { KnotLogo } from '../branding/KnotLogo';
 
 const HeliosApp = lazy(() => import('../app/HeliosApp').then(module => ({ default: module.HeliosApp })));
 type Page = { kind: 'discover' } | { kind: 'detail'; id: string } | { kind: 'projects' };
@@ -150,7 +151,7 @@ export function CloudApp() {
   const model = page.kind === 'detail' ? (detailPublication?.id === page.id ? detailPublication : [...publicModels, ...galleryModels].find(item => item.id === page.id)) : undefined;
   const visible = searchGallery([...publicModels, ...galleryModels], query, category);
   return <div className="discovery-page">
-    <header className="discovery-header"><button className="discovery-brand" onClick={() => navigate('/discover')} aria-label="Aetheris Helios Discover"><strong aria-hidden="true">H</strong><span><small>AETHERIS</small>HELIOS</span></button>
+    <header className="discovery-header"><button className="discovery-brand" onClick={() => navigate('/discover')} aria-label="Aetheris Helios Discover"><KnotLogo /><span><small>AETHERIS</small>HELIOS</span></button>
       <nav aria-label="Main"><button className={page.kind === 'discover' ? 'selected' : ''} onClick={() => navigate('/discover')}>Discover</button><button className={page.kind === 'projects' ? 'selected' : ''} onClick={() => user ? navigate('/projects') : setAuthIntent('projects')}>My Projects</button><LocalHostControl /></nav>
       <div className="discovery-account"><select aria-label="Theme" value={theme} onChange={event => setTheme(event.target.value)}><option value="bronze-age">Bronze Age</option><option value="apollonia">Apollonia</option></select>{user ? <><span>{localHost ? 'On this computer' : user.displayName}</span>{!localHost && <button onClick={() => void logout()}>Sign out</button>}</> : <button onClick={() => setAuthIntent('projects')}>Sign in</button>}</div>
     </header>

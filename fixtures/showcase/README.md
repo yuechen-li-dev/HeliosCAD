@@ -2,6 +2,8 @@
 
 These are intact Aetheris source documents, loaded lazily by `src/showcase/catalog.ts`. The Web SDK receives the project root and the complete source snapshot. Helios does not concatenate includes or parse Firmament.
 
+Basic contains two Helios-owned starter sources: a 30 × 40 mm angle bracket with a 3 mm wall and 20 mm extrusion, and a 1 mm wire paperclip with four straights and three circular bends. The paperclip uses the same operations as Aetheris's canonical WireForm paperclip, authored through the standalone `schema WireForm` entry point supported by the bundled browser runtime. Both compile as exact solids and export enclosed STEP bodies. The original five showcase projects are grouped under Advanced. Personal groups store references to these examples, not copies of their source.
+
 Refresh source with `node scripts/sync-showcase.mts` from HeliosCAD, with Aetheris in the sibling checkout. `provenance.json` records source-relative origins and byte hashes. Refresh and qualify the corresponding browser example after source changes; copying source is not compilation evidence.
 
 The current gallery uses black-and-white SVG wireframes generated through the

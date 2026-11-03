@@ -19,7 +19,11 @@ the native topology projection.
 
 Open the root page to browse local examples. No account or backend is required for the showcase. Community discovery and saved account projects remain at `/discover` and `/projects`.
 
-1. Open **Mounting plate** for a first model, or choose a composed project.
+The gallery has independently scrolling **Basic** and **Advanced** rows. Basic contains **Simple bracket** and **Paperclip**; Advanced contains all five original showcase projects. Use a row's arrows, swipe/trackpad, or focus the row and press Left/Right or Home/End. Search matches model details and group names across all rows.
+
+**+ New group** lets you name a personal row and choose its examples. **Edit group** changes its name or membership, or removes it with an Undo option. Groups are saved in this browser and shared between the welcome gallery and the workspace's Examples picker. They organize references to shipped examples; they do not duplicate source or sync to an account.
+
+1. Open **Simple bracket** or **Paperclip** for a small first model, or choose an Advanced project.
 2. Use **Graph** to select a body or feature and edit its dimensions, then **Apply changes**. **Source** opens Firmament in Monaco; use **Build** or **Ctrl+Enter** after source edits. See [Make a part through the graph](graph-modeling.md) for a complete no-code block-to-hole workflow.
 3. Drag the viewport to orbit, Shift-drag to pan, and scroll to zoom. **F** fits the model. Camera presets and authored Scene cameras are available in the viewport.
 4. Use **Files** to browse separate project documents and the compiled hierarchy. **Inspector** shows selected semantic and occurrence data. Clicking a diagnostic navigates to its source when a location is available.

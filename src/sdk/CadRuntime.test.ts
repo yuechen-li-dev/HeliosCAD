@@ -7,6 +7,11 @@ import { WebSdkCadRuntime } from './CadRuntime';
 const cad = () => ({ info: vi.fn(async () => ({ packageVersion: 'test' })), compile: vi.fn(), terminate: vi.fn(), language: { outline: vi.fn() } });
 describe('workspace runtime ownership', () => {
   beforeEach(() => create.mockReset());
+  it('runs language intelligence in an isolated worker', async () => {
+    const engine = cad(); create.mockResolvedValue(engine);
+    const runtime = new WebSdkCadRuntime(); await runtime.outline('source', 'part.firmament', '1');
+    expect(create).toHaveBeenCalledWith({ worker: true }); await runtime.dispose();
+  });
   it('compiles preview handles without replacing or disposing the accepted model', async () => {
     const engine = cad(), live = fakeModel({ dispose: vi.fn(async () => {}) }), candidate = fakeModel();
     engine.compile.mockResolvedValueOnce({ model: live, diagnostics: [] }).mockResolvedValueOnce({ model: candidate, diagnostics: [] });

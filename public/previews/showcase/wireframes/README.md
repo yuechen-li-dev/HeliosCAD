@@ -10,6 +10,8 @@ Regenerate from HeliosCAD, with Aetheris as a sibling checkout:
 dotnet run --project scripts/wireframes -c Release -- .
 ```
 
+To regenerate only selected cards, append their catalog IDs, for example `-- . basic-bracket paperclip`. The generator retains receipts for unchanged cards.
+
 The generator reuses Aetheris compilation, occurrence transforms and
 `BrepWireframeSvgRenderer`. Parts use reimported STEP edges and trim-aware isolines.
 Assemblies and Scenes use their existing sampled topology-edge projections, with

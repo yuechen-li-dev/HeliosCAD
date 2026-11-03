@@ -1,0 +1,96 @@
+import { test, expect } from '@playwright/test';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { resolve } from 'node:path';
+import { execFileSync } from 'node:child_process';
+import { pickNearCenter } from './editor';
+import { unzipSync, zipSync } from 'fflate';
+
+const output = 'artifacts/local/solidworks';
+const cli = resolve('../Aetheris/Aetheris.CLI/bin/Release/net10.0/aetheris.dll');
+test('SolidWorks AP214 part accepts attached datum/diameter and exports semantic AP242 and annotated GLB', async ({ page }) => {
+  await mkdir(output, { recursive: true });
+  let archive = process.env.HELIOS_SOLIDWORKS_ARCHIVE;
+  if (!archive) {
+    archive = `${output}/fixture.helios.zip`;
+    const files: Record<string, Uint8Array> = { 'helios-workspace.json': Buffer.from(JSON.stringify({ schema: 'helios/workspace/1', root: 'part.firmament' })) };
+    for (const name of ['solidworks-ap214.step', 'part.step', 'part.firmament']) files[name] = await readFile(`fixtures/solidworks/${name}`);
+    await writeFile(archive, zipSync(files));
+  }
+  await page.goto('/local');
+  await expect(page.locator('.status-ready')).toContainText('Ready');
+  await page.getByRole('banner').locator('input[type=file]').setInputFiles(archive);
+  await expect(page.locator('.status-ready')).toContainText('Ready');
+  await expect(page.locator('.workspace-identity')).toContainText('part.firmament');
+  expect(await pickNearCenter(page, async () => page.getByRole('button', { name: 'Add datum', exact: true }).isVisible(), 180, 15)).toBe(true);
+  await page.getByLabel('PMI name', { exact: true }).fill('A');
+  await page.getByRole('button', { name: 'Add datum', exact: true }).click();
+  await expect(page.locator('.status-ready')).toContainText('Ready');
+  await expect(page.getByLabel('PMI annotations', { exact: true })).toContainText('A');
+  expect(await pickNearCenter(page, async () => {
+    const nominal = page.getByLabel('Nominal diameter (mm)', { exact: true });
+    return await nominal.isVisible() && Math.abs(Number(await nominal.inputValue()) - 10) < .001;
+  }, 180, 8)).toBe(true);
+  await page.getByLabel('PMI name', { exact: true }).fill('Bore');
+  await page.getByLabel('Nominal diameter (mm)', { exact: true }).fill('10');
+  await page.getByLabel('Upper allowance (mm)', { exact: true }).fill('0.02');
+  await page.getByLabel('Lower allowance (mm)', { exact: true }).fill('0.01');
+  await page.getByRole('button', { name: 'Add diameter', exact: true }).click();
+  await expect(page.locator('.status-ready')).toContainText('Ready');
+  await expect(page.getByLabel('PMI annotations', { exact: true })).toContainText('Bore');
+  await page.screenshot({ path: `${output}/helios-annotated.png` });
+  await page.getByRole('button', { name: 'Export ▾', exact: true }).click();
+  await page.getByRole('dialog', { name: 'Export formats', exact: true }).getByRole('checkbox').nth(1).check();
+  const downloaded = page.waitForEvent('download');
+  await page.getByRole('button', { name: 'Download ZIP · 2 formats', exact: true }).click();
+  const zipPath = `${output}/enriched.zip`; await (await downloaded).saveAs(zipPath);
+  const files = unzipSync(await readFile(zipPath));
+  const stepName = Object.keys(files).find(name => /\.(step|stp)$/.test(name))!;
+  const glbName = Object.keys(files).find(name => name.endsWith('.glb'))!;
+  expect(stepName).toBeTruthy(); expect(glbName).toBeTruthy();
+  const step = Buffer.from(files[stepName]).toString('utf8');
+  expect(step).toContain('DIMENSIONAL_SIZE'); expect(step).toContain('PLUS_MINUS_TOLERANCE');
+  const stepPath = resolve(`${output}/enriched.step`); await writeFile(stepPath, step);
+  const analysis = JSON.parse(execFileSync('dotnet', [cli, 'analyze', stepPath, '--json'], { encoding: 'utf8' }));
+  expect(analysis.summary.bodyCount).toBe(1); expect(analysis.summary.structuralAssessment).toBe('enclosed-manifold');
+  expect(analysis.semanticPmi.success).toBe(true);
+  expect(analysis.semanticPmi.datumCount).toBe(1); expect(analysis.semanticPmi.dimensionCount).toBe(1);
+  const datum = analysis.semanticPmi.items.find((item: { kind: string }) => item.kind === 'Datum');
+  const bore = analysis.semanticPmi.items.find((item: { kind: string }) => item.kind === 'Diameter');
+  expect(datum.name).toBe('A');
+  expect(bore).toMatchObject({ value: 10, tolerancePlus: .02, toleranceMinus: .01, valueUnit: 'mm', authoredName: 'Bore' });
+  expect(datum.geometricFaceEntityIds).toHaveLength(1); expect(bore.geometricFaceEntityIds).toHaveLength(1);
+  expect(datum.geometricFaceEntityIds[0]).not.toBe(bore.geometricFaceEntityIds[0]);
+  await writeFile(`${output}/enriched-analysis.json`, JSON.stringify(analysis, null, 2));
+  const glb = Buffer.from(files[glbName]); await writeFile(`${output}/enriched.glb`, glb);
+  const document = JSON.parse(glb.subarray(20, 20 + glb.readUInt32LE(12)).toString('utf8').trim());
+  expect(JSON.stringify(document.asset.extras.pmi)).toContain('Bore');
+  expect(JSON.stringify(document.asset.extras.pmi)).toContain('0.02');
+  expect(JSON.stringify(document.asset.extras.pmi)).toContain('0.01');
+  const saved = page.waitForEvent('download'); await page.getByRole('button', { name: 'Save workspace', exact: true }).click();
+  await (await saved).saveAs(`${output}/annotated.helios.zip`);
+  const originalEntries = unzipSync(await readFile(archive));
+  const savedEntries = unzipSync(await readFile(`${output}/annotated.helios.zip`));
+  expect(Buffer.from(savedEntries['solidworks-ap214.step']).equals(Buffer.from(originalEntries['solidworks-ap214.step']))).toBe(true);
+  expect(Buffer.from(savedEntries['part.step']).equals(Buffer.from(originalEntries['part.step']))).toBe(true);
+  await page.reload(); await expect(page.locator('.status-ready')).toContainText('Ready');
+  await page.getByRole('banner').locator('input[type=file]').setInputFiles(`${output}/annotated.helios.zip`);
+  await expect(page.getByLabel('PMI annotations', { exact: true })).toContainText('Bore');
+});
+
+test('handoff refuses a remote model source', async ({ page }) => {
+  await page.goto('/solidworks?handoff=https%3A%2F%2Fexample.com%2Fmodel.zip');
+  await expect(page.getByRole('alert')).toContainText('one-use local exporter');
+});
+
+test('an altered STEP asset is refused instead of reusing old face attachments', async ({ page }) => {
+  await mkdir(output, { recursive: true });
+  const files: Record<string, Uint8Array> = { 'helios-workspace.json': Buffer.from(JSON.stringify({ schema: 'helios/workspace/1', root: 'part.firmament' })) };
+  for (const name of ['part.step', 'part.firmament']) files[name] = await readFile(`fixtures/solidworks/${name}`);
+  files['part.step'] = Buffer.concat([files['part.step'], Buffer.from('\n/* changed snapshot */\n')]);
+  const path = `${output}/changed.helios.zip`; await writeFile(path, zipSync(files));
+  await page.goto('/local'); await expect(page.locator('.status-ready')).toContainText('Ready');
+  await page.getByRole('banner').locator('input[type=file]').setInputFiles(path);
+  await expect(page.locator('.status-ready')).toContainText('Build failed');
+  await expect(page.getByRole('button', { name: /firmament-inline-step-source-pin-mismatch/ })).toBeVisible();
+  await expect(page.locator('.status-stale')).toContainText('last good build');
+});

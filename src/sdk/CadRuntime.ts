@@ -122,7 +122,7 @@ export class WebSdkCadRuntime implements CadRuntime {
 
   async definition(source: string, offset: number, sourceName: string, revision: string) {
     const cad = await this.initializeLanguage();
-    return cad.language.definition(source, offset, { sourceName, sourceRevision: revision });
+    return cad.language.definition(source, offset, { sourceName, sourceRevision: revision, projectRoot: this.projectRoot, projectDocuments: this.projectDocuments });
   }
 
   async format(source: string, sourceName: string, revision: string) {
@@ -159,7 +159,7 @@ export class WebSdkCadRuntime implements CadRuntime {
 
   private async initializeLanguage() {
     const generation = this.generation;
-    const cad = this.languageCad ?? await (this.languageInitializing ??= Aetheris.create());
+    const cad = this.languageCad ?? await (this.languageInitializing ??= Aetheris.create({ worker: true }));
     if (this.disposed || generation !== this.generation) { cad.terminate(); throw new Error('This workspace has closed.'); }
     this.languageCad = cad;
     return this.languageCad;

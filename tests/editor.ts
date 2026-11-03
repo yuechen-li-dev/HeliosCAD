@@ -1,6 +1,8 @@
 import type { Page } from '@playwright/test';
 
 export async function replaceEditorSource(page: Page, source: string) {
+  const sourceTab = page.getByRole('tab', { name: 'Source', exact: true });
+  if (await sourceTab.count()) await sourceTab.click();
   await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
   await page.evaluate(text => navigator.clipboard.writeText(text), source);
   await page.locator('.monaco-editor .view-lines').click();

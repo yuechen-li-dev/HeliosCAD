@@ -54,6 +54,12 @@ semantic-PMI layers in an imported STEP are not qualified in this first slice;
 they are not silently reconstructed or stripped. Reopen the original workspace
 to continue annotation work.
 
+For parts modeled in SolidWorks, the [SolidWorks export add-in](solidworks.md)
+uses its ordinary AP214 exporter and the existing Aetheris canonicalization path,
+retains the original file, and opens a hash-pinned local annotation workspace.
+The add-in validates each part; this does not qualify arbitrary vendor geometry
+or existing vendor PMI for direct browser import.
+
 Automatic drawings currently cover rectangular plate/box stock with disjoint
 circular Z-through holes. Other shapes fail with a precise drawing diagnostic.
 The picker does not bypass this check or substitute reference-only sheets. Drawing

@@ -1,0 +1,12 @@
+.knot-logo { --logo-brightness:.9; position:relative; display:inline-block; flex:none; width:38px; height:38px; line-height:0; vertical-align:middle; }
+:root[data-theme=bronze-age] .knot-logo { --logo-brightness:1; }
+.knot-logo canvas { display:block; width:100%; height:100%; opacity:0; filter:brightness(var(--logo-brightness)) drop-shadow(0 0 1.5px #e7b32c4d); }
+.knot-logo[data-state=ready] canvas { opacity:1; }
+.knot-logo-fallback { position:absolute; inset:3px; display:grid; place-items:center; border:1px solid currentColor; font:600 20px var(--font-family); letter-spacing:0; line-height:1; }
+.knot-logo[data-state=ready] .knot-logo-fallback { display:none; }
+.knot-logo--hero { width:136px; height:136px; }
+.knot-logo--hero canvas { filter:brightness(var(--logo-brightness)) drop-shadow(0 0 3px #e7b32c3d) drop-shadow(0 0 9px #e7b32c1f); }
+.knot-logo--hero .knot-logo-fallback { inset:24px; font-size:54px; }
+.welcome-lockup { display:flex; align-items:center; justify-content:center; gap:16px; margin-bottom:8px; }
+.welcome-lockup .welcome-wordmark { margin:0; }
+@media(max-width:760px) { .welcome-lockup { flex-direction:column; gap:4px; }.knot-logo--hero { width:104px; height:104px; } }

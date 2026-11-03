@@ -1,0 +1,17 @@
+// Aetheris / Helios mark: one closed (3,5) torus-knot WireForm.
+// Geometry is authored here; glow, lighting and slow rigid rotation are presentation.
+Template<Diameter: Length> Struct AetherisKnot {
+    WireForm Strand {
+        Diameter: Diameter
+        Material: Standard.Materials.StainlessSteel.304_Annealed
+        StartFrame { Origin: [0mm,0mm,0mm]; Tangent: [1,0,0]; Up: [0,0,1] }
+        Knot Orbit { Family: TorusKnot; P: 3; Q: 5; MajorRadius: 42mm; MinorRadius: 14mm; Phase: 0deg }
+    }
+}
+
+Assembly AetherisMark {
+    <Assembly AetherisMark>
+        <Part Knot = AetherisKnot<Diameter: 6mm>></Part>
+    </Assembly>
+    anchor: AetherisMark.Knot;
+}

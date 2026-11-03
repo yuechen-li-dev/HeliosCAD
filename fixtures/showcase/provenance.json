@@ -262,5 +262,17 @@
     "origin": "HeliosCAD/src/sdk/samples.ts#bracketSource",
     "document": "bracket.firmament",
     "sha256": "7e5b1f2de84f347fd1e2944a82a7f40c5dd12d278e23743b0dd787a72cfb3245"
+  },
+  {
+    "project": "basic-bracket",
+    "origin": "HeliosCAD/fixtures/showcase/basic-bracket/bracket.firmament",
+    "document": "bracket.firmament",
+    "sha256": "5a042c5b62d22e62dffef344f2ce7ab0e426622902bb6136fc3ceb3d795acc95"
+  },
+  {
+    "project": "paperclip",
+    "origin": "HeliosCAD/fixtures/showcase/paperclip/paperclip.firmament",
+    "document": "paperclip.firmament",
+    "sha256": "bf78f714455640efb86e6ae7091254c9c2596cb928262dbfa572f66386ac413c"
   }
 ]

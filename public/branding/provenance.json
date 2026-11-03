@@ -1,0 +1,17 @@
+{
+  "source": "fixtures/branding/aetheris-knot.firmament",
+  "sourceSha256": "58b157d00839c126ece39ec24ea60a04993abfdd34f15b56129482f1b37ef57c",
+  "appearance": "fixtures/branding/appearance.json",
+  "appearanceSha256": "119c11ba8939690bcdb6455e637ec2a51817a4ed5241cbda92954030d1b7a3f3",
+  "asset": "aetheris-knot.glb",
+  "assetSha256": "1409291b164c39397f79462b580a606d6464dc40082b7b419c360440bcb0739d",
+  "bytes": 1307312,
+  "generator": "Aetheris PRESENTATION-3D-X0",
+  "family": "TorusKnot",
+  "p": 3,
+  "q": 5,
+  "diameterMm": 6,
+  "majorRadiusMm": 42,
+  "minorRadiusMm": 14,
+  "animation": "None in asset; rigid rotation in UI"
+}

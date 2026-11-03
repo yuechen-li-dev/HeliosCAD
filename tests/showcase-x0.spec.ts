@@ -9,7 +9,7 @@ test('first sixty seconds, real build, selection, resize, diagnostics, recovery 
   const started = Date.now();
   await page.goto('/');
   await expect(page.getByRole('button', { name: 'Open Mounting plate' })).toBeVisible();
-  await expect.poll(() => page.locator('.showcase-image img').evaluateAll(images => images.length === 5 && images.every(image => (image as HTMLImageElement).complete && (image as HTMLImageElement).naturalWidth > 0))).toBe(true);
+  await expect.poll(() => page.locator('.showcase-image img').evaluateAll(images => images.length === 7 && images.every(image => (image as HTMLImageElement).complete && (image as HTMLImageElement).naturalWidth > 0))).toBe(true);
   await page.screenshot({ path: `${evidence}/first-launch.png` });
   await page.getByRole('button', { name: 'Open Mounting plate' }).click();
   await expect(page.locator('.status-ready')).toContainText('Ready');

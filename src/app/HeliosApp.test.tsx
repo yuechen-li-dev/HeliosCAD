@@ -15,7 +15,7 @@ describe('Helios IDE shell', () => {
   it('separates version history from chat and restores source through the normal build', async () => {
     render(<HeliosApp />);
     await waitFor(() => expect(screen.getByRole('button', { name: 'Build' })).toBeEnabled());
-    const original = (screen.getByLabelText('Firmament source') as HTMLTextAreaElement).value;
+    const original = runtimeMock.open.mock.calls[0][0] as string;
     fireEvent.click(screen.getByRole('tab', { name: 'AI Author' }));
     fireEvent.change(screen.getByLabelText('Engineering requirements'), { target: { value: 'Keep the mounting holes' } });
     fireEvent.change(screen.getByLabelText('Engineering intent'), { target: { value: 'My unsent request' } });
@@ -26,9 +26,14 @@ describe('Helios IDE shell', () => {
     await screen.findByRole('button', { name: 'Restore Manual checkpoint' });
     fireEvent.change(screen.getByLabelText('Firmament source'), { target: { value: 'Model Changed {}' } });
     fireEvent.click(screen.getByRole('button', { name: 'Restore Manual checkpoint' }));
-    await waitFor(() => expect(runtimeMock.setSource).toHaveBeenCalledWith(original, 'editable-bracket.firmament', expect.any(Number), { 'editable-bracket.firmament': original }));
+    await waitFor(() => {
+      const [restored, name, revision, documents] = runtimeMock.setSource.mock.calls.at(-1) ?? [];
+      expect(restored?.replaceAll('\r\n', '\n')).toBe(original.replaceAll('\r\n', '\n'));
+      expect(name).toBe('editable-bracket.firmament'); expect(revision).toEqual(expect.any(Number));
+      expect(documents?.['editable-bracket.firmament']?.replaceAll('\r\n', '\n')).toBe(original.replaceAll('\r\n', '\n'));
+    });
     await screen.findByRole('button', { name: 'Restore Restored Manual checkpoint' });
-    expect(screen.getByLabelText('Firmament source')).toHaveValue(original);
+    expect(screen.getByLabelText('Firmament source')).toHaveValue(original.replaceAll('\r\n', '\n'));
     fireEvent.click(screen.getByRole('tab', { name: 'AI Author' }));
     expect(screen.getByLabelText('Engineering intent')).toHaveValue('My unsent request');
     expect(screen.getByLabelText('Engineering requirements')).toHaveValue('Keep the mounting holes');

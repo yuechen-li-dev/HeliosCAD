@@ -1,0 +1,13 @@
+// Starter model: a 30 x 40 mm angle bracket, 3 mm thick and 20 mm wide.
+Model SimpleBracket {
+  units: mm
+  Concept Struct layout on XZ {
+    Polygon2<Explicit> outline {
+      points: [[0mm,0mm], [30mm,0mm], [30mm,3mm], [3mm,3mm], [3mm,40mm], [0mm,40mm]]
+    }
+  }
+  Profile section using layout {
+    Loop Outer { outline |> TraceLoop }
+  }
+  Extrude bracket { profile: section; from: 0mm; to: 20mm }
+}
