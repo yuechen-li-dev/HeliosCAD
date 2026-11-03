@@ -41,7 +41,7 @@ test('AOT worker repeatedly traces fresh curved drafts without terminating the r
         const current = { source: source + `\n// fresh draft ${i}\n`, sourceName: 'intellidraft.firmament', sourceRevision: String(i) };
         await request({ ...current, operation: 'languageSketch' });
         const result = await request({ ...current, operation: 'languageSketchEdit', sketchEdit: {
-          kind: 'construction', construction: { action: 'trace', parent: 'DraftPart/layout', name: 'section', trace },
+          kind: 'construction', construction: { action: 'trace', parent: 'DraftPart/layout', name: 'section', trace: i % 2 === 0 ? trace : trace.toReversed() },
         } });
         if (!result.changed || !result.text.includes('Profile section')) throw new Error(`Trace ${i} did not produce its profile`);
       }
