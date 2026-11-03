@@ -11,7 +11,10 @@ if (!['win-x64', 'linux-x64', 'osx-arm64'].includes(rid)) throw Error('Supported
 const version = JSON.parse(await readFile(join(root, 'package.json'))).version;
 const output = resolve(root, 'artifacts/local/standalone', `${version}-${rid}-${Date.now()}`);
 const bundle = join(output, `Helios-${rid}`);
-const leviathan = resolve(root, '../Leviathan');
+// Permit qualification from an isolated checkout of the pinned host, without
+// switching the user's active Leviathan branch. The revision/cleanliness gate
+// below applies equally to the default checkout and an explicit source root.
+const leviathan = resolve(process.env.HELIOS_LEVIATHAN_SOURCE ?? resolve(root, '../Leviathan'));
 const sources = {};
 const pins = JSON.parse(await readFile(join(root, 'standalone-sources.json')));
 for (const [name, directory] of Object.entries({ helios: root, leviathan, aetheris: resolve(root, '../Aetheris'), dominatus: resolve(root, '../Dominatus') })) {
@@ -29,7 +32,7 @@ if (frontend.helios !== sources.helios.revision || frontend.aetheris !== sources
 const aot = await readdir(join(root, 'dist/aetheris-runtime-aot/_framework'));
 if (!aot.some(file => file.startsWith('dotnet.native.') && file.endsWith('.wasm'))) throw Error('Build the production frontend before packaging.');
 await mkdir(bundle, { recursive: true });
-run('dotnet', ['publish', 'src/Leviathan.Server', '-c', 'Release', '-r', rid, '--self-contained', 'true', '-p:PublishSingleFile=false', '-p:DebugType=None', '-p:DebugSymbols=false', '-m:1', '-nr:false', '-p:UseSharedCompilation=false', '-o', bundle], leviathan);
+run('dotnet', ['publish', 'src/Leviathan.Server', '-c', 'Release', '-r', rid, '--self-contained', 'true', '-p:PublishSingleFile=false', '-p:DebugType=None', '-p:DebugSymbols=false', `-p:DominatusSourceRoot=${resolve(root, '../Dominatus')}`, '-m:1', '-nr:false', '-p:UseSharedCompilation=false', '-o', bundle], leviathan);
 const executable = rid.startsWith('win-') ? 'Helios.exe' : 'Helios';
 await rename(join(bundle, rid.startsWith('win-') ? 'Leviathan.Server.exe' : 'Leviathan.Server'), join(bundle, executable));
 await chmod(join(bundle, executable), 0o755);

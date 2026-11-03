@@ -55,6 +55,14 @@ async function exited(process) {
   for (let i = 0; i < 100; i++) { if (process.exitCode !== null) return process.exitCode; await delay(100); }
   throw Error('Host did not terminate after Quit');
 }
+async function runBrowserSuite(config, environment) {
+  // Keep pumping host stdout/stderr while the suite runs. Blocking this parent
+  // with spawnSync can fill the host's pipes during a long browser usage pass.
+  const runner = spawn(process.execPath, [join(root, 'node_modules/@playwright/test/cli.js'), 'test', '--config', config], {
+    cwd: root, stdio: 'inherit', windowsHide: true, env: { ...process.env, ...environment },
+  });
+  return await new Promise((resolve, reject) => { runner.once('error', reject); runner.once('exit', code => resolve(code)); });
+}
 async function stop(cookie) {
   // CSRF cookie accompanies the request token and authentication cookie.
   const tokenResponse = await fetch(address + '/api/auth/csrf', { headers: { Cookie: cookie } });
@@ -84,6 +92,8 @@ try {
   browser = await chromium.launch(process.env.HELIOS_BROWSER_CHANNEL ? { channel: process.env.HELIOS_BROWSER_CHANNEL } : {});
   const context = await browser.newContext({ viewport: { width: 1600, height: 1000 }, acceptDownloads: true });
   const page = browserPage = await context.newPage(); const errors = []; page.on('pageerror', error => { errors.push(String(error)); console.error('Browser error:', String(error)); });
+  const runtimeRequests = new Set();
+  page.on('request', request => { if (request.url().includes('/aetheris-runtime')) runtimeRequests.add(request.url()); });
   page.on('console', message => {
     if (message.type() === 'error') {
       console.error('Browser console:', message.text());
@@ -98,6 +108,7 @@ try {
   await expect.poll(() => page.locator('.status-ready').innerText(), { timeout: 180_000 }).toMatch(/Ready|Worker failed/);
   assert.match(await page.locator('.status-ready').innerText(), /Ready/);
   await expect(page.locator('.viewport-canvas canvas')).toBeVisible();
+  assert.ok([...runtimeRequests].some(url => /\/aetheris-runtime-aot\/_framework\/dotnet\.native\..*\.wasm$/.test(url)), 'The packaged geometry worker must actually load the AOT native runtime.');
   console.log('Production gallery, editor, CAD runtime and viewport loaded.');
   await page.getByRole('banner').locator('input[type=file]').setInputFiles(join(root, 'fixtures/author-local/part.firmament'));
   await expect(page.locator('.workspace-identity strong')).toHaveText('part');
@@ -201,16 +212,23 @@ try {
   if (graphQualification) {
     // Exercise the extracted production bundle, with the ordinary launch cookie,
     // through the same graph-only workflows used during UI development.
-    const result = spawnSync(process.execPath, [join(root, 'node_modules/@playwright/test/cli.js'),
-      'test', '--config', 'playwright.graph.config.ts'], { cwd: root, stdio: 'inherit',
-      env: { ...process.env, HELIOS_GRAPH_BASE_URL: address, HELIOS_GRAPH_LAUNCH_URL: address + '/__helios/start#' + session.Token } });
-    assert.equal(result.status, 0, 'Packaged graph authoring qualification failed.');
+    const result = await runBrowserSuite('playwright.graph.config.ts', {
+      HELIOS_GRAPH_BASE_URL: address, HELIOS_GRAPH_LAUNCH_URL: address + '/__helios/start#' + session.Token });
+    assert.equal(result, 0, 'Packaged graph authoring qualification failed.');
+  }
+  const usageQualification = process.argv.includes('--usage');
+  if (usageQualification) {
+    const state = join(working, 'browser-state.json');
+    await context.storageState({ path: state });
+    const result = await runBrowserSuite('playwright.release.config.ts', {
+      HELIOS_RELEASE_BASE_URL: address, HELIOS_RELEASE_STORAGE_STATE: state, HELIOS_RELEASE_RESULTS: join(working, 'usage-tests') });
+    assert.equal(result, 0, 'Extracted production usage qualification failed.');
   }
   const cookies = await context.cookies(); cookie = cookies.map(value => `${value.name}=${value.value}`).join('; ');
   await stop(cookie);
   const log = await readFile(join(data, 'logs/helios.log'), 'utf8'); assert.ok(!log.includes(session.Token));
   await writeFile(join(working, 'QUALIFICATION.json'), JSON.stringify({ verdict: 'passed', archive: basename(archive), manifest,
-    browser: browser.version(), checks: ['inventory', 'self-contained startup', 'authentication and CSRF', 'loopback origin guard', 'single host', 'production WASM build', 'STEP bounds/topology/reopening', 'GLB/PDF export', 'local projects restart', 'browser checkpoint restart/restore', 'AI settings', 'Quit and process exit', ...(graphQualification ? ['graph-only part authoring and recovery'] : [])], errors }, null, 2));
+    browser: browser.version(), checks: ['inventory', 'self-contained startup', 'authentication and CSRF', 'loopback origin guard', 'single host', 'production AOT native worker load/build', 'STEP bounds/topology/reopening', 'GLB/PDF export', 'local projects restart', 'browser checkpoint restart/restore', 'AI settings', 'Quit and process exit', ...(graphQualification ? ['graph-only part authoring and recovery'] : []), ...(usageQualification ? ['production learning, language, graph, draft, gallery, imported PMI and project usage suite'] : [])], errors }, null, 2));
   await writeFile(join(root, 'artifacts/local/standalone/qualified.json'), JSON.stringify({ working, archive }, null, 2));
   console.log(`Standalone qualification passed: ${working}`);
 } finally {

@@ -119,6 +119,16 @@ The showcase configuration qualifies the real SDK/WebGPU paths in installed Edge
 
 ## Production deployment candidate
 
+For a native candidate, build `npm run sdk:install:production`, then `npm run build`
+and `npm run package:standalone`. The packager requires clean source revisions
+matching `standalone-sources.json`. Set `HELIOS_LEVIATHAN_SOURCE` to an isolated
+checkout of the pinned host if the active sibling checkout is on another branch.
+Run `node scripts/qualify-standalone.mjs --usage` to extract the archive and exercise
+the production AOT runtime, exports, restart/persistence and the full usage suite.
+`HELIOS_BROWSER_CHANNEL=chrome` selects installed Chrome; otherwise qualification
+uses Playwright's installed Chromium. Test credentials/data stay under ignored
+`artifacts/local/standalone`.
+
 `compose.production.yaml` runs the ASP.NET server, PostgreSQL, and a Caddy HTTPS/static frontend. It requires an existing HTTPS S3-compatible bucket. Build the production frontend from the sibling Aetheris checkout with `npm run sdk:install:production` followed by `npm run build`; the install command builds the linked SDK before npm resolves Helios dependencies. The production bundle keeps standard WASM for page-thread LX and selects the .NET WASM AOT runtime for the geometry Worker. Run `npx playwright test --config playwright.production.config.ts` for local production-bundle qualification before publishing. Then set the required Compose variables in a private `.env` or secret source and run `docker compose -f compose.production.yaml up --build -d`. Configure the public DNS name in `HELIOS_HOST`. Keep the PostgreSQL, Leviathan data, and Caddy volumes durable and backed up. Caddy caches fingerprinted runtime assets as immutable and revalidates boot files after five minutes. Run `GET /health/ready` through the public hostname after startup. See [the runtime performance report](docs/release/WEB-RUNTIME-PERF-X1.md) for the measured AOT tradeoff and remaining tessellation limit.
 
 The Compose file has passed configuration parsing, but no live production deployment or PostgreSQL/S3 integration test has run in this checkout. See [the X0 release report](docs/release/HELIOS-TELOS-X0.md) for the exact qualification boundary.
