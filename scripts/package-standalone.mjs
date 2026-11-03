@@ -18,8 +18,8 @@ const leviathan = resolve(process.env.HELIOS_LEVIATHAN_SOURCE ?? resolve(root, '
 const sources = {};
 const pins = JSON.parse(await readFile(join(root, 'standalone-sources.json')));
 for (const [name, directory] of Object.entries({ helios: root, leviathan, aetheris: resolve(root, '../Aetheris'), dominatus: resolve(root, '../Dominatus') })) {
-  const revision = run('git', ['rev-parse', 'HEAD'], directory, true).trim();
-  const dirty = run('git', ['status', '--porcelain'], directory, true).trim();
+  const revision = run('git', ['-c', 'core.longpaths=true', 'rev-parse', 'HEAD'], directory, true).trim();
+  const dirty = run('git', ['-c', 'core.longpaths=true', 'status', '--porcelain'], directory, true).trim();
   if (name !== 'helios' && revision !== pins[name]) throw Error(`${name} differs from standalone-sources.json. Use the pinned source revision or update and requalify the pin.`);
   if (dirty && process.env.HELIOS_ALLOW_DIRTY_PACKAGE !== 'true') throw Error(`${name} has uncommitted changes; commit the qualified sources before making a release bundle.`);
   sources[name] = { revision, dirty: !!dirty };

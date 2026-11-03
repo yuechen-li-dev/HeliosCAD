@@ -88,6 +88,10 @@ try {
   assert.equal((await fetch(address + '/__helios/stop', { method: 'POST', headers: { Cookie: cookie } })).status, 400);
   assert.equal((await fetch(address + '/aetheris-runtime/not-present.wasm')).status, 404);
   assert.equal((await fetch(address + '/api/not-present', { headers: { Cookie: cookie } })).status, 404);
+  const knot = await fetch(address + '/branding/aetheris-knot.glb');
+  assert.equal(knot.status, 200, 'The packaged host must serve the knot model, not trigger the fallback H.');
+  assert.match(knot.headers.get('content-type'), /^model\/gltf-binary/);
+  assert.equal(Buffer.from(await knot.arrayBuffer()).subarray(0, 4).toString(), 'glTF');
   const duplicate = spawn(executable, ['--no-browser', '--port', String(port), '--data-dir', data], { cwd: working, windowsHide: true, stdio: 'ignore' });
   assert.equal(await exited(duplicate), 0);
   console.log('Extracted host: startup, authentication, origin/CSRF guards, single-instance checks passed.');
@@ -114,7 +118,8 @@ try {
   assert.ok([...runtimeRequests].some(url => /\/aetheris-runtime-aot\/_framework\/dotnet\.native\..*\.wasm$/.test(url)), 'The packaged geometry worker must actually load the AOT native runtime.');
   console.log('Production gallery, editor, CAD runtime and viewport loaded.');
   await page.getByRole('banner').locator('input[type=file]').setInputFiles(join(root, 'fixtures/author-local/part.firmament'));
-  await expect(page.locator('.workspace-identity strong')).toHaveText('part');
+  await expect(page.locator('.workspace-identity small')).toContainText('part.firmament');
+  await expect(page.locator('.workspace-identity strong')).toHaveText('AgentWitness');
   await expect(page.locator('.status-ready')).toContainText('Ready', { timeout: 120_000 });
   await page.getByRole('button', { name: 'Export ▾', exact: true }).click();
   const downloadEvent = page.waitForEvent('download'); await page.getByRole('button', { name: 'Download selected format', exact: true }).click();
@@ -138,7 +143,8 @@ try {
   await expect(page.locator('.workspace-identity strong')).toHaveText('box');
   await expect(page.locator('.status-ready')).toContainText('Ready', { timeout: 120_000 });
   await page.getByRole('banner').locator('input[type=file]').setInputFiles(join(root, 'fixtures/author-local/part.firmament'));
-  await expect(page.locator('.workspace-identity strong')).toHaveText('part');
+  await expect(page.locator('.workspace-identity small')).toContainText('part.firmament');
+  await expect(page.locator('.workspace-identity strong')).toHaveText('AgentWitness');
   await expect(page.locator('.status-ready')).toContainText('Ready', { timeout: 120_000 });
   console.log('GLB/PDF export and STEP reopening passed.');
   await page.getByRole('tab', { name: 'AI Author', exact: true }).click();

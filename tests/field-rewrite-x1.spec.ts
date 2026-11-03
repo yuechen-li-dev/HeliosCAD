@@ -2,13 +2,19 @@ import { test, expect } from '@playwright/test';
 import { pickNearCenter, replaceEditorSource } from './editor';
 
 test('Hole Diameter Inspector edit rewrites Monaco source and rebuilds the wall', async ({ page }) => {
-  await page.goto('/discover');
-  await page.getByRole('button', { name: 'My Projects' }).click();
-  await page.getByRole('button', { name: 'New to Helios? Create an account' }).click();
-  await page.getByLabel('Name').fill('Field rewrite witness');
-  await page.getByLabel('Email').fill(`field-${Date.now()}@example.test`);
-  await page.getByLabel('Password').fill('Correct-Helios-Password-2026');
-  await page.getByRole('button', { name: 'Create account' }).click();
+  if (process.env.HELIOS_RELEASE_BASE_URL) {
+    // The extracted host already authenticated its local engineer. Desktop mode
+    // deliberately disables account registration, but uses the same project API.
+    await page.goto('/projects');
+  } else {
+    await page.goto('/discover');
+    await page.getByRole('button', { name: 'My Projects' }).click();
+    await page.getByRole('button', { name: 'New to Helios? Create an account' }).click();
+    await page.getByLabel('Name').fill('Field rewrite witness');
+    await page.getByLabel('Email').fill(`field-${Date.now()}@example.test`);
+    await page.getByLabel('Password').fill('Correct-Helios-Password-2026');
+    await page.getByRole('button', { name: 'Create account' }).click();
+  }
   await expect(page.getByRole('heading', { name: 'Your projects' })).toBeVisible();
   await page.getByLabel('Project name').fill('Field rewrite');
   await page.getByRole('button', { name: 'Create project' }).click();
