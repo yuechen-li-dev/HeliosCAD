@@ -9,7 +9,10 @@ import { unzipSync } from 'fflate';
 import { chromium, expect } from '@playwright/test';
 
 const root = resolve(import.meta.dirname, '..');
-const archive = resolve(process.argv[2] ?? JSON.parse(await readFile(join(root, 'artifacts/local/standalone/latest.json'))).archive);
+const args = process.argv.slice(2), paths = args.filter(arg => !arg.startsWith('--'));
+if (paths.length > 1 || args.some(arg => arg.startsWith('--') && !['--graph', '--usage'].includes(arg)))
+  throw Error('Usage: node scripts/qualify-standalone.mjs [archive] [--graph] [--usage]');
+const archive = resolve(paths[0] ?? JSON.parse(await readFile(join(root, 'artifacts/local/standalone/latest.json'))).archive);
 const working = join(root, 'artifacts/local/standalone', `Extracted smoke ${Date.now()}`);
 const extracted = join(working, 'Extracted package'); await mkdir(extracted, { recursive: true });
 if (archive.endsWith('.zip')) {
