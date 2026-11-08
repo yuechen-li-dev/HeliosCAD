@@ -26,13 +26,14 @@ import { posedMesh } from "./pose";
 import { applyNamedView, WORLD_UP } from "./viewCommands";
 import type { DisplayMode, ThemeName, ViewMode } from "../app/types";
 import { HELIOS_PRESENTATIONS } from "./presentation";
+import { bindFeaturePlacement, placementLines, type FeaturePlacementProps } from './featurePlacement';
 const LegacyViewport = lazy(() =>
   import("./LegacyViewport").then((module) => ({
     default: module.LegacyViewport,
   })),
 );
 
-interface Props {
+interface Props extends FeaturePlacementProps {
   measurementDisabledReason?: string;
   measurementTool?: MeasurementTool;
   measurementTick?: number;
@@ -214,7 +215,8 @@ function TelosViewport(props: Props & { onRetry(): void; onUnavailable(reason: s
     const inspected = inspectSurfaces(inspection.current.mode === "normal" && !inspection.current.face ? displayScene : scene,
       inspection.current.mode, inspection.current.face);
     current.setScene({ ...inspected, meshes: [...inspected.meshes, ...pmiMeshes(value.model?.mesh.annotations)],
-      lines: [...inspected.lines, ...concepts, ...preview, ...measurementLines(value.measurementTool?.result ?? null), ...pmiLines(value.model?.mesh.annotations)] });
+      lines: [...inspected.lines, ...concepts, ...preview, ...placementLines(value.placementGuide), ...measurementLines(value.measurementTool?.result ?? null), ...pmiLines(value.model?.mesh.annotations)] });
+    canvas.current?.setAttribute('data-feature-placement', JSON.stringify(value.placementGuide ? { center: value.placementGuide.center, diameter: value.placementGuide.diameter, selector: value.placementGuide.selection.selector } : null));
     canvas.current?.setAttribute("data-surface-inspection", JSON.stringify({ mode: inspection.current.mode,
       isolatedFace: inspection.current.face ?? null,
       usesFieldProxy: scene.fields.some(field => field.proxy) && (!!inspection.current.face || inspection.current.mode === "patches"),
@@ -304,6 +306,12 @@ function TelosViewport(props: Props & { onRetry(): void; onUnavailable(reason: s
         selection,
       );
     };
+    const unbindPlacement = bindFeaturePlacement(element, () => latest.current, p => {
+      const ray = host.current!.camera.worldRay(p); return { origin: ray.origin.toArray(), direction: ray.direction.toArray() };
+    }, p => {
+      const hit = host.current?.picker.pick(p, 'face');
+      return hit?.definitionId ? latest.current.model?.describeSelection(hit.definitionId, hit.triangleIndex ?? 0, hit.occurrenceId) ?? null : null;
+    });
     const move = (event: PointerEvent) => {
       const current = host.current;
       if (!current || event.buttons) return;
@@ -346,6 +354,7 @@ function TelosViewport(props: Props & { onRetry(): void; onUnavailable(reason: s
       });
     return () => {
       unbindMeasurement();
+      unbindPlacement();
       disposed = true;
       initialization.abort();
       element.removeEventListener("click", click);
@@ -360,7 +369,7 @@ function TelosViewport(props: Props & { onRetry(): void; onUnavailable(reason: s
     apply();
   }, [props.measurementTick, props.measurementTool, props.showConcepts, props.model, props.model?.revision, props.wireframePreview, props.wireframePreview?.revision, props.pose, props.selectedEntityId, props.selectedTopologyId,
     props.theme, props.displayMode, props.viewMode, props.viewCommand, props.aaMode, props.aaDebug,
-    inspectionMode, isolatedFaceKey]);
+    inspectionMode, isolatedFaceKey, props.placementGuide]);
   useEffect(() => { setIsolatedFaceKey(""); }, [props.model?.id, props.model?.revision]);
   return (
     <section

@@ -177,6 +177,9 @@ button, a { transition: background-color 100ms, border-color 100ms, color 100ms;
 .authoring-panel [role="alert"] { border-left: 3px solid var(--error); padding: 8px; background: color-mix(in srgb, var(--error) 7%, var(--panel-bg)); }
 .authoring-panel small { display: block; margin-top: 3px; }
 .authoring-panel pre { max-height: 200px; overflow: auto; font-family: var(--font-mono); white-space: pre-wrap; }
+.face-feature-action { position: absolute; top: 10px; left: 12px; z-index: 5; padding: 8px 14px; background: var(--gold); color: var(--panel-bg); border: 1px solid var(--gold); cursor: pointer; }
+.authoring-panel .placement-hint { border-left: 2px solid var(--gold); padding: 8px; }
+.authoring-panel [aria-label="Face placement"] { display: grid; gap: 8px; padding: 10px; border: 1px solid var(--gold); }
 .authoring-actions { display: flex; gap: 8px; position: sticky; bottom: -12px; background: var(--panel-bg); padding-block: 8px; }
 .authoring-preview-banner { position: absolute; top: 76px; left: 8px; right: 8px; z-index: 4; background: var(--panel-bg); border: 1px solid var(--gold); color: var(--text-primary); padding: 8px; text-align: center; pointer-events: none; }
 .node-construction-actions { display: flex; gap: 6px; padding: 8px 12px; flex-wrap: wrap; }

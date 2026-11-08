@@ -45,6 +45,7 @@ import { registerRecoverableSource } from './crashRecovery';
 import { PmiAuthor } from '../inspector/PmiAuthor';
 import { AuthoringPanel, type AuthoringAction, type PendingAuthoring } from '../graph/AuthoringPanel';
 import { TutorialPanel } from '../learn/TutorialPanel';
+import type { PlacementActions, PlacementGuide } from '../viewport/featurePlacement';
 
 const LearnCenter = lazy(() => import('../learn/LearnCenter').then(m => ({ default: m.LearnCenter })));
 
@@ -123,8 +124,11 @@ export function HeliosApp({ project, initialWorkspace, chooseBase = false, onSho
     return false;
   };
   const [previewModel, setPreviewModel] = useState<ModelSession | null>(null);
+  const [placementGuide, setPlacementGuide] = useState<PlacementGuide | null>(null);
+  const placementActions = useRef<PlacementActions | null>(null);
+  const placingHole = pendingAuthoring?.action.kind === 'feature' && ['hole', 'counterbore', 'countersink'].includes(pendingAuthoring.action.item.id);
   const wireframePreview = previewModel && pendingAuthoring?.action.kind === 'feature'
-    && ['fillet', 'chamfer'].includes(pendingAuthoring.action.item.id) ? previewModel : null;
+    && (placingHole || ['fillet', 'chamfer'].includes(pendingAuthoring.action.item.id)) ? previewModel : null;
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [publishOpen, setPublishOpen] = useState(false);
   const [publishState, setPublishState] = useState('');
@@ -835,7 +839,7 @@ export function HeliosApp({ project, initialWorkspace, chooseBase = false, onSho
           authoring={graphAuthoring()} assembly={assemblyView()}
           inspector={<div className="graph-side">
             {pendingAuthoring && outline ? <AuthoringPanel pending={pendingAuthoring} source={source} sourceName={sourceName} outline={outline} palette={palette} schema={semanticSchema}
-              runtime={runtime} assembly={assemblyGraph} jointKinds={jointKinds} selection={previewModel ? null : selectedSelection}
+              runtime={runtime} assembly={assemblyGraph} jointKinds={jointKinds} selection={selectedSelection} placementRef={placementActions} onPlacementGuide={setPlacementGuide}
               documents={projectDocuments.current} root={projectRoot.current ?? sourceName} onCancel={() => setPendingAuthoring(null)}
               onPreview={setPreviewModel} onSketch={newIntelliDraft}
               onInspect={id => { setPendingAuthoring(null); selectGraphNode(id); }}
@@ -873,8 +877,12 @@ export function HeliosApp({ project, initialWorkspace, chooseBase = false, onSho
           <div className="toolbar-display"><select aria-label="Display mode" value={displayMode} onChange={event => setDisplayMode(event.target.value as DisplayMode)}><option value="shaded">Shaded</option><option value="edges">Shaded with edges</option><option value="wireframe">Wireframe</option></select><button aria-label="Selection mode" title="Switch face or edge selection" onClick={() => { setSelectionMode(value => value === 'face' ? 'edge' : 'face'); setDisplayMode('edges'); }}>{selectionMode === 'face' ? 'Faces' : 'Edges'}</button><button title="Toggle camera projection" onClick={() => setViewMode(value => value === 'perspective' ? 'orthographic' : 'perspective')}>{viewMode === 'perspective' ? 'Perspective' : 'Orthographic'}</button></div>
         </div>
         <div className="viewport-stage" style={shellLayout.place('stage')}>
+        {!pendingAuthoring && selectedSelection?.support && <button className="face-feature-action"
+          disabled={!palette.some(p => p.id === 'hole') || pendingGraphFields || !!busy || buildStarted !== null || outline?.document !== sourceName || outline?.revision !== String(sourceRevision)} onClick={() => {
+          const item = palette.find(p => p.id === 'hole'); if (item) beginAuthoring({ kind: 'feature', item });
+        }}>Add hole on selected face</button>}
         {previewModel && <div className="authoring-preview-banner" role="status">Preview · {wireframePreview ? 'gold boundaries · ' : ''}source unchanged · Apply or Cancel</div>}
-        <Viewport measurementDisabledReason={previewModel ? 'Apply or cancel the preview before measuring.' : busy || displayRevision !== sourceRevision ? "Build the current source successfully before measuring." : undefined} showConcepts={showConcepts} pose={previewModel ? null : pose} busyMessage={busy === 'Worker failed' ? null : busy} errorMessage={shownDiagnostics.some(item => item.severity === 'error') ? (model ? 'Build failed. The last valid model remains visible; see Problems for details.' : 'Build needs attention. See Problems for the compiler diagnostic.') : null} model={wireframePreview ? model : previewModel ?? model} wireframePreview={wireframePreview} selectedEntityId={previewModel ? null : selectedEntityId} selectedTopologyId={previewModel ? null : selectedFaceId} theme={theme} displayMode={displayMode} viewMode={viewMode} viewCommand={previewModel && !wireframePreview ? `fit-preview-${previewModel.id}` : viewCommand} selectionMode={selectionMode} onSelect={previewModel ? () => {} : select} captureRef={capturePreview} />
+        <Viewport placingFeature={placingHole} placementGuide={placementGuide} placementActions={placementActions} measurementDisabledReason={previewModel ? 'Apply or cancel the preview before measuring.' : busy || displayRevision !== sourceRevision ? "Build the current source successfully before measuring." : undefined} showConcepts={showConcepts} pose={previewModel ? null : pose} busyMessage={busy === 'Worker failed' ? null : busy} errorMessage={shownDiagnostics.some(item => item.severity === 'error') ? (model ? 'Build failed. The last valid model remains visible; see Problems for details.' : 'Build needs attention. See Problems for the compiler diagnostic.') : null} model={wireframePreview ? model : previewModel ?? model} wireframePreview={wireframePreview} selectedEntityId={previewModel ? null : selectedEntityId} selectedTopologyId={previewModel ? null : selectedFaceId} theme={theme} displayMode={displayMode} viewMode={viewMode} viewCommand={previewModel && !wireframePreview ? `fit-preview-${previewModel.id}` : viewCommand} selectionMode={selectionMode} onSelect={previewModel ? () => {} : select} captureRef={capturePreview} />
         {intelliDraft && <IntelliDraftPanel key={intelliDraft.source === undefined ? 'new' : `existing:${intelliDraft.node ?? ''}`} runtime={runtime} initialSource={intelliDraft.source}
           document={intelliDraft.source === undefined ? undefined : sourceName} initialNode={intelliDraft.node ?? null}
           onSource={intelliDraft.source === undefined ? undefined : span => { setIntelliDraft(null); setEditorMode('source'); navigateSource({ source: sourceName, ...span, line: 1, column: 1 }); }}

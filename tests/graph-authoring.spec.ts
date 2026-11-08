@@ -8,6 +8,7 @@ const cli = resolve('../Aetheris/Aetheris.CLI/bin/Release/net10.0/aetheris.dll')
 const panel = (page: Page) => page.locator('.authoring-panel');
 const inspector = (page: Page) => page.getByRole('complementary', { name: 'Node inspector' });
 test.beforeEach(async ({ page }) => {
+  if (process.env.HELIOS_GRAPH_WEBGL === 'true') await page.addInitScript(() => localStorage.setItem('helios.viewport.renderer', 'webgl'));
   if (process.env.HELIOS_GRAPH_LAUNCH_URL) {
     await page.goto(process.env.HELIOS_GRAPH_LAUNCH_URL);
     await expect(page.getByRole('button', { name: 'New part', exact: true })).toBeVisible();
@@ -33,6 +34,136 @@ async function newBlock(page: Page) {
   await applyPreview(page);
   await expect(page.getByRole('button', { name: 'Size [60mm, 40mm, 12mm]', exact: true })).toBeVisible();
 }
+
+test('Simple Bracket accepts a through hole along its XZ sketch extrusion using graph controls', async ({ page }) => {
+  const aotRequests: string[] = [];
+  page.context().on('request', request => {
+    if (/\/aetheris-runtime-aot\/_framework\/dotnet\.native\..*\.wasm$/.test(request.url())) aotRequests.push(request.url());
+  });
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Open Simple bracket', exact: true }).click();
+  await expect(page.locator('.status-ready')).toContainText('Ready', { timeout: 120_000 });
+  await page.getByRole('tab', { name: 'Graph', exact: true }).click(); await ready(page);
+  await inspector(page).getByRole('button', { name: 'Add hole…', exact: true }).click();
+  await expect(panel(page).getByRole('status')).toContainText('Click Preview');
+  await expect(panel(page).getByRole('button', { name: 'Apply', exact: true })).toBeDisabled();
+  await panel(page).getByLabel('X', { exact: true }).fill('1.5');
+  await panel(page).getByLabel('Y', { exact: true }).fill('20');
+  await panel(page).getByLabel('Diameter', { exact: true }).fill('2');
+  await applyPreview(page);
+  const edited = await saveSource(page, 'simple-bracket-through-hole');
+  expect(edited.source).toContain('on XZ');
+  expect(edited.source).toContain('Point2(1.5mm, 20mm)');
+  expect(edited.source).toContain('Diameter: 2mm');
+  const exported = await step(page, 'simple-bracket-through-hole', { min: [0, -20, 0], max: [30, 0, 40] });
+  expect(exported).toContain('CYLINDRICAL_SURFACE(');
+  const validation = JSON.parse(execFileSync('dotnet', [cli, 'validate', edited.path, '--json'], { encoding: 'utf8' }));
+  expect(validation.firmamentV2Validation).toMatchObject({ status: 'valid', validationLevel: 'Built' });
+  if (process.env.HELIOS_GRAPH_REQUIRE_AOT === 'true') expect(aotRequests.length).toBeGreaterThan(0);
+  await page.screenshot({ path: resolve(output, 'simple-bracket-through-hole.png'), fullPage: true });
+});
+
+test('a picked bracket foot supports a draggable gold hole, exact coordinates, cancel and atomic Apply', async ({ page }) => {
+  await page.goto('/'); await page.getByRole('button', { name: 'Open Simple bracket', exact: true }).click();
+  await expect(page.locator('.status-ready')).toContainText('Ready', { timeout: 120_000 });
+  await page.getByRole('tab', { name: 'Graph', exact: true }).click();
+  await page.getByRole('button', { name: 'Top', exact: true }).click();
+  const canvas = page.locator('[data-testid="viewport"] canvas');
+  async function footPoint(x: number, y: number) {
+    const camera = JSON.parse((await canvas.getAttribute('data-surface-inspection'))!).camera;
+    const rect = (await canvas.boundingBox())!;
+    return { x: rect.x + rect.width / 2 + (x - camera.target[0]) * rect.height / camera.span,
+      y: rect.y + rect.height / 2 - (y - camera.target[1]) * rect.height / camera.span };
+  }
+  const start = await footPoint(16, -10); await page.mouse.click(start.x, start.y);
+  await page.getByRole('button', { name: 'Add hole on selected face', exact: true }).click();
+  await expect(panel(page).getByRole('status')).toContainText('Preview admitted');
+  await expect(canvas).toHaveAttribute('data-feature-placement', /"diameter":6/);
+  await expect(canvas).toHaveAttribute('data-operation-preview-wires', /^[1-9]/);
+  const beforeDrag = await panel(page).getByLabel('Center X', { exact: true }).inputValue();
+  const edge = await footPoint(29, -19);
+  await page.mouse.move(start.x, start.y); await page.mouse.down(); await page.mouse.move(edge.x, edge.y, { steps: 15 }); await page.mouse.up();
+  await expect(panel(page).getByLabel('Center X', { exact: true })).not.toHaveValue(beforeDrag);
+  await expect(panel(page).getByRole('status')).toContainText('Preview admitted');
+  await panel(page).getByLabel('Center X', { exact: true }).fill('0');
+  await expect(panel(page).getByRole('alert')).toContainText('positive edge clearance');
+  await expect(panel(page).getByRole('button', { name: 'Apply', exact: true })).toBeDisabled();
+  await panel(page).getByRole('button', { name: 'Cancel', exact: true }).click();
+  expect((await saveSource(page, 'face-hole-cancel')).source).not.toContain('Hole<Shaft>');
+  await page.getByRole('button', { name: 'Add hole on selected face', exact: true }).click();
+  await panel(page).getByLabel('Center X', { exact: true }).fill('13');
+  await panel(page).getByLabel('Center Y', { exact: true }).fill('10');
+  await expect(panel(page).getByRole('status')).toContainText('Preview admitted');
+  await page.screenshot({ path: resolve(output, 'face-hole-gold-preview.png'), fullPage: true });
+  await panel(page).getByRole('button', { name: 'Apply', exact: true }).click(); await ready(page);
+  const edited = await saveSource(page, 'bracket-foot-hole');
+  expect(edited.source).toContain('on XZ'); expect(edited.source).toContain('.Side(');
+  expect(edited.source).toContain('Point2(13mm, 10mm)');
+  const exported = await step(page, 'bracket-foot-hole', { min: [0,-20,0], max: [30,0,40] });
+  expect(exported).toContain('CYLINDRICAL_SURFACE(');
+  const validation = JSON.parse(execFileSync('dotnet', [cli, 'validate', edited.path, '--json'], { encoding: 'utf8' }));
+  expect(validation.firmamentV2Validation).toMatchObject({ status: 'valid', validationLevel: 'Built' });
+  await page.screenshot({ path: resolve(output, 'face-hole-applied.png'), fullPage: true });
+  await page.getByRole('button', { name: 'Undo', exact: true }).click(); await ready(page);
+  expect((await saveSource(page, 'face-hole-undo')).source).not.toContain('Hole<Shaft>');
+});
+
+test('one bracket face accepts separated holes, counterbore and countersink with collision guards', async ({ page }) => {
+  await page.goto('/'); await page.getByRole('button', { name: 'Open Simple bracket', exact: true }).click();
+  await expect(page.locator('.status-ready')).toContainText('Ready', { timeout: 120_000 });
+  await page.getByRole('tab', { name: 'Graph', exact: true }).click(); await page.getByRole('button', { name: 'Top', exact: true }).click();
+  const canvas = page.locator('[data-testid="viewport"] canvas');
+  async function point(x: number, y: number) {
+    const camera = JSON.parse((await canvas.getAttribute('data-surface-inspection'))!).camera, rect = (await canvas.boundingBox())!;
+    return { x: rect.x + rect.width / 2 + (x + 3 - camera.target[0]) * rect.height / camera.span,
+      y: rect.y + rect.height / 2 - (y - 20 - camera.target[1]) * rect.height / camera.span };
+  }
+  async function start(label: string, x: number, y: number, extras: Record<string, string> = {}) {
+    await inspector(page).getByRole('button', { name: label, exact: true }).click();
+    await panel(page).getByLabel('Diameter', { exact: true }).fill('4');
+    for (const [name, value] of Object.entries(extras)) await panel(page).getByLabel(name, { exact: true }).fill(value);
+    const p = await point(x, y); await page.mouse.click(p.x, p.y);
+    await expect(panel(page).getByLabel('Center X', { exact: true })).toBeVisible();
+    await panel(page).getByLabel('Center X', { exact: true }).fill(String(x));
+    await panel(page).getByLabel('Center Y', { exact: true }).fill(String(y));
+    await expect(panel(page).getByRole('status')).toContainText('Preview admitted');
+  }
+  async function commit() { await panel(page).getByRole('button', { name: 'Apply', exact: true }).click(); await ready(page); }
+  await start('Add hole…', 5, 5); await commit();
+  await start('Add hole…', 21, 5);
+  const from = await point(21, 5), intoExistingHole = await point(5, 5);
+  await page.mouse.move(from.x, from.y); await page.mouse.down(); await page.mouse.move(intoExistingHole.x, intoExistingHole.y, { steps: 15 }); await page.mouse.up();
+  const clamped = JSON.parse((await canvas.getAttribute('data-feature-placement'))!).center;
+  expect(Math.hypot(clamped[0] - 5, clamped[1] - 5)).toBeGreaterThanOrEqual(4.01);
+  await panel(page).getByLabel('Center X', { exact: true }).fill('5'); await panel(page).getByLabel('Center Y', { exact: true }).fill('5');
+  await expect(panel(page).getByRole('alert')).toContainText('existing holes');
+  await expect(panel(page).getByRole('button', { name: 'Apply', exact: true })).toBeDisabled();
+  await panel(page).getByRole('button', { name: 'Cancel', exact: true }).click();
+  expect(((await saveSource(page, 'multiple-hole-collision-cancel')).source.match(/Hole</g) ?? []).length).toBe(1);
+  await start('Add hole…', 21, 5); await commit();
+  await start('Counterbored hole…', 13, 14, { CounterboreDiameter: '7', CounterboreDepth: '1' });
+  await panel(page).getByLabel('CounterboreDiameter', { exact: true }).fill('16');
+  await expect(panel(page).getByRole('button', { name: 'Apply', exact: true })).toBeDisabled();
+  await expect(panel(page).getByRole('alert')).toContainText('positive edge clearance');
+  await panel(page).getByLabel('CounterboreDiameter', { exact: true }).fill('7');
+  await expect(panel(page).getByRole('status')).toContainText('Preview admitted'); await commit();
+  await start('Countersunk hole…', 21, 14, { CountersinkDiameter: '6' });
+  await expect(canvas).toHaveAttribute('data-feature-placement', /"diameter":6/);
+  await page.screenshot({ path: resolve(output, 'multiple-face-holes-gold.png'), fullPage: true }); await commit();
+  const source = await saveSource(page, 'bracket-multiple-face-holes');
+  expect((source.source.match(/Hole</g) ?? []).length).toBe(4);
+  expect(source.source).toContain('Hole<Counterbore>'); expect(source.source).toContain('Hole<Countersink>');
+  const exported = await step(page, 'bracket-multiple-face-holes', { min: [0,-20,0], max: [30,0,40] });
+  expect(exported).toContain('CONICAL_SURFACE(');
+  const validation = JSON.parse(execFileSync('dotnet', [cli, 'validate', source.path, '--json'], { encoding: 'utf8' }));
+  expect(validation.firmamentV2Validation).toMatchObject({ status: 'valid', validationLevel: 'Built' });
+  await page.getByRole('button', { name: 'Iso', exact: true }).click();
+  await page.screenshot({ path: resolve(output, 'bracket-multiple-face-holes.png'), fullPage: true });
+  await page.getByRole('button', { name: 'Undo', exact: true }).click(); await ready(page);
+  expect(((await saveSource(page, 'multiple-face-holes-undo')).source.match(/Hole</g) ?? []).length).toBe(3);
+  await page.getByRole('button', { name: 'Redo', exact: true }).click(); await ready(page);
+  expect(((await saveSource(page, 'multiple-face-holes-redo')).source.match(/Hole</g) ?? []).length).toBe(4);
+});
 
 test('unapplied graph fields cannot be lost by switching views or opening source', async ({ page }) => {
   await newBlock(page);
@@ -63,7 +194,7 @@ async function saveSource(page: Page, name: string) {
   const path = resolve(output, name + '.firmament'); await (await event).saveAs(path);
   return { path, source: await readFile(path, 'utf8') };
 }
-async function step(page: Page, name: string) {
+async function step(page: Page, name: string, bounds = { min: [-30, -20, 0], max: [30, 20, 12] }) {
   await mkdir(output, { recursive: true });
   await page.getByRole('button', { name: 'Export ▾', exact: true }).click();
   const event = page.waitForEvent('download', { timeout: 30_000 }); await page.getByRole('button', { name: 'Download selected format', exact: true }).click();
@@ -73,8 +204,8 @@ async function step(page: Page, name: string) {
   await writeFile(resolve(output, name + '.analysis.json'), JSON.stringify(analysis, null, 2));
   expect(text).toContain('MANIFOLD_SOLID_BREP'); expect(text).toContain('CLOSED_SHELL');
   expect(analysis.summary).toMatchObject({ bodyCount: 1, shellCount: 1, structuralAssessment: 'enclosed-manifold' });
-  for (const [end, expected] of [['min', [-30, -20, 0]], ['max', [30, 20, 12]]] as const)
-    ['x', 'y', 'z'].forEach((axis, index) => expect(analysis.summary.boundingBox[end][axis]).toBeCloseTo(expected[index], 9));
+  for (const end of ['min', 'max'] as const)
+    ['x', 'y', 'z'].forEach((axis, index) => expect(analysis.summary.boundingBox[end][axis]).toBeCloseTo(bounds[end][index], 9));
   return text;
 }
 

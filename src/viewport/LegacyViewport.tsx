@@ -10,8 +10,9 @@ import { applyNamedView, WORLD_UP } from './viewCommands';
 import { HELIOS_PRESENTATIONS } from './presentation';
 import { referenceGrid } from './referenceGrid';
 import { posedMesh } from './pose';
+import { bindFeaturePlacement, placementLines, type FeaturePlacementProps } from './featurePlacement';
 
-interface Props {
+interface Props extends FeaturePlacementProps {
   measurementTool?: MeasurementTool;
   measurementTick?: number;
   showConcepts?: boolean;
@@ -43,6 +44,17 @@ export function LegacyViewport(props: Props) {
     const sceneState = createScene(host.current, props.onSelect);
     state.current = sceneState;
     const element = sceneState.renderer.domElement;
+    const raycaster = new THREE.Raycaster();
+    const cameraRay = (p: [number, number]) => {
+      raycaster.setFromCamera(new THREE.Vector2(p[0] / element.clientWidth * 2 - 1, 1 - p[1] / element.clientHeight * 2), sceneState.camera);
+      return { origin: raycaster.ray.origin.toArray(), direction: raycaster.ray.direction.toArray() };
+    };
+    const unbindPlacement = bindFeaturePlacement(element, () => latest.current, cameraRay, p => {
+      cameraRay(p);
+      const hit = raycaster.intersectObjects(sceneState.group.children, false).find(h => h.object instanceof THREE.Mesh && !(h.object.userData as MeshMeta).highlight);
+      if (!hit) return null; const meta = hit.object.userData as MeshMeta;
+      return sceneState.model?.describeSelection(meta.definitionId, hit.faceIndex ?? 0, meta.occurrenceId) ?? null;
+    });
     const unbind = bindMeasurementPicking(element, () => latest.current.measurementTool, (x,y) => {
       const raycaster = new THREE.Raycaster();
       raycaster.setFromCamera(new THREE.Vector2(x / element.clientWidth * 2 - 1, 1 - y / element.clientHeight * 2), sceneState.camera);
@@ -54,9 +66,21 @@ export function LegacyViewport(props: Props) {
       return { occurrenceId: meta.occurrenceId, faceId: Number.isInteger(face) ? face : null, rayOrigin: raycaster.ray.origin.toArray(), rayDirection: raycaster.ray.direction.toArray() };
     });
     if (props.captureRef) props.captureRef.current = sceneState.capture;
-    return () => { unbind(); if (props.captureRef) props.captureRef.current = null; sceneState.dispose(); state.current = null; };
+    return () => { unbind(); unbindPlacement(); if (props.captureRef) props.captureRef.current = null; sceneState.dispose(); state.current = null; };
   }, []);
 
+  useEffect(() => {
+    const current = state.current; if (!current) return;
+    const group = new THREE.Group();
+    for (const wire of placementLines(props.placementGuide).filter(w => !w.id.endsWith(':halo'))) {
+      const geometry = new THREE.BufferGeometry(); geometry.setAttribute('position', new THREE.Float32BufferAttribute(Array.from(wire.points), 3));
+      const line = new THREE.Line(geometry, new THREE.LineBasicMaterial({ color: 0xffcb45, depthTest: false, depthWrite: false, toneMapped: false }));
+      line.renderOrder = 20; line.raycast = () => undefined; group.add(line);
+    }
+    current.renderer.domElement.setAttribute('data-feature-placement', JSON.stringify(props.placementGuide ? { center: props.placementGuide.center, diameter: props.placementGuide.diameter, selector: props.placementGuide.selection.selector } : null));
+    current.scene.add(group); current.invalidate();
+    return () => { disposeConceptWireframe(group); current.invalidate(); };
+  }, [props.placementGuide]);
   useEffect(() => {
     const current = state.current; if (!current) return;
     const group = measurementGroup(props.measurementTool?.result ?? null); current.scene.add(group); current.invalidate();

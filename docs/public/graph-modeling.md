@@ -55,6 +55,40 @@ origin; they are not screen coordinates. **Use picked face** copies a retained,
 source-addressable support from the viewport. Unsupported or unmapped faces are
 not substituted with another face. **Field help** explains the compiler's fields.
 
+For a mounting hole on **Simple Bracket**, click its broad horizontal face and
+choose **Add hole on selected face**. Alternatively choose **Add hole…** first,
+then click the face. Drag the gold ring to position the hole. The complete disk
+stays inside the face with positive edge clearance. Shift-drag or right-drag
+keeps camera control available. **Center X/Y** refine the position in the face's
+construction frame; a 6 mm hole at X = 13, Y = 10 mm is centered at world
+(16, −10, 3) mm. The preview checks automatically after an edit settles.
+**Apply** writes one undoable source edit; **Cancel** leaves the source intact.
+See the [complete bracket example](https://github.com/yuechen-li-dev/Aetheris/blob/master/fixtures/Regression/OrientedComposeHoles/bracket-foot-hole.firmament).
+
+The same face can contain multiple separated **Hole**, **Counterbored hole** and
+**Countersunk hole** features. Choose the tool, click the face and drag its gold
+preview. Counterbores and countersinks show the shaft and outer recess circles.
+Placement reserves the outer recess diameter, with at least 0.01 mm of material
+between holes and face boundaries. Dragging avoids existing circular openings;
+exact coordinates that violate clearance disable Apply. Features keep their
+individual names, dimensions and undoable source edits.
+
+On this 3 mm thick bracket, a counterbore with a 4 mm shaft, 7 mm outer diameter
+and 1 mm depth fits; a countersink with a 4 mm shaft, 7 mm outer diameter and
+90° angle also fits. Recesses must leave at least 0.01 mm of shaft depth before
+the exit. See the [multiple-hole example](https://github.com/yuechen-li-dev/Aetheris/blob/master/fixtures/Regression/OrientedComposeHoles/bracket-multiple-face-holes.firmament).
+
+Picked-face placement requires convex planar outer boundaries, circular inner
+openings, and a clear contained corridor to a parallel exit. Each hole reserves
+a full-depth clearance cylinder at its largest radius; crossing envelopes and
+unsupported trims reject. A face selector names its source construction, so it
+does not depend on display triangle or BRep face numbers.
+
+The legacy **On +Z** form follows the Profile's local extrusion axis (world −Y
+for this bracket's XZ sketch). It is separate from picked-face placement.
+Apply remains disabled until a preview succeeds. Exact coordinate edits outside
+the support bounds disable Apply; dragging clamps to a safe position.
+
 Use **Pocket…** for a finite recess; **+ Add** opens the full catalog. A part has
 one material body. Choosing another base replaces that base and checks its
 existing downstream features. Use an Assembly for separate parts.

@@ -6,6 +6,7 @@ import { parseQuantity, spliceField } from './fieldEdit';
 import { PatternEditor } from './PatternEditor';
 import { bodyParent, featureTarget, paletteOperation, uniqueName } from './graphAuthoring';
 import { jointOperations, type AssemblyGraph, type AssemblyEnd } from './assemblyGraph';
+import { constrainCenter, localPoint, worldPoint, type PlacementActions, type PlacementGuide } from '../viewport/featurePlacement';
 
 export type AuthoringAction = { kind: 'base' | 'patternEditor' | 'pattern' | 'extrude' | 'pocket' | 'placement' | 'mate'; item?: never; baseId?: string }
   | { kind: 'feature'; item: PaletteItem };
@@ -18,6 +19,8 @@ interface Props {
   documents: Readonly<Record<string, string>>; root: string; onCancel(): void; onSketch(): void;
   onPreview(model: ModelSession | null): void; onApply(edit: LanguageEdit, label: string): void;
   onInspect?(node: string): void;
+  placementRef?: React.MutableRefObject<PlacementActions | null>;
+  onPlacementGuide?(guide: PlacementGuide | null): void;
 }
 
 const titles = { base: 'Choose base shape', feature: 'Place feature', pattern: 'Grid a seed hole', patternEditor: 'Edit Patterns', extrude: 'Extrude a profile', pocket: 'Create pocket', placement: 'Place component', mate: 'Add mate' };
@@ -80,6 +83,17 @@ export function AuthoringPanel(props: Props) {
   const [error, setError] = useState('');
   const [patternOperations, setPatternOperations] = useState<readonly LanguageEditOperation[]>([]);
   const [prepared, setPrepared] = useState<LanguageEdit | null>(null);
+  const [support, setSupport] = useState<SelectionDescription | null>(null);
+  const [center, setCenter] = useState(['0', '0']);
+  const [diameter, setDiameter] = useState(NaN);
+  const [shaftDiameter, setShaftDiameter] = useState(NaN);
+  const initialFacePlaced = useRef(false);
+  const [placementEpoch, setPlacementEpoch] = useState(0);
+  const interactiveHole = pending.action.kind === 'feature' && ['hole', 'counterbore', 'countersink'].includes(pending.action.item.id);
+  const coordinate = center.map(Number);
+  const constrained = support?.support ? constrainCenter(support.support, coordinate, diameter) : null;
+  const placementError = support && (!center.every(v => v.trim()) || !constrained || constrained.some((v, i) => Math.abs(v - coordinate[i]) > 1e-6))
+    ? 'Keep the complete hole and recess inside the selected face with positive edge clearance and at least 0.01 mm from existing holes. Use positive diameters.' : '';
   const generation = useRef(0), preview = useRef<ModelSession | null>(null);
   const show = useRef(props.onPreview); show.current = props.onPreview;
   const release = () => {
@@ -88,6 +102,35 @@ export function AuthoringPanel(props: Props) {
     if (previous) void previous.dispose().catch(() => undefined);
   };
   const invalidate = () => { generation.current++; release(); setPrepared(null); setDiagnostics([]); setError(''); setState('editing'); };
+  const place = (selection: SelectionDescription, point: readonly number[]) => {
+    if (!interactiveHole || !selection.support || !selection.selector) return;
+    const position = constrainCenter(selection.support, localPoint(selection.support, point), diameter);
+    invalidate(); setSupport(selection);
+    const bodyName = /^face\((\w+)\.Side/.exec(selection.selector)?.[1];
+    const host = bodies.find(n => n.name === bodyName); if (host) setBody(host.id);
+    if (position) setCenter(position.map(v => String(Math.round(v * 1e6) / 1e6)));
+    else setError('This hole or recess does not fit between the face boundary and existing holes. Reduce its diameter or choose another face.');
+  };
+  if (props.placementRef) props.placementRef.current = { place, move: point => { if (support) place(support, point); }, reject: reason => { invalidate(); setError(reason); } };
+  useEffect(() => {
+    const changes = fieldDraft.current?.read();
+    const value = (name: string) => parseQuantity(changes?.find(c => c.field.toLowerCase() === name)?.value
+      ?? draftNode?.fields.find(f => f.name.toLowerCase() === name)?.text ?? '')?.number ?? NaN;
+    const shaft = value('diameter'); setShaftDiameter(shaft);
+    setDiameter(pending.action.kind === 'feature' && pending.action.item.id === 'counterbore' ? value('counterborediameter')
+      : pending.action.kind === 'feature' && pending.action.item.id === 'countersink' ? value('countersinkdiameter') : shaft);
+  }, [placementEpoch, draftNode]);
+  useEffect(() => {
+    if (initialFacePlaced.current || !interactiveHole || !props.selection?.support || !Number.isFinite(diameter)) return;
+    initialFacePlaced.current = true;
+    const frame = props.selection.support;
+    const middle = [0, 1].map(i => frame.boundary.reduce((sum, p) => sum + p[i], 0) / frame.boundary.length);
+    place(props.selection, worldPoint(frame, middle));
+  }, [diameter, draftNode]);
+  useEffect(() => {
+    props.onPlacementGuide?.(support?.support && !placementError ? { selection: support, center: coordinate, diameter, shaftDiameter } : null);
+  }, [support, center, diameter, shaftDiameter, placementError]);
+  useEffect(() => () => { props.onPlacementGuide?.(null); if (props.placementRef) props.placementRef.current = null; }, []);
   useEffect(() => { invalidate(); return () => { generation.current++; release(); }; }, []);
   useEffect(() => {
     if (!draft) return;
@@ -123,7 +166,10 @@ export function AuthoringPanel(props: Props) {
         return [{ kind: 'insertDeclaration', parent: bodyParent(outline, pending.node), source: editedDraft(), name }];
       }
       case 'feature': {
-        const operation = paletteOperation({ ...pending.action.item, source: editedDraft() }, outline, body || pending.node);
+        if (placementError) throw new Error(placementError);
+        const overrides = support?.selector ? [{ field: draftNode?.fields.find(f => f.name.toLowerCase() === 'on')?.name ?? 'On', value: support.selector },
+          { field: draftNode?.fields.find(f => f.name.toLowerCase() === 'center')?.name ?? 'Center', value: `Point2(${coordinate[0]}mm, ${coordinate[1]}mm)` }] : [];
+        const operation = paletteOperation({ ...pending.action.item, source: editedDraft(overrides) }, outline, body || pending.node);
         if ('reason' in operation) throw new Error(operation.reason);
         return [{ ...operation, name } as LanguageEditOperation];
       }
@@ -166,6 +212,13 @@ export function AuthoringPanel(props: Props) {
       setError(details && details !== message ? `${message} ${details}` : message); setState('failed');
     } }
   };
+  // Placement is a disposable transaction. Pointer and parameter changes invalidate Apply
+  // immediately; only the latest settled candidate may enable it again.
+  useEffect(() => {
+    if (!support || placementError || !draftNode) return;
+    const timer = setTimeout(() => void runPreview(), 280);
+    return () => clearTimeout(timer);
+  }, [support, center, diameter, placementEpoch, draftNode]);
   const choose = (label: string, value: string, items: readonly { value: string; label: string }[], change: (value: string) => void) =>
     <label>{label}<select aria-label={label} value={value} disabled={state === 'preparing'} onChange={e => { invalidate(); change(e.target.value); }}>
       {(!value || !items.length) && <option value="">{items.length ? 'Choose…' : 'None available'}</option>}{items.map(i => <option key={i.value} value={i.value}>{i.label}</option>)}
@@ -186,17 +239,21 @@ export function AuthoringPanel(props: Props) {
       <p>Existing features and references remain. Preview checks their compatibility with the replacement.</p>
       {bodies.find(n => n.id === body)?.kind.toLowerCase() !== base && <p>Changing kind replaces the base fields with catalog defaults. Original base fields: {bodies.find(n => n.id === body)?.fields.map(f => `${f.name}: ${f.text}`).join('; ') || 'none'}. Review Source change before Apply.</p>}
       <button onClick={props.onSketch}>New IntelliDraft part…</button></>}
-    {isFeature && <>{bodyChoice}<p>Pick a support face in the viewport, or keep the authored support. Center coordinates are in that support's frame.</p>
-      <button disabled={!props.selection?.sourceAddressable || state === 'preparing' || !!preview.current} onClick={() => {
+    {isFeature && <>{bodyChoice}{interactiveHole && <p className="placement-hint">Click a planar face to place the hole. Drag the gold ring to move it; Shift-drag or right-drag moves the camera. Tune the coordinates below, then Apply.</p>}
+      {support ? <section aria-label="Face placement"><strong>Selected face · local coordinates</strong><button onClick={() => { invalidate(); setSupport(null); }}>Clear face</button>
+        {center.map((value, i) => <label key={i}>Center {['X', 'Y'][i]} (mm)<input aria-label={`Center ${['X', 'Y'][i]}`} type="number" step="0.1" value={value}
+          onChange={event => { invalidate(); setCenter(values => values.map((v, index) => index === i ? event.target.value : v)); }} /></label>)}
+        {placementError && <p role="alert">{placementError}</p>}</section> : <p>Pick a support face in the viewport, or keep the authored support. Center coordinates are in that support's frame.</p>}
+      {!interactiveHole && <button disabled={!props.selection?.sourceAddressable || state === 'preparing' || !!preview.current} onClick={() => {
         const field = draftNode?.fields.find(f => ['on', 'face'].includes(f.name.toLowerCase()));
         if (field && props.selection?.selector) {
           try { const text = editedDraft([{ field: field.name, value: props.selection.selector }]); invalidate(); setDraft(text); }
           catch (reason) { setError((reason as Error).message); }
         }
-      }}>Use picked face{props.selection?.selector ? ` · ${props.selection.selector}` : ''}</button>
+      }}>Use picked face{props.selection?.selector ? ` · ${props.selection.selector}` : ''}</button>}
     </>}
-    {(isFeature || pending.action.kind === 'base') && (draftNode ? <FieldSet key={draft} fields={draftNode.fields}
-      schema={props.schema?.constructs.find(c => c.id === draftNode.schemaId)} disabled={state === 'preparing'} draftRef={fieldDraft} onDirty={invalidate} />
+    {(isFeature || pending.action.kind === 'base') && (draftNode ? <FieldSet key={draft} fields={support ? draftNode.fields.filter(f => !['on', 'center'].includes(f.name.toLowerCase())) : draftNode.fields}
+      schema={props.schema?.constructs.find(c => c.id === draftNode.schemaId)} disabled={state === 'preparing'} draftRef={fieldDraft} onDirty={() => { invalidate(); setPlacementEpoch(e => e + 1); }} />
       : <p role="status">Preparing field controls…</p>)}
     {pending.action.kind === 'patternEditor' && <PatternEditor source={source} candidate={prepared?.text ?? null} sourceName={sourceName} revision={pending.revision} node={pending.node} outline={outline} runtime={runtime} disabled={state === 'preparing'} onChange={operations => { invalidate(); setPatternOperations(operations); }} />}
     {pending.action.kind === 'pattern' && <>
@@ -229,12 +286,13 @@ export function AuthoringPanel(props: Props) {
       {pending.mate?.existing ? <p>Mate type: {jointKind} · authored contract and options retained</p> : choose('Mate type', jointKind, props.jointKinds.map(k => ({ value: k, label: k })), setJointKind)}
       <p>The moving component's absolute Placement is replaced by this relationship. Its other source and published frames remain.</p>
     </>}
+    {state === 'editing' && <p role="status">Click Preview to check this feature and enable Apply.</p>}
     {state === 'preparing' && <p role="status">Compiling preview…</p>}
     {state === 'previewed' && <p role="status">Preview admitted. Working source has not changed.</p>}
     {(error || diagnostics.some(d => d.severity === 'error')) && <div role="alert"><strong>Preview refused · source unchanged</strong>{error && <p>{error}</p>}
       {diagnostics.filter(d => d.severity === 'error').map((d, i) => <p key={i}><b>{d.code}</b> · {d.message}{d.source && <small>{d.source.source}:{d.source.line}:{d.source.column} (preview source)</small>}</p>)}</div>}
     {prepared && <details><summary>Source change</summary><pre>{prepared.text}</pre></details>}
     <div className="authoring-actions"><button disabled={state === 'preparing' || !!placementReason && pending.action.kind === 'placement'} onClick={() => void runPreview()}>Preview</button>
-      <button className="primary" disabled={!prepared || state !== 'previewed'} onClick={() => prepared && props.onApply(prepared, title)}>Apply</button></div>
+      <button className="primary" disabled={!prepared || state !== 'previewed'} title={state === 'previewed' ? 'Commit the admitted preview' : state === 'failed' ? 'Correct the preview error, then Preview again' : 'Run Preview successfully to enable Apply'} onClick={() => prepared && props.onApply(prepared, title)}>Apply</button></div>
   </aside>;
 }
