@@ -241,6 +241,7 @@ export function AuthoringPanel(props: Props) {
       <button onClick={props.onSketch}>New IntelliDraft part…</button></>}
     {isFeature && <>{bodyChoice}{interactiveHole && <p className="placement-hint">Click a planar face to place the hole. Drag the gold ring to move it; Shift-drag or right-drag moves the camera. Tune the coordinates below, then Apply.</p>}
       {support ? <section aria-label="Face placement"><strong>Selected face · local coordinates</strong><button onClick={() => { invalidate(); setSupport(null); }}>Clear face</button>
+        <p>Gold arrow points into the material. The recess opens on the selected face.</p>
         {center.map((value, i) => <label key={i}>Center {['X', 'Y'][i]} (mm)<input aria-label={`Center ${['X', 'Y'][i]}`} type="number" step="0.1" value={value}
           onChange={event => { invalidate(); setCenter(values => values.map((v, index) => index === i ? event.target.value : v)); }} /></label>)}
         {placementError && <p role="alert">{placementError}</p>}</section> : <p>Pick a support face in the viewport, or keep the authored support. Center coordinates are in that support's frame.</p>}

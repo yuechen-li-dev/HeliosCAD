@@ -78,6 +78,14 @@ and 1 mm depth fits; a countersink with a 4 mm shaft, 7 mm outer diameter and
 90° angle also fits. Recesses must leave at least 0.01 mm of shaft depth before
 the exit. See the [multiple-hole example](https://github.com/yuechen-li-dev/Aetheris/blob/master/fixtures/Regression/OrientedComposeHoles/bracket-multiple-face-holes.firmament).
 
+The gold arrow points inward, into the selected face; the larger recess opens
+on that face. New counterbores start at 1 mm depth. New countersinks start with
+a 6 mm shaft, 8 mm outer diameter and 90° angle (a 1 mm recess). A recess as
+deep as the wall cannot leave a smaller through shaft: for a 3 mm wall, the
+maximum recess depth is 2.99 mm. A refused preview reports the actual available
+thickness and tells you which parameter to reduce. The accepted solid remains
+visible until Apply.
+
 Picked-face placement requires convex planar outer boundaries, circular inner
 openings, and a clear contained corridor to a parallel exit. Each hole reserves
 a full-depth clearance cylinder at its largest radius; crossing envelopes and

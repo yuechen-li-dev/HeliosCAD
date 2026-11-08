@@ -165,6 +165,43 @@ test('one bracket face accepts separated holes, counterbore and countersink with
   expect(((await saveSource(page, 'multiple-face-holes-redo')).source.match(/Hole</g) ?? []).length).toBe(4);
 });
 
+test('recess defaults cut inward from the upright and a full-thickness recess has one useful error', async ({ page }) => {
+  await page.goto('/'); await page.getByRole('button', { name: 'Open Simple bracket', exact: true }).click();
+  await expect(page.locator('.status-ready')).toContainText('Ready', { timeout: 120_000 });
+  await page.getByRole('tab', { name: 'Graph', exact: true }).click(); await page.getByRole('button', { name: 'Right', exact: true }).click();
+  const canvas = page.locator('[data-testid="viewport"] canvas');
+  async function clickUpright(height: number) {
+    const camera = JSON.parse((await canvas.getAttribute('data-surface-inspection'))!).camera, rect = (await canvas.boundingBox())!;
+    await page.mouse.click(rect.x + rect.width / 2, rect.y + rect.height / 2 - (height - camera.target[2]) * rect.height / camera.span);
+  }
+  await inspector(page).getByRole('button', { name: 'Counterbored hole…', exact: true }).click();
+  await expect(panel(page).getByLabel('CounterboreDepth', { exact: true })).toHaveValue('1');
+  await clickUpright(24);
+  await expect(panel(page).getByText('Gold arrow points into the material. The recess opens on the selected face.', { exact: true })).toBeVisible();
+  await expect(panel(page).getByRole('status')).toContainText('Preview admitted');
+  await panel(page).getByLabel('CounterboreDepth', { exact: true }).fill('3');
+  await expect(panel(page).getByRole('alert')).toContainText('depth is 3 mm');
+  await expect(panel(page).getByRole('alert')).toContainText('face has 3 mm');
+  await expect(panel(page).getByRole('alert')).toContainText('2.99 mm');
+  await expect(panel(page).getByRole('alert')).not.toContainText('compose-authoritative-section-stack');
+  await expect(panel(page).getByRole('button', { name: 'Apply', exact: true })).toBeDisabled();
+  await panel(page).getByLabel('CounterboreDepth', { exact: true }).fill('1');
+  await expect(panel(page).getByRole('status')).toContainText('Preview admitted');
+  await panel(page).getByRole('button', { name: 'Apply', exact: true }).click(); await ready(page);
+  await inspector(page).getByRole('button', { name: 'Countersunk hole…', exact: true }).click();
+  await expect(panel(page).getByLabel('CountersinkDiameter', { exact: true })).toHaveValue('8');
+  await clickUpright(12); await expect(panel(page).getByRole('status')).toContainText('Preview admitted');
+  await page.getByRole('button', { name: 'Iso', exact: true }).click();
+  await page.screenshot({ path: resolve(output, 'upright-recess-inward-preview.png'), fullPage: true });
+  await panel(page).getByRole('button', { name: 'Apply', exact: true }).click(); await ready(page);
+  const edited = await saveSource(page, 'upright-recess-defaults');
+  const exported = await step(page, 'upright-recess-defaults', { min: [0,-20,0], max: [30,0,40] });
+  expect(exported).toContain('CONICAL_SURFACE(');
+  const validation = JSON.parse(execFileSync('dotnet', [cli, 'validate', edited.path, '--json'], { encoding: 'utf8' }));
+  expect(validation.firmamentV2Validation).toMatchObject({ status: 'valid', validationLevel: 'Built' });
+  await page.screenshot({ path: resolve(output, 'upright-recess-defaults.png'), fullPage: true });
+});
+
 test('unapplied graph fields cannot be lost by switching views or opening source', async ({ page }) => {
   await newBlock(page);
   await page.getByRole('button', { name: 'Size [60mm, 40mm, 12mm]', exact: true }).click();

@@ -75,7 +75,9 @@ export function placementLines(guide?: PlacementGuide | null): TelosLine[] {
   });
   const center = worldPoint(frame, guide.center), tick = Math.min(guide.diameter / 3, 2);
   const cross = [0, 1].map(axis => [-1, 1].flatMap(sign => worldPoint(frame, guide.center.map((v, i) => v + (axis === i ? sign * tick : 0)))));
-  return [...rings, ...cross, [...center, ...center.map((v, i) => v + frame.normal[i] * tick)]].flatMap((points, i) => {
+  const tip = center.map((v, i) => v - frame.normal[i] * tick);
+  const head = [-1, 1].map(sign => [...tip, ...tip.map((v, i) => v + frame.normal[i] * tick * .35 + sign * frame.x[i] * tick * .2)]);
+  return [...rings, ...cross, [...center, ...tip], ...head].flatMap((points, i) => {
     const line: TelosLine = { id: `feature-placement:${i}`, points, identity: { occurrenceId: guide.selection.occurrenceId, overlayId: 'feature-placement' },
       transform: [1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1], overlay: true, pickable: false, depthMode: 'always-on-top', widthPixels: 2, color: [1,.72,.15,1] };
     return [{ ...line, id: `${line.id}:halo`, widthPixels: 8, color: [1,.62,.05,.18] }, line];

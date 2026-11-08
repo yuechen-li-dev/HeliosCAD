@@ -1,9 +1,22 @@
 import { describe, expect, it } from 'vitest';
-import type { PlanarFaceSupport } from '@aetheris/cad';
-import { constrainCenter, localPoint, worldPoint } from './featurePlacement';
+import type { PlanarFaceSupport, SelectionDescription } from '@aetheris/cad';
+import { constrainCenter, localPoint, placementLines, worldPoint } from './featurePlacement';
 
 const face: PlanarFaceSupport = { origin: [3,0,3], x: [1,0,0], y: [0,-1,0], normal: [0,0,-1], boundary: [[0,0],[27,0],[27,20],[0,20]] };
 describe('face placement geometry', () => {
+  it('draws the cutting arrow into the material for either face-normal sign', () => {
+    for (const normal of [[0,0,1],[0,0,-1],[1,0,0],[-1,0,0]]) {
+      const support = { ...face, normal, x: normal[0] ? [0,1,0] : [1,0,0], y: normal[0] ? [0,0,normal[0]] : [0,normal[2],0] };
+      const selection: SelectionDescription = { support, occurrenceId: 'part', semanticEntityId: 'part', faceId: 'face:1', definitionId: 'part', semanticTopologyId: null,
+        topologyKind: 'Face', outputRole: null, originFeature: null, selector: 'face(part.Side("edge"))', sourceAddressability: 'DerivedStable', selectorReason: null,
+        source: null, buildRevision: 0, sourceAddressable: true };
+      const lines = placementLines({ selection, center: [5,5], diameter: 7, shaftDiameter: 4 }).filter(l => !l.id.endsWith(':halo'));
+      const arrow = Array.from(lines.at(-3)!.points), inward = arrow.slice(3).map((v,i) => v - arrow[i]);
+      expect(inward.reduce((sum,v,i) => sum + v * normal[i], 0)).toBeLessThan(0);
+      const tip = arrow.slice(3);
+      for (const wing of lines.slice(-2)) expect(Array.from(wing.points).slice(0,3)).toEqual(tip);
+    }
+  });
   it('keeps a dragged disk inside every boundary with a positive margin', () => {
     const clamped = constrainCenter(face, [-100,100], 6)!;
     expect(clamped[0]).toBeCloseTo(3.01001, 9); expect(clamped[1]).toBeCloseTo(16.98999, 9);
