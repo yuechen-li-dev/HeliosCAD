@@ -101,6 +101,45 @@ Use **Pocket…** for a finite recess; **+ Add** opens the full catalog. A part 
 one material body. Choosing another base replaces that base and checks its
 existing downstream features. Use an Assembly for separate parts.
 
+## Finish one selected edge
+
+Switch **Faces** to **Edges** in the viewport toolbar, then click an edge.
+Choose **Fillet selected edge** or **Chamfer selected edge** above the viewport.
+Set **Radius** or **Distance**, inspect the automatic gold preview, then **Apply**.
+The dialog locks the target to the selected edge. Cancel leaves source unchanged;
+Apply writes one EdgeFinish declaration and can be undone in one step.
+
+For Simple Bracket, use **Iso** and select the inside crease where the foot
+meets the upright. The selection reads **Inside bend · full length**. A 2 mm
+radius creates a concave fillet across the entire 20 mm width. Outside corners
+running across the extrusion also support fillets and chamfers. The selected
+edge alone is thick gold; an edge under the pointer is cyan. The body keeps its
+ordinary shading so the target stays clear.
+
+These longitudinal finishes modify one straight-sided profile corner and sweep
+it through the extrusion. Preview requires at least 0.01 mm of remaining
+material at adjacent legs and other boundaries. You can finish multiple
+different original corners, mixing fillets and chamfers. A second finish on
+the same corner, or finishes that consume their shared edge, are refused.
+Radius and Distance must be at least 0.01 mm.
+
+Extrusion end-face edges currently offer chamfer only. Full-edge fillets on
+those edges are not yet supported; the earlier inset cap-fillet demo is no
+longer offered as a standard UI fillet. The Box's shared +X/+Z edge retains its
+qualified route. Imported edges, curved profile corners and other unqualified
+selections keep the actions disabled. The existing **Fillet… / Chamfer…** graph
+buttons still finish an entire face rim.
+
+On a single profile extrusion, these corner finishes combine with separated
+picked-side through holes, counterbores and countersinks on either bracket leg.
+Add the holes before or after the finishes. Hole coordinates stay anchored to
+the original construction face; the remaining face boundary clips placement.
+The complete shaft/recess envelope must retain at least 0.01 mm clearance from
+finished boundaries and other holes. A colliding preview disables Apply and
+leaves accepted source and geometry intact. Move the hole, reduce the finish,
+or cancel the draft. End-face finishes combined with picked-side holes and
+general Compose histories are not supported by this route.
+
 ## Drafts, failures and history
 
 A placement preview does not change working source. **Cancel** leaves the

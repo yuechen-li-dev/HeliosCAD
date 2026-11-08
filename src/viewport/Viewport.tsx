@@ -49,6 +49,7 @@ interface Props extends FeaturePlacementProps {
   pose?: MotionPose | null;
   selectedEntityId: string | null;
   selectedTopologyId: string | null;
+  selectedOccurrenceId?: string | null;
   theme: ThemeName;
   displayMode: DisplayMode;
   viewMode: ViewMode;
@@ -166,11 +167,13 @@ function TelosViewport(props: Props & { onRetry(): void; onUnavailable(reason: s
         ? value.model.selectionForEntity(value.selectedEntityId)
         : { occurrenceIds: [], ranges: [] };
     const selectedIds = new Set(selected.occurrenceIds);
+    const topology = !!value.selectedTopologyId;
+    const inSelection = (occurrenceId: string) => value.selectedOccurrenceId ? occurrenceId === value.selectedOccurrenceId : selectedIds.has(occurrenceId);
     const meshes: TelosMesh[] = scene.meshes.map((mesh) => ({
       ...mesh,
       material: pmiBodyMaterial(mesh.material, !!value.model?.mesh.annotations?.length,
         !!value.model?.mesh.occurrences.find(o => o.id === mesh.identity.occurrenceId)?.material),
-      selected: selectedIds.has(mesh.identity.occurrenceId),
+      selected: !topology && selectedIds.has(mesh.identity.occurrenceId),
       visible: value.displayMode !== "wireframe",
     }));
     if (
@@ -180,7 +183,7 @@ function TelosViewport(props: Props & { onRetry(): void; onUnavailable(reason: s
     ) {
       for (const mesh of [...scene.meshes, ...scene.fields.filter(f=>f.proxy).map(f=>({definition:f.proxy!, identity:f.identity, transform:f.transform!, material:f.material}))])
         for (const range of mesh.definition.ranges ?? [])
-          if (range.faceId === value.selectedTopologyId) {
+          if (range.faceId === value.selectedTopologyId && inSelection(mesh.identity.occurrenceId)) {
             meshes.push({
               ...mesh,
               definition: {
@@ -199,23 +202,29 @@ function TelosViewport(props: Props & { onRetry(): void; onUnavailable(reason: s
     const lines = scene.lines.map((line) => ({
       ...line,
       selected:
-        line.identity.edgeId === value.selectedTopologyId ||
-        selectedIds.has(line.identity.occurrenceId),
-      visible: value.displayMode !== "shaded",
+        topology ? line.identity.edgeId === value.selectedTopologyId && inSelection(line.identity.occurrenceId)
+          : selectedIds.has(line.identity.occurrenceId),
+      widthPixels: topology && line.identity.edgeId === value.selectedTopologyId && inSelection(line.identity.occurrenceId) ? 4 : 1,
+      visible: value.displayMode !== "shaded" || topology && line.identity.edgeId === value.selectedTopologyId && inSelection(line.identity.occurrenceId),
       color:
         value.theme === "bronze-age"
           ? [0.18, 0.22, 0.2, 0.85]
           : [0.3, 0.35, 0.32, 0.85],
     }));
+    const selectedEdges = lines.filter(line => line.selected && value.selectedTopologyId?.startsWith('edge:'));
+    const edgeHalos = selectedEdges.map(line => ({ ...line, id: `${line.id}:selection-halo`, selected: false,
+      overlay: true, pickable: false, depthMode: 'always-on-top' as const, widthPixels: 10, color: [1, .68, .12, .25] }));
+    canvas.current?.setAttribute('data-topology-highlight', JSON.stringify({ edge: value.selectedTopologyId, edges: selectedEdges.length,
+      bodies: meshes.filter(mesh => mesh.selected && !mesh.overlay).length, occurrence: value.selectedOccurrenceId ?? null }));
     const concepts = value.showConcepts && value.model ? conceptWireframe(posedMesh(value.model.mesh, value.pose)) : [];
     const preview = value.wireframePreview ? operationPreviewWireframe(value.wireframePreview.mesh) : [];
     canvas.current?.setAttribute("data-operation-preview-wires", String(preview.length / 2));
     canvas.current?.setAttribute("data-concept-wires", String(concepts.length / 2));
-    const displayScene = { ...scene, meshes, lines, fields: scene.fields.map(f=>({...f, selected:selectedIds.has(f.identity.occurrenceId), visible:value.displayMode !== "wireframe"})) };
+    const displayScene = { ...scene, meshes, lines, fields: scene.fields.map(f=>({...f, selected:!topology && selectedIds.has(f.identity.occurrenceId), visible:value.displayMode !== "wireframe"})) };
     const inspected = inspectSurfaces(inspection.current.mode === "normal" && !inspection.current.face ? displayScene : scene,
       inspection.current.mode, inspection.current.face);
     current.setScene({ ...inspected, meshes: [...inspected.meshes, ...pmiMeshes(value.model?.mesh.annotations)],
-      lines: [...inspected.lines, ...concepts, ...preview, ...placementLines(value.placementGuide), ...measurementLines(value.measurementTool?.result ?? null), ...pmiLines(value.model?.mesh.annotations)] });
+      lines: [...inspected.lines, ...edgeHalos, ...concepts, ...preview, ...placementLines(value.placementGuide), ...measurementLines(value.measurementTool?.result ?? null), ...pmiLines(value.model?.mesh.annotations)] });
     canvas.current?.setAttribute('data-feature-placement', JSON.stringify(value.placementGuide ? { center: value.placementGuide.center, diameter: value.placementGuide.diameter, selector: value.placementGuide.selection.selector } : null));
     canvas.current?.setAttribute("data-surface-inspection", JSON.stringify({ mode: inspection.current.mode,
       isolatedFace: inspection.current.face ?? null,
@@ -318,13 +327,20 @@ function TelosViewport(props: Props & { onRetry(): void; onUnavailable(reason: s
       const hit =
         event.type === "pointerleave"
           ? null
-          : current.picker.pick(pixel(event));
+          : current.picker.pick(pixel(event), latest.current.selectionMode);
       let changed = false;
       for (const mesh of current.scene.meshes) {
         const hovered =
-          !mesh.overlay && mesh.identity.occurrenceId === hit?.occurrenceId;
+          latest.current.selectionMode !== 'edge' && !mesh.overlay && mesh.identity.occurrenceId === hit?.occurrenceId;
         changed ||= mesh.hovered !== hovered;
         mesh.hovered = hovered;
+      }
+      for (const line of current.scene.lines) {
+        if (!line.identity.edgeId || line.overlay) continue;
+        const hovered = latest.current.selectionMode === 'edge' && line.identity.edgeId === hit?.edgeId && line.identity.occurrenceId === hit?.occurrenceId;
+        const width = line.selected ? 4 : hovered ? 3 : 1;
+        changed ||= line.widthPixels !== width; line.widthPixels = width;
+        line.color = hovered ? [.2, .85, 1, 1] : latest.current.theme === 'bronze-age' ? [.18,.22,.2,.85] : [.3,.35,.32,.85];
       }
       if (changed) current.invalidate();
     };
@@ -367,7 +383,7 @@ function TelosViewport(props: Props & { onRetry(): void; onUnavailable(reason: s
   }, []);
   useEffect(() => {
     apply();
-  }, [props.measurementTick, props.measurementTool, props.showConcepts, props.model, props.model?.revision, props.wireframePreview, props.wireframePreview?.revision, props.pose, props.selectedEntityId, props.selectedTopologyId,
+  }, [props.measurementTick, props.measurementTool, props.showConcepts, props.model, props.model?.revision, props.wireframePreview, props.wireframePreview?.revision, props.pose, props.selectedEntityId, props.selectedTopologyId, props.selectedOccurrenceId,
     props.theme, props.displayMode, props.viewMode, props.viewCommand, props.aaMode, props.aaDebug,
     inspectionMode, isolatedFaceKey, props.placementGuide]);
   useEffect(() => { setIsolatedFaceKey(""); }, [props.model?.id, props.model?.revision]);

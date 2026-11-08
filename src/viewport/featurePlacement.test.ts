@@ -1,9 +1,27 @@
 import { describe, expect, it } from 'vitest';
 import type { PlanarFaceSupport, SelectionDescription } from '@aetheris/cad';
-import { constrainCenter, localPoint, placementLines, worldPoint } from './featurePlacement';
+import { bindFeaturePlacement, constrainCenter, localPoint, placementLines, worldPoint } from './featurePlacement';
 
 const face: PlanarFaceSupport = { origin: [3,0,3], x: [1,0,0], y: [0,-1,0], normal: [0,0,-1], boundary: [[0,0],[27,0],[27,20],[0,20]] };
 describe('face placement geometry', () => {
+  it('keeps a newly picked face through pointerup while React still exposes the previous face guide', () => {
+    const element = document.createElement('canvas');
+    element.setPointerCapture = () => {}; element.hasPointerCapture = () => true; element.releasePointerCapture = () => {};
+    const base: SelectionDescription = { occurrenceId: 'part', semanticEntityId: 'part', faceId: 'face:1', definitionId: 'part', semanticTopologyId: null,
+      topologyKind: 'Face', outputRole: null, originFeature: null, selector: null, sourceAddressability: 'DerivedStable', selectorReason: null,
+      source: null, buildRevision: 0, sourceAddressable: true };
+    const old: SelectionDescription = { ...base, selector: 'old', support: { ...face, origin: [0,0,0] } };
+    const picked: SelectionDescription = { ...base, selector: 'upright', support: { ...face, origin: [3,0,0], normal: [1,0,0], x: [0,1,0], y: [0,0,1] } };
+    const placements: { selector: string | null | undefined; point: readonly number[] }[] = [];
+    const record = (selection: SelectionDescription, point: readonly number[]) => placements.push({ selector: selection.selector, point });
+    const unbind = bindFeaturePlacement(element, () => ({ placingFeature: true, placementGuide: { selection: old, center: [0,0], diameter: 6 },
+      placementActions: { current: { place: record, move: point => record(old, point), reject: () => {} } } }),
+      () => ({ origin: [10,10,10], direction: [-1,0,-1] }), () => picked);
+    element.dispatchEvent(new MouseEvent('pointerdown', { button: 0 }));
+    element.dispatchEvent(new MouseEvent('pointerup', { button: 0 }));
+    unbind();
+    expect(placements).toEqual([{ selector: 'upright', point: [3,10,3] }, { selector: 'upright', point: [3,10,3] }]);
+  });
   it('draws the cutting arrow into the material for either face-normal sign', () => {
     for (const normal of [[0,0,1],[0,0,-1],[1,0,0],[-1,0,0]]) {
       const support = { ...face, normal, x: normal[0] ? [0,1,0] : [1,0,0], y: normal[0] ? [0,0,normal[0]] : [0,normal[2],0] };

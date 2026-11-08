@@ -1,6 +1,7 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
-import type { LanguageOutline, ModelSession, PaletteItem } from '@aetheris/cad';
+import type { LanguageOutline, ModelSession, PaletteItem, SelectionDescription } from '@aetheris/cad';
+import type { PlacementActions } from '../viewport/featurePlacement';
 import type { CadRuntime } from '../sdk/CadRuntime';
 import { fakeModel } from '../test/fakes';
 import { AuthoringPanel } from './AuthoringPanel';
@@ -24,6 +25,29 @@ const mount = async () => {
 };
 
 describe('pending source transactions', () => {
+  it('retains a viewport click made before the compiler supplies hole dimensions', async () => {
+    let finish!: (value: LanguageOutline) => void;
+    const runtime = { outline: vi.fn().mockReturnValue(new Promise<LanguageOutline>(resolve => { finish = resolve; })), edit: vi.fn(), preview: vi.fn() } as unknown as CadRuntime;
+    const placementRef: { current: PlacementActions | null } = { current: null };
+    const onPlacementGuide = vi.fn();
+    const item: PaletteItem = { id: 'countersink', label: 'Countersunk hole', category: 'Holes', description: '', placement: 'feature', nameStem: 'Sink',
+      source: 'Hole<Countersink> Sink { Diameter: 6mm CountersinkDiameter: 8mm }' };
+    const selection: SelectionDescription = { occurrenceId: 'Stock', semanticEntityId: 'Stock', faceId: 'face:1', definitionId: 'Stock', semanticTopologyId: null,
+      topologyKind: 'Face', outputRole: null, originFeature: null, selector: 'face(Stock.Side("support"))', sourceAddressability: 'DerivedStable', selectorReason: null,
+      source: null, buildRevision: 0, sourceAddressable: true,
+      support: { origin: [0,0,0], x: [1,0,0], y: [0,1,0], normal: [0,0,1], boundary: [[0,0],[30,0],[30,30],[0,30]] } };
+    const view = render(<AuthoringPanel pending={{ action: { kind: 'feature', item }, node: 'Part/Stock', revision: 1 }} source="Model Part { Box Stock {} }"
+      sourceName="part.firmament" outline={outline} palette={[...palette, item]} runtime={runtime} assembly={null} jointKinds={['Fixed']} selection={null}
+      documents={{}} root="part.firmament" onCancel={vi.fn()} onSketch={vi.fn()} onPreview={vi.fn()} onApply={vi.fn()}
+      placementRef={placementRef} onPlacementGuide={onPlacementGuide} />);
+    act(() => placementRef.current!.place(selection, [10,12,0]));
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    const fields = ['Diameter', 'CountersinkDiameter'].map((name, i) => ({ name, text: i ? '8mm' : '6mm', shape: 'quantity' as const, span: { start: i * 10, length: 3 }, valueSpan: { start: i * 10, length: 3 } }));
+    await act(async () => finish({ ...outline, nodes: [{ ...outline.nodes[1], kind: 'Hole', variant: 'Countersink', fields }] }));
+    await waitFor(() => expect(onPlacementGuide).toHaveBeenCalledWith(expect.objectContaining({ selection, center: [10,12], diameter: 8 })));
+    expect(screen.getByRole('spinbutton', { name: 'Center X' })).toHaveValue(10);
+    view.unmount();
+  });
   it('requires an admitted preview before Apply and commits exactly its compiler edit', async () => {
     const { props, edit, runtime } = await mount();
     expect(screen.getByRole('button', { name: 'Apply' })).toBeDisabled();

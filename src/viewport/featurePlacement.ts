@@ -90,6 +90,7 @@ export function bindFeaturePlacement(element: HTMLCanvasElement, current: () => 
   ray: (pixel: [number, number]) => { origin: readonly number[]; direction: readonly number[] },
   pick: (pixel: [number, number]) => SelectionDescription | null) {
   let dragging = false;
+  let dragSelection: SelectionDescription | null = null;
   const pixel = (event: PointerEvent): [number, number] => { const rect = element.getBoundingClientRect(); return [event.clientX - rect.left, event.clientY - rect.top]; };
   const intersect = (event: PointerEvent, selection: SelectionDescription) => {
     const frame = selection.support; if (!frame) return null;
@@ -106,18 +107,20 @@ export function bindFeaturePlacement(element: HTMLCanvasElement, current: () => 
       return;
     }
     const point = intersect(event, selection); if (!point) return;
-    event.stopImmediatePropagation(); event.preventDefault(); dragging = true; element.setPointerCapture(event.pointerId);
+    event.stopImmediatePropagation(); event.preventDefault(); dragging = true; dragSelection = selection; element.setPointerCapture(event.pointerId);
     value.placementActions.current.place(selection, point);
   };
   const move = (event: PointerEvent) => {
     if (!dragging) return;
     event.stopImmediatePropagation(); event.preventDefault();
-    const value = current(), selection = value.placementGuide?.selection;
+    // Keep the picked support for this gesture. React may still publish the
+    // previous face's guide/actions between pointerdown and pointerup.
+    const value = current(), selection = dragSelection;
     const point = selection ? intersect(event, selection) : null;
-    if (point) value.placementActions?.current?.move(point);
+    if (point && selection && value.placingFeature) value.placementActions?.current?.place(selection, point);
   };
   const up = (event: PointerEvent) => {
-    if (!dragging) return; move(event); dragging = false;
+    if (!dragging) return; move(event); dragging = false; dragSelection = null;
     if (element.hasPointerCapture(event.pointerId)) element.releasePointerCapture(event.pointerId);
   };
   const click = (event: MouseEvent) => { if (current().placingFeature && !event.shiftKey) { event.stopImmediatePropagation(); event.preventDefault(); } };

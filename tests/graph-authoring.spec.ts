@@ -2,11 +2,21 @@ import { expect, test, type Page } from '@playwright/test';
 import { execFileSync } from 'node:child_process';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
+import { TelosCamera } from '@aetheris/three-telos';
 
 const output = resolve('artifacts/local/graph-authoring');
 const cli = resolve('../Aetheris/Aetheris.CLI/bin/Release/net10.0/aetheris.dll');
 const panel = (page: Page) => page.locator('.authoring-panel');
 const inspector = (page: Page) => page.getByRole('complementary', { name: 'Node inspector' });
+
+async function clickWorld(page: Page, point: readonly number[]) {
+  const canvas = page.locator('[data-testid="viewport"] canvas');
+  const state = JSON.parse((await canvas.getAttribute('data-surface-inspection'))!).camera;
+  const rect = (await canvas.boundingBox())!; const camera = new TelosCamera();
+  camera.mode = state.mode; camera.span = state.span; camera.position.fromArray(state.position);
+  camera.target.fromArray(state.target); camera.up.fromArray(state.up); camera.resize(rect.width, rect.height);
+  const pixel = camera.project(point); await page.mouse.click(rect.x + pixel[0], rect.y + pixel[1]);
+}
 test.beforeEach(async ({ page }) => {
   if (process.env.HELIOS_GRAPH_WEBGL === 'true') await page.addInitScript(() => localStorage.setItem('helios.viewport.renderer', 'webgl'));
   if (process.env.HELIOS_GRAPH_LAUNCH_URL) {
@@ -200,6 +210,233 @@ test('recess defaults cut inward from the upright and a full-thickness recess ha
   const validation = JSON.parse(execFileSync('dotnet', [cli, 'validate', edited.path, '--json'], { encoding: 'utf8' }));
   expect(validation.firmamentV2Validation).toMatchObject({ status: 'valid', validationLevel: 'Built' });
   await page.screenshot({ path: resolve(output, 'upright-recess-defaults.png'), fullPage: true });
+});
+
+for (const kind of ['Chamfer'] as const) test(`a picked bracket edge accepts one ${kind.toLowerCase()} with preview, cancel and undo`, async ({ page }) => {
+  await page.goto('/'); await page.getByRole('button', { name: 'Open Simple bracket', exact: true }).click();
+  await expect(page.locator('.status-ready')).toContainText('Ready', { timeout: 120_000 });
+  await page.getByRole('tab', { name: 'Graph', exact: true }).click();
+  const before = (await saveSource(page, `single-edge-${kind}-before`)).source;
+  await page.getByRole('button', { name: 'Front', exact: true }).click();
+  await page.getByRole('button', { name: 'Selection mode', exact: true }).click();
+  const canvas = page.locator('[data-testid="viewport"] canvas');
+  const camera = JSON.parse((await canvas.getAttribute('data-surface-inspection'))!).camera, rect = (await canvas.boundingBox())!;
+  await page.mouse.click(rect.x + rect.width / 2 + (18 - camera.target[0]) * rect.height / camera.span,
+    rect.y + rect.height / 2 - (3 - camera.target[2]) * rect.height / camera.span);
+  const action = page.getByRole('button', { name: `${kind} selected edge`, exact: true });
+  await expect(action).toBeEnabled(); await action.click();
+  await expect(panel(page).getByRole('region', { name: 'Selected edge' })).toContainText('Extrusion end-face edge');
+  await expect(panel(page).getByLabel('Face', { exact: true })).toHaveCount(0);
+  await expect(panel(page).getByLabel('Target', { exact: true })).toHaveCount(0);
+  const size = 'Distance';
+  await panel(page).getByLabel(size, { exact: true }).fill('0.5');
+  await expect(panel(page).getByRole('status')).toContainText('Preview admitted');
+  expect((await saveSource(page, `single-edge-${kind}-preview`)).source).toBe(before);
+  await panel(page).getByLabel(size, { exact: true }).fill('0');
+  await expect(panel(page).getByRole('alert')).toContainText('Preview refused');
+  await expect(panel(page).getByRole('button', { name: 'Apply', exact: true })).toBeDisabled();
+  await panel(page).getByRole('button', { name: 'Cancel', exact: true }).click();
+  expect((await saveSource(page, `single-edge-${kind}-cancelled`)).source).toBe(before);
+  await action.click(); await panel(page).getByLabel(size, { exact: true }).fill('0.5');
+  await expect(panel(page).getByRole('status')).toContainText('Preview admitted');
+  await page.getByRole('button', { name: 'Iso', exact: true }).click();
+  await page.screenshot({ path: resolve(output, `single-edge-${kind.toLowerCase()}-preview.png`), fullPage: true });
+  await panel(page).getByRole('button', { name: 'Apply', exact: true }).click(); await ready(page);
+  const edited = await saveSource(page, `bracket-single-edge-${kind.toLowerCase()}`);
+  expect(edited.source).toContain('Target: section.Outer.Vertex2_Vertex3');
+  expect(edited.source).toContain('Face: Top'); expect(edited.source).not.toContain('Target: Boundary');
+  expect(edited.source.match(/EdgeFinish\s/g)).toHaveLength(1);
+  await step(page, `bracket-single-edge-${kind.toLowerCase()}`, { min: [0,-20,0], max: [30,0,40] });
+  const validation = JSON.parse(execFileSync('dotnet', [cli, 'validate', edited.path, '--json'], { encoding: 'utf8' }));
+  expect(validation.firmamentV2Validation).toMatchObject({ status: 'valid', validationLevel: 'Built' });
+  await page.screenshot({ path: resolve(output, `bracket-single-edge-${kind.toLowerCase()}.png`), fullPage: true });
+  await page.getByRole('button', { name: 'Undo', exact: true }).click(); await ready(page);
+  expect((await saveSource(page, `single-edge-${kind}-undo`)).source).toBe(before);
+  await page.getByRole('button', { name: 'Redo', exact: true }).click(); await ready(page);
+  expect((await saveSource(page, `single-edge-${kind}-redo`)).source).toBe(edited.source);
+});
+
+for (const kind of ['Fillet', 'Chamfer'] as const) test(`a picked Box face-pair edge uses its localized ${kind.toLowerCase()} route`, async ({ page }) => {
+  await newBlock(page);
+  const bounds = { min: [-30,-20,0], max: [30,20,12] };
+  await step(page, `box-single-edge-${kind.toLowerCase()}-before`, bounds);
+  await page.getByRole('button', { name: 'Top', exact: true }).click();
+  await page.getByRole('button', { name: 'Selection mode', exact: true }).click();
+  const canvas = page.locator('[data-testid="viewport"] canvas');
+  const camera = JSON.parse((await canvas.getAttribute('data-surface-inspection'))!).camera, rect = (await canvas.boundingBox())!;
+  await page.mouse.click(rect.x + rect.width / 2 + (30 - camera.target[0]) * rect.height / camera.span,
+    rect.y + rect.height / 2 + camera.target[1] * rect.height / camera.span);
+  await page.getByRole('button', { name: `${kind} selected edge`, exact: true }).click();
+  await expect(panel(page).getByRole('region', { name: 'Selected edge' })).toContainText('+X / +Z');
+  await panel(page).getByLabel(kind === 'Fillet' ? 'Radius' : 'Distance', { exact: true }).fill('0.5');
+  await expect(panel(page).getByRole('status')).toContainText('Preview admitted');
+  await panel(page).getByRole('button', { name: 'Apply', exact: true }).click(); await ready(page);
+  const edited = await saveSource(page, `box-single-edge-${kind.toLowerCase()}`);
+  expect(edited.source).toContain('Face: +X'); expect(edited.source).toContain('Target: SharedEdgePlusZ');
+  const exported = await step(page, `box-single-edge-${kind.toLowerCase()}`, bounds);
+  expect(exported.match(/ADVANCED_FACE\(/g)).toHaveLength(7);
+});
+
+test('an end-face edge does not offer the inset partial fillet', async ({ page }) => {
+  await page.goto('/'); await page.getByRole('button', { name: 'Open Simple bracket', exact: true }).click();
+  await expect(page.locator('.status-ready')).toContainText('Ready', { timeout: 120_000 });
+  await page.getByRole('tab', { name: 'Graph', exact: true }).click();
+  await page.getByRole('button', { name: 'Front', exact: true }).click();
+  await page.getByRole('button', { name: 'Selection mode', exact: true }).click();
+  await clickWorld(page, [18,-20,3]);
+  await expect(page.getByRole('button', { name: 'Fillet selected edge', exact: true })).toBeDisabled();
+  await expect(page.getByRole('button', { name: 'Chamfer selected edge', exact: true })).toBeEnabled();
+  await expect(page.getByText('Full-edge fillets are not supported on this end-face edge yet.', { exact: false })).toBeVisible();
+  expect((await saveSource(page, 'unsupported-single-edge')).source).not.toContain('EdgeFinish');
+});
+
+for (const kind of ['Fillet', 'Chamfer'] as const) test(`the inside L bend takes a full-width ${kind.toLowerCase()} and only the picked edge highlights`, async ({ page }) => {
+  await page.goto('/'); await page.getByRole('button', { name: 'Open Simple bracket', exact: true }).click();
+  await expect(page.locator('.status-ready')).toContainText('Ready', { timeout: 120_000 });
+  await page.getByRole('tab', { name: 'Graph', exact: true }).click();
+  await page.getByRole('button', { name: 'Iso', exact: true }).click();
+  await page.getByRole('button', { name: 'Selection mode', exact: true }).click();
+  await clickWorld(page, [3,-10,3]);
+  const canvas = page.locator('[data-testid="viewport"] canvas');
+  await expect.poll(async () => JSON.parse((await canvas.getAttribute('data-topology-highlight'))!)).toMatchObject({ edges: 1, bodies: 0 });
+  await page.screenshot({ path: resolve(output, 'inside-bend-edge-selected.png'), fullPage: true });
+  await page.getByRole('button', { name: `${kind} selected edge`, exact: true }).click();
+  await expect(panel(page).getByRole('region', { name: 'Selected edge' })).toContainText('Inside bend · full length');
+  const field = kind === 'Fillet' ? 'Radius' : 'Distance';
+  await panel(page).getByLabel(field, { exact: true }).fill('2');
+  await expect(panel(page).getByRole('status')).toContainText('Preview admitted');
+  await page.screenshot({ path: resolve(output, `inside-bend-${kind.toLowerCase()}-preview.png`), fullPage: true });
+  await panel(page).getByRole('button', { name: 'Apply', exact: true }).click(); await ready(page);
+  const edited = await saveSource(page, `inside-bend-${kind.toLowerCase()}`);
+  await expect(page.getByRole('treeitem', { name: new RegExp(`^Collapse Edge${kind} `) })).toHaveCount(1);
+  expect(edited.source).toContain('Face: Longitudinal');
+  expect(edited.source).toContain('Target: section.Outer.Vertex3_Vertex4.Start');
+  const exported = await step(page, `inside-bend-${kind.toLowerCase()}`, { min: [0,-20,0], max: [30,0,40] });
+  expect(exported.match(/ADVANCED_FACE\(/g)).toHaveLength(9);
+  if(kind === 'Fillet') expect(exported.match(/CYLINDRICAL_SURFACE\(/g)).toHaveLength(1);
+  await page.screenshot({ path: resolve(output, `inside-bend-${kind.toLowerCase()}-applied.png`), fullPage: true });
+  await page.getByRole('button', { name: 'Undo', exact: true }).click(); await ready(page);
+  expect((await saveSource(page, 'inside-bend-undo')).source).not.toContain('EdgeFinish');
+  await page.getByRole('button', { name: 'Redo', exact: true }).click(); await ready(page);
+  expect((await saveSource(page, 'inside-bend-redo')).source).toBe(edited.source);
+});
+
+test('an outside longitudinal corner takes a full-width round with size guards', async ({ page }) => {
+  await page.goto('/'); await page.getByRole('button', { name: 'Open Simple bracket', exact: true }).click();
+  await expect(page.locator('.status-ready')).toContainText('Ready', { timeout: 120_000 });
+  await page.getByRole('tab', { name: 'Graph', exact: true }).click();
+  await page.getByRole('button', { name: 'Iso', exact: true }).click();
+  await page.getByRole('button', { name: 'Selection mode', exact: true }).click();
+  await clickWorld(page, [30,-10,3]);
+  await page.getByRole('button', { name: 'Fillet selected edge', exact: true }).click();
+  await expect(panel(page).getByRole('region', { name: 'Selected edge' })).toContainText('Outside corner · full length');
+  await panel(page).getByLabel('Radius', { exact: true }).fill('3');
+  await expect(panel(page).getByRole('alert')).toContainText('Preview refused');
+  await expect(panel(page).getByRole('button', { name: 'Apply', exact: true })).toBeDisabled();
+  await panel(page).getByLabel('Radius', { exact: true }).fill('0.5');
+  await expect(panel(page).getByRole('status')).toContainText('Preview admitted');
+  await panel(page).getByRole('button', { name: 'Apply', exact: true }).click(); await ready(page);
+  const edited = await saveSource(page, 'outside-corner-fillet');
+  expect(edited.source).toContain('section.Outer.Vertex2_Vertex3.Start');
+  await step(page, 'outside-corner-fillet', { min: [0,-20,0], max: [30,0,40] });
+});
+
+test('a mounting hole accepts multiple corner finishes and collision refusals retain the accepted part', async ({ page }) => {
+  await page.goto('/'); await page.getByRole('button', { name: 'Open Simple bracket', exact: true }).click();
+  await expect(page.locator('.status-ready')).toContainText('Ready', { timeout: 120_000 });
+  await page.getByRole('tab', { name: 'Graph', exact: true }).click();
+  await page.getByRole('button', { name: 'Top', exact: true }).click();
+  await inspector(page).getByRole('button', { name: 'Add hole…', exact: true }).click();
+  const canvas = page.locator('[data-testid="viewport"] canvas');
+  let camera = JSON.parse((await canvas.getAttribute('data-surface-inspection'))!).camera, rect = (await canvas.boundingBox())!;
+  await page.mouse.click(rect.x + rect.width / 2 + (16 - camera.target[0]) * rect.height / camera.span,
+    rect.y + rect.height / 2 - (-10 - camera.target[1]) * rect.height / camera.span);
+  await expect(panel(page).getByRole('status')).toContainText('Preview admitted');
+  await panel(page).getByRole('button', { name: 'Apply', exact: true }).click(); await ready(page);
+  const before = (await saveSource(page, 'single-edge-holed-before')).source;
+  await page.getByRole('button', { name: 'Iso', exact: true }).click();
+  await page.getByRole('button', { name: 'Selection mode', exact: true }).click();
+  await clickWorld(page,[3,-10,3]);
+  await page.getByRole('button', { name: 'Fillet selected edge', exact: true }).click();
+  await panel(page).getByLabel('Radius', { exact: true }).fill('12');
+  await expect(panel(page).getByRole('alert')).toContainText('clearance');
+  await expect(panel(page).getByRole('button', { name: 'Apply', exact: true })).toBeDisabled();
+  await page.screenshot({ path: resolve(output, 'bracket-finish-hole-collision-refused.png'), fullPage: true });
+  await panel(page).getByRole('button', { name: 'Cancel', exact: true }).click();
+  expect((await saveSource(page, 'bracket-collision-source-retained')).source).toBe(before);
+  await clickWorld(page,[3,-10,3]);
+  await page.getByRole('button', { name: 'Fillet selected edge', exact: true }).click();
+  await panel(page).getByLabel('Radius', { exact: true }).fill('2');
+  await expect(panel(page).getByRole('status')).toContainText('Preview admitted');
+  await panel(page).getByRole('button', { name: 'Apply', exact: true }).click(); await ready(page);
+  await clickWorld(page,[30,-10,3]);
+  await page.getByRole('button', { name: 'Chamfer selected edge', exact: true }).click();
+  await panel(page).getByLabel('Distance', { exact: true }).fill('0.5');
+  await expect(panel(page).getByRole('status')).toContainText('Preview admitted');
+  await panel(page).getByRole('button', { name: 'Apply', exact: true }).click(); await ready(page);
+  await clickWorld(page,[30,-10,0]);
+  await page.getByRole('button', { name: 'Fillet selected edge', exact: true }).click();
+  await panel(page).getByLabel('Radius', { exact: true }).fill('2.5');
+  await expect(panel(page).getByRole('alert')).toContainText(/radius is too large|consumes an adjacent edge/);
+  await expect(panel(page).getByRole('button', { name: 'Apply', exact: true })).toBeDisabled();
+  await panel(page).getByLabel('Radius', { exact: true }).fill('0.5');
+  await expect(panel(page).getByRole('status')).toContainText('Preview admitted');
+  await panel(page).getByRole('button', { name: 'Apply', exact: true }).click(); await ready(page);
+  const finished = (await saveSource(page, 'bracket-finished-mount')).source;
+  expect(finished.match(/EdgeFinish /g)).toHaveLength(3);
+  const exported = await step(page, 'bracket-finished-mount', { min: [0,-20,0], max: [30,0,40] });
+  expect(exported.match(/CYLINDRICAL_SURFACE\(/g)).toHaveLength(3);
+  await page.screenshot({ path: resolve(output, 'bracket-finished-mount-applied.png'), fullPage: true });
+  // Adding a further hole uses the same original face frame after the bend trims it.
+  await page.getByRole('button', { name: 'Top', exact: true }).click();
+  await inspector(page).getByRole('button', { name: 'Add hole…', exact: true }).click();
+  await clickWorld(page,[23,-6,3]);
+  await expect(panel(page).getByRole('status')).toContainText('Preview admitted');
+  const centerX = panel(page).getByRole('spinbutton', { name: 'Center X', exact: true });
+  const centerY = panel(page).getByRole('spinbutton', { name: 'Center Y', exact: true });
+  expect(Number(await centerX.inputValue())).toBeCloseTo(20, 1);
+  expect(Number(await centerY.inputValue())).toBeCloseTo(14, 1);
+  await centerX.fill('20'); await centerY.fill('14');
+  await expect(panel(page).getByRole('status')).toContainText('Preview admitted');
+  await panel(page).getByRole('button', { name: 'Apply', exact: true }).click(); await ready(page);
+  const secondHole = (await saveSource(page, 'bracket-finished-two-mounts')).source;
+  expect(secondHole).toContain('Point2(20mm, 14mm)');
+  await step(page, 'bracket-finished-two-mounts', { min: [0,-20,0], max: [30,0,40] });
+  await page.getByRole('button', { name: 'Undo', exact: true }).click(); await ready(page);
+  expect((await saveSource(page, 'bracket-finished-second-hole-undo')).source).toBe(finished);
+  await page.getByRole('button', { name: 'Redo', exact: true }).click(); await ready(page);
+  await expect(page.locator('.statusbar')).toContainText('No problems');
+  expect((await saveSource(page, 'bracket-finished-second-hole-redo')).source).toBe(secondHole);
+});
+
+test('a finished bracket accepts counterbore and countersink mounts on its two legs', async ({ page }) => {
+  await page.goto('/'); await page.getByRole('button', { name: 'Open Simple bracket', exact: true }).click();
+  await expect(page.locator('.status-ready')).toContainText('Ready', { timeout: 120_000 });
+  await page.getByRole('tab', { name: 'Graph', exact: true }).click();
+  await page.getByRole('button', { name: 'Iso', exact: true }).click();
+  await page.getByRole('button', { name: 'Selection mode', exact: true }).click();
+  await clickWorld(page,[3,-10,3]);
+  await page.getByRole('button', { name: 'Fillet selected edge', exact: true }).click();
+  await panel(page).getByLabel('Radius', { exact: true }).fill('2');
+  await expect(panel(page).getByRole('status')).toContainText('Preview admitted');
+  await panel(page).getByRole('button', { name: 'Apply', exact: true }).click(); await ready(page);
+  await page.getByRole('button', { name: 'Top', exact: true }).click();
+  await inspector(page).getByRole('button', { name: 'Counterbored hole…', exact: true }).click();
+  await clickWorld(page,[16,-10,3]);
+  await expect(panel(page).getByRole('status')).toContainText('Preview admitted');
+  await panel(page).getByRole('button', { name: 'Apply', exact: true }).click(); await ready(page);
+  await page.getByRole('button', { name: 'Iso', exact: true }).click();
+  await inspector(page).getByRole('button', { name: 'Countersunk hole…', exact: true }).click();
+  await clickWorld(page,[3,-10,25]);
+  await expect(panel(page).getByRole('status')).toContainText('Preview admitted');
+  await panel(page).getByRole('button', { name: 'Apply', exact: true }).click(); await ready(page);
+  const source = (await saveSource(page, 'bracket-finished-recess-mounts')).source;
+  expect(source).toContain('Hole<Counterbore>'); expect(source).toContain('Hole<Countersink>');
+  expect(source).toContain('Face: Longitudinal');
+  const exported = await step(page, 'bracket-finished-recess-mounts', { min: [0,-20,0], max: [30,0,40] });
+  expect(exported.match(/CONICAL_SURFACE\(/g)).toHaveLength(1);
+  expect(exported.match(/CYLINDRICAL_SURFACE\(/g)).toHaveLength(4);
+  await page.screenshot({ path: resolve(output, 'bracket-finished-recess-mounts.png'), fullPage: true });
 });
 
 test('unapplied graph fields cannot be lost by switching views or opening source', async ({ page }) => {
