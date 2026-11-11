@@ -1,4 +1,4 @@
-import { bindMeasurementPicking, measurementGroup, type MeasurementTool } from '@aetheris/three-telos';
+import { measurementGroup, type MeasurementResult } from '@aetheris/three-telos';
 import { useEffect, useRef, type MutableRefObject } from 'react';
 import type { MotionPose } from '@aetheris/cad';
 import * as THREE from 'three';
@@ -13,8 +13,8 @@ import { posedMesh } from './pose';
 import { bindFeaturePlacement, placementLines, type FeaturePlacementProps } from './featurePlacement';
 
 interface Props extends FeaturePlacementProps {
-  measurementTool?: MeasurementTool;
-  measurementTick?: number;
+  measurement?: MeasurementResult | null;
+  extraSelections?: readonly { readonly occurrenceId: string; readonly topologyId: string }[];
   showConcepts?: boolean;
   busyMessage?: string | null;
   errorMessage?: string | null;
@@ -27,8 +27,8 @@ interface Props extends FeaturePlacementProps {
   displayMode: DisplayMode;
   viewMode: ViewMode;
   viewCommand: string;
-  selectionMode: 'face' | 'edge';
-  onSelect(entityId: string | null, faceId: string | null, selection?: SelectionDescription | null): void;
+  selectionMode: 'face' | 'edge' | 'auto';
+  onSelect(entityId: string | null, faceId: string | null, selection?: SelectionDescription | null, options?: { readonly additive: boolean }): void;
   captureRef?: MutableRefObject<(() => string) | null>;
   pose?: MotionPose | null;
 }
@@ -42,7 +42,7 @@ export function LegacyViewport(props: Props) {
 
   useEffect(() => {
     if (!host.current) return;
-    const sceneState = createScene(host.current, props.onSelect);
+    const sceneState = createScene(host.current, (...args) => latest.current.onSelect(...args));
     state.current = sceneState;
     const element = sceneState.renderer.domElement;
     const raycaster = new THREE.Raycaster();
@@ -61,18 +61,8 @@ export function LegacyViewport(props: Props) {
         point: hit.point.toArray(), triangle: hit.faceIndex }));
       return selection;
     });
-    const unbind = bindMeasurementPicking(element, () => latest.current.measurementTool, (x,y) => {
-      const raycaster = new THREE.Raycaster();
-      raycaster.setFromCamera(new THREE.Vector2(x / element.clientWidth * 2 - 1, 1 - y / element.clientHeight * 2), sceneState.camera);
-      const hit = raycaster.intersectObjects(sceneState.group.children, false).find(h => h.object instanceof THREE.Mesh && !(h.object.userData as MeshMeta).highlight);
-      if (!hit) return null;
-      const meta = hit.object.userData as MeshMeta;
-      const resolved = sceneState.model?.describeSelection(meta.definitionId, hit.faceIndex ?? 0, meta.occurrenceId);
-      const face = Number(resolved?.faceId?.split(':').pop());
-      return { occurrenceId: meta.occurrenceId, faceId: Number.isInteger(face) ? face : null, rayOrigin: raycaster.ray.origin.toArray(), rayDirection: raycaster.ray.direction.toArray() };
-    });
     if (props.captureRef) props.captureRef.current = sceneState.capture;
-    return () => { unbind(); unbindPlacement(); if (props.captureRef) props.captureRef.current = null; sceneState.dispose(); state.current = null; };
+    return () => { unbindPlacement(); if (props.captureRef) props.captureRef.current = null; sceneState.dispose(); state.current = null; };
   }, []);
 
   useEffect(() => {
@@ -89,9 +79,9 @@ export function LegacyViewport(props: Props) {
   }, [props.placementGuide]);
   useEffect(() => {
     const current = state.current; if (!current) return;
-    const group = measurementGroup(props.measurementTool?.result ?? null); current.scene.add(group); current.invalidate();
+    const group = measurementGroup(props.measurement ?? null); current.scene.add(group); current.invalidate();
     return () => { disposeConceptWireframe(group); current.invalidate(); };
-  }, [props.measurementTick, props.measurementTool]);
+  }, [props.measurement]);
   useEffect(() => { if (state.current) loadModel(state.current, props.model); }, [props.model, props.model?.revision]);
   useEffect(() => {
     const current = state.current; if (!current) return;
@@ -116,7 +106,7 @@ export function LegacyViewport(props: Props) {
     current.scene.add(guides); current.invalidate();
     return () => { disposeConceptWireframe(guides); current.invalidate(); };
   }, [props.showConcepts, props.model, props.model?.revision, props.pose]);
-  useEffect(() => { if (state.current) selectEntity(state.current, props.model, props.selectedEntityId, props.selectedTopologyId, props.selectedOccurrenceId); }, [props.model, props.selectedEntityId, props.selectedTopologyId, props.selectedOccurrenceId]);
+  useEffect(() => { if (state.current) selectEntity(state.current, props.model, props.selectedEntityId, props.selectedTopologyId, props.selectedOccurrenceId, props.extraSelections ?? []); }, [props.model, props.selectedEntityId, props.selectedTopologyId, props.selectedOccurrenceId, props.extraSelections]);
   useEffect(() => { if (state.current) applyAppearance(state.current, props.theme, props.displayMode); }, [props.theme, props.displayMode]);
   useEffect(() => { if (state.current) applyViewCommand(state.current, props.viewMode, props.viewCommand); }, [props.viewMode, props.viewCommand]);
   useEffect(() => { if (state.current) state.current.selectionMode = props.selectionMode; }, [props.selectionMode]);
@@ -193,7 +183,7 @@ function createScene(host: HTMLDivElement, onSelect: Props['onSelect']) {
     invalidate();
   });
   resize.observe(host);
-  const hitTest = (event: PointerEvent) => {
+  const hitTest = (event: MouseEvent) => {
     const rect = renderer.domElement.getBoundingClientRect();
     pointer.set(((event.clientX - rect.left) / rect.width) * 2 - 1, -((event.clientY - rect.top) / rect.height) * 2 + 1);
     // Picking must see a just-applied view/model before the next animation frame.
@@ -205,7 +195,7 @@ function createScene(host: HTMLDivElement, onSelect: Props['onSelect']) {
     raycaster.setFromCamera(pointer, camera);
     const hits = raycaster.intersectObjects(group.children, false);
     const face = hits.find(hit => hit.object instanceof THREE.Mesh);
-    if (state.selectionMode === 'face') return face;
+    if (state.selectionMode === 'face' || state.selectionMode === 'auto' && event.altKey) return face;
     // A broad world-space tolerance sorted by depth can select a neighbouring
     // trim instead of the line under the pointer. Rank visible candidates in pixels.
     return hits.filter(hit => hit.object instanceof THREE.LineSegments
@@ -214,7 +204,7 @@ function createScene(host: HTMLDivElement, onSelect: Props['onSelect']) {
         const projected = hit.point.clone().project(camera);
         return { hit, distance: Math.hypot((projected.x - pointer.x) * rect.width / 2, (projected.y - pointer.y) * rect.height / 2) };
       }).filter(candidate => candidate.distance <= 8)
-      .sort((a, b) => a.distance - b.distance || a.hit.distance - b.hit.distance)[0]?.hit;
+      .sort((a, b) => a.distance - b.distance || a.hit.distance - b.hit.distance)[0]?.hit ?? (state.selectionMode === 'auto' ? face : undefined);
   };
   renderer.domElement.addEventListener('pointermove', event => {
     const hit = hitTest(event)?.object;
@@ -223,15 +213,16 @@ function createScene(host: HTMLDivElement, onSelect: Props['onSelect']) {
   });
   renderer.domElement.addEventListener('click', event => {
     const hit = hitTest(event);
-    if (!hit) { onSelect(null, null); return; }
+    const additive = { additive: event.ctrlKey || event.metaKey || event.shiftKey };
+    if (!hit) { onSelect(null, null, null, additive); return; }
     const meta = hit.object.userData as MeshMeta;
     const resolved = meta.edgeId
       ? state.model?.describeEdgeSelection(meta.definitionId, meta.edgeId, meta.occurrenceId)
       : state.model?.describeSelection(meta.definitionId, hit.faceIndex ?? 0, meta.occurrenceId);
-    onSelect(resolved?.semanticEntityId ?? null, resolved?.faceId ?? null, resolved);
+    onSelect(resolved?.semanticEntityId ?? null, resolved?.faceId ?? null, resolved, additive);
   });
   controls.addEventListener('change', () => publishCamera(renderer.domElement, camera, controls.target, authority));
-  const state = { scene, renderer, perspective, orthographic, authority, lights, backdrop, theme: 'apollonia' as ThemeName, displayMode: 'shaded' as DisplayMode, get camera() { return camera; }, set camera(value) { camera = value; }, controls, grid, group, model: null as ModelSession | null, selectionMode: 'face' as 'face' | 'edge', selectedIds: new Set<string>(), hovered: null as THREE.Mesh | THREE.LineSegments | null, invalidate,
+  const state = { scene, renderer, perspective, orthographic, authority, lights, backdrop, theme: 'apollonia' as ThemeName, displayMode: 'shaded' as DisplayMode, get camera() { return camera; }, set camera(value) { camera = value; }, controls, grid, group, model: null as ModelSession | null, selectionMode: 'face' as 'face' | 'edge' | 'auto', selectedIds: new Set<string>(), hovered: null as THREE.Mesh | THREE.LineSegments | null, invalidate,
     capture() { renderer.render(scene, camera); return renderer.domElement.toDataURL('image/png'); },
     dispose() { cancelAnimationFrame(raf); resize.disconnect(); controls.dispose(); renderer.dispose(); host.replaceChildren(); } };
   invalidate();
@@ -283,12 +274,13 @@ function loadModel(state: ReturnType<typeof createScene>, model: ModelSession | 
   performance.measure('helios-display-update', { start: started, end: performance.now() });
 }
 
-function selectEntity(state: ReturnType<typeof createScene>, model: ModelSession | null, entityId: string | null, topologyId: string | null, occurrenceId?: string | null) {
+function selectEntity(state: ReturnType<typeof createScene>, model: ModelSession | null, entityId: string | null, topologyId: string | null, occurrenceId: string | null | undefined,
+  extras: readonly { readonly occurrenceId: string; readonly topologyId: string }[]) {
   for (const overlay of state.group.children.filter(object => (object.userData as MeshMeta).highlight)) {
     state.group.remove(overlay); disposeObject(overlay);
   }
   const selection = entityId && model ? model.selectionForEntity(entityId) : { occurrenceIds: [] };
-  state.selectedIds = new Set(topologyId?.startsWith('edge:') ? [] : selection.occurrenceIds);
+  state.selectedIds = new Set(topologyId ? [] : selection.occurrenceIds);
   let edgeCount = 0;
   if (model && topologyId?.startsWith('edge:')) {
     for (const definition of model.mesh.definitions) {
@@ -324,9 +316,41 @@ function selectEntity(state: ReturnType<typeof createScene>, model: ModelSession
       state.group.add(overlay);
     }
   }
+  if (topologyId && !topologyId.startsWith('edge:') && occurrenceId) highlightTopology(state, model, occurrenceId, topologyId);
+  for (const extra of extras) edgeCount += highlightTopology(state, model, extra.occurrenceId, extra.topologyId);
   updateMaterials(state);
-  state.renderer.domElement.setAttribute('data-topology-highlight', JSON.stringify({ edge: topologyId, edges: edgeCount, bodies: state.selectedIds.size, occurrence: occurrenceId ?? null }));
+  state.renderer.domElement.setAttribute('data-topology-highlight', JSON.stringify({ edge: topologyId, targets: extras.length + (topologyId ? 1 : 0), edges: edgeCount, bodies: state.selectedIds.size, occurrence: occurrenceId ?? null }));
   state.invalidate();
+}
+
+/** Highlights one further selected face or edge of an occurrence; returns the number of edges drawn. */
+function highlightTopology(state: ReturnType<typeof createScene>, model: ModelSession | null, occurrenceId: string, topologyId: string) {
+  const base = state.group.children.find(object => object instanceof THREE.Mesh && !(object.userData as MeshMeta).highlight
+    && (object.userData as MeshMeta).occurrenceId === occurrenceId) as THREE.Mesh | undefined;
+  const definition = base && model?.mesh.definitions.find(d => d.id === (base.userData as MeshMeta).definitionId);
+  if (!base || !definition) return 0;
+  const meta = { definitionId: definition.id, occurrenceId, highlight: true } satisfies MeshMeta;
+  if (topologyId.startsWith('edge:')) {
+    const edge = definition.edges?.find(item => item.edgeId === topologyId);
+    if (!edge || edge.points.length < 2) return 0;
+    const points = edge.points.map(point => new THREE.Vector3(point[0], point[1], point[2]));
+    const tube = new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(points, edge.closed), Math.max(points.length * 2, 8), 0.24, 6, edge.closed),
+      new THREE.MeshBasicMaterial({ color: 0xffda69, depthTest: false }));
+    tube.matrix.copy(base.matrix); tube.matrixAutoUpdate = false; tube.renderOrder = 3; tube.userData = meta; tube.raycast = () => undefined;
+    state.group.add(tube); return 1;
+  }
+  for (const range of definition.ranges.filter(r => r.faceId === topologyId)) {
+    const indices = base.geometry.getIndex()?.array.slice(range.startTriangle * 3, (range.startTriangle + range.triangleCount) * 3);
+    if (!indices?.length) continue;
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute('position', base.geometry.getAttribute('position'));
+    geometry.setAttribute('normal', base.geometry.getAttribute('normal'));
+    geometry.setIndex(Array.from(indices));
+    const overlay = new THREE.Mesh(geometry, new THREE.MeshBasicMaterial({ color: 0xffbb4f, transparent: true, opacity: 0.88, side: THREE.DoubleSide, depthTest: false, depthWrite: false }));
+    overlay.matrix.copy(base.matrix); overlay.matrixAutoUpdate = false; overlay.renderOrder = 2; overlay.userData = meta; overlay.raycast = () => undefined;
+    state.group.add(overlay);
+  }
+  return 0;
 }
 
 /** Telos' default part colour (#b8beb3), linear. */

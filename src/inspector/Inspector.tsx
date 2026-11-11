@@ -37,7 +37,7 @@ export function Inspector({ model, schema, projection, projectionCurrent = true,
     <div className="inspector-scroll">
       {model?.mesh.importedAsset && <Section id="imported-asset" label="Imported geometry · read-only">
         <dl className="identity-list"><dt>Asset</dt><dd>{model.mesh.importedAsset.path}</dd><dt>SHA-256 (UTF-8 text)</dt><dd className="identifier">{model.mesh.importedAsset.sha256}</dd><dt>Geometry</dt><dd>{model.mesh.importedAsset.qualification?.geometryStatus ?? 'Not assessed'}</dd></dl>
-        <p>Select a planar face to add a datum, or a cylindrical face to add a diameter. Save workspace retains the original asset.</p>
+        <p>Annotate datums, sizes and tolerances in the Label tab. Save workspace retains the original asset.</p>
       </Section>}
       {annotationEditor}
       {entity ? <>

@@ -44,9 +44,8 @@ viewport legend. It is not a camera-facing text system or a production drawing.
 USDA, STL and OBJ do not carry PMI.
 
 **Import STEP** opens a supported canonical single part as immutable geometry
-with a Firmament annotation layer. Pick a planar face to add a datum, or a
-cylindrical face to enter a nominal and explicit upper/lower diameter allowances.
-The viewport displays supported callouts and an annotation legend. **Save
+with a Firmament annotation layer. The [Label tab](label.md) adds datums,
+diameters and geometric tolerances to its faces. The viewport displays supported callouts and an annotation legend. **Save
 workspace** retains STEP text and source in `.helios.zip`; **Open file** reopens
 it. Local checkpoints retain assets too. Cloud single-source saving refuses
 multi-file workspaces. Arbitrary vendor files, imported assemblies and existing

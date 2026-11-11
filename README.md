@@ -28,8 +28,9 @@ tolerances attached to the part. Helios's current STEP annotation tools let you:
 1. **Bring in a part.** Use **Import STEP** for a supported single-part file, or
    the [SolidWorks handoff](docs/public/solidworks.md) for an AP214 export
    (separate add-in setup).
-2. **Attach requirements.** Pick a planar face to add a datum, or a cylindrical
-   face to add a nominal diameter and its upper/lower tolerance allowances.
+2. **Attach requirements.** In the [Label tab](docs/public/label.md), select faces
+   and choose from the datums, diameters and geometric tolerances that fit them.
+   Measured sizes are rounded to a nominal you confirm; tolerances are always explicit.
 3. **Export the result.** STEP **AP242** carries the geometry and supported
    machine-readable PMI. Annotated **GLB** carries visible 3D callouts and their metadata.
 4. **Keep it editable.** **Save workspace** retains the original STEP assets

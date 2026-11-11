@@ -506,11 +506,7 @@ button.viewport-renderer-note:hover { color: var(--text-primary); border-color: 
 .viewport-pane canvas { transition: filter .18s ease; }
 .viewport-pane.ghosted canvas { filter: grayscale(.85) opacity(.5); }
 
-.pmi-author { display: grid; gap: 8px; padding: 14px; border-bottom: 1px solid var(--border, #ddd); }
-.pmi-author label { display: grid; grid-template-columns: 1fr 110px; align-items: center; gap: 8px; }
-.pmi-author input { min-width: 0; width: 100%; }
-.pmi-author p, .pmi-author small { margin: 0; line-height: 1.4; }
-.pmi-legend { position: absolute; right: 14px; top: 92px; padding: 10px 14px; background: #fffffff2; color: #153356; border: 1px solid #ccd4df; pointer-events: none; font-size: 12px; line-height: 1.6; }
+.pmi-legend { position: absolute; right: 14px; bottom: 44px; padding: 10px 14px; background: #fffffff2; color: #153356; border: 1px solid #ccd4df; pointer-events: none; font-size: 12px; line-height: 1.6; }
 .pmi-legend span { font-weight: 600; padding-right: 8px; }
 
 /* Pattern coordinates are compiler-projected local layout values. */
@@ -552,3 +548,47 @@ button.viewport-renderer-note:hover { color: var(--text-primary); border-color: 
 .crash-actions button { min-height: 34px; padding: 6px 14px; background: var(--control-bg); color: var(--text-primary); border: 1px solid var(--border-strong); border-radius: var(--radius-control); cursor: pointer; }
 .crash-actions .crash-primary { background: var(--accent); color: var(--accent-contrast); border-color: var(--accent); }
 .crash-screen pre { max-height: 240px; overflow: auto; padding: 10px; background: var(--panel-bg); border: 1px solid var(--border); font: var(--type-caption)/1.5 var(--font-mono); white-space: pre-wrap; }
+/* Label: PMI authoring for imported parts. */
+.label-panel { display: grid; grid-template-rows: minmax(90px, auto) minmax(0, 1fr); min-height: 0; height: 100%; overflow: auto; background: var(--panel-bg); color: var(--text-primary); }
+.label-records { padding: 10px 12px; border-bottom: 1px solid var(--border); overflow: auto; max-height: 40vh; }
+.label-group h3, .label-context h3 { margin: 6px 0 4px; color: var(--text-secondary); font-size: var(--type-caption); font-weight: 600; text-transform: uppercase; letter-spacing: .04em; }
+.label-record { display: grid; grid-template-columns: auto auto 1fr; gap: 8px; align-items: baseline; width: 100%; padding: 5px 6px; background: transparent; color: inherit; text-align: left; border-left: 2px solid transparent; cursor: pointer; }
+.label-record:hover { background: var(--panel-elevated); border-left-color: var(--accent); }
+.label-record span { color: var(--text-secondary); font-size: var(--type-caption); }
+.label-record small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+.label-empty, .label-notice, .label-hint { margin: 4px 0; color: var(--text-secondary); line-height: 1.45; }
+.label-context { padding: 10px 12px 16px; display: grid; gap: 10px; align-content: start; }
+.label-actions { display: grid; gap: 2px; }
+.label-actions label { display: grid; grid-template-columns: 18px 1fr; gap: 2px 6px; padding: 5px 6px; cursor: pointer; }
+.label-actions label:has(input:checked) { background: color-mix(in srgb, var(--accent) 14%, transparent); }
+.label-actions label.disabled { cursor: default; color: var(--text-secondary); }
+.label-actions small { grid-column: 2; font-size: var(--type-caption); }
+.label-form { display: grid; gap: 8px; padding-top: 8px; border-top: 1px solid var(--border); }
+.label-form label { display: grid; gap: 3px; color: var(--text-secondary); font-size: var(--type-caption); }
+.label-form input, .label-form select, .label-form textarea { min-width: 0; height: 29px; padding: 0 7px; border: 1px solid var(--border); background: var(--control-bg); color: var(--text-primary); font: inherit; font-size: var(--type-ui); }
+.label-form textarea { height: 64px; padding: 6px 7px; }
+.label-form .label-check { display: flex; align-items: center; gap: 6px; }
+.label-form .label-check input { height: auto; }
+.label-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.label-datums { display: flex; gap: 6px; margin: 0; padding: 6px 8px 8px; border: 1px solid var(--border); }
+.label-datums legend { color: var(--text-secondary); font-size: var(--type-caption); }
+.label-measured { margin: 0; font-variant-numeric: tabular-nums; }
+.label-measured span { color: var(--text-secondary); }
+.label-source { margin: 0; padding: 7px 8px; white-space: pre-wrap; word-break: break-word; background: var(--control-bg); border: 1px solid var(--border); font-size: var(--type-caption); }
+.label-error { margin: 0; color: var(--error); line-height: 1.4; }
+.label-warning { margin: 0; color: var(--warning); line-height: 1.4; }
+.label-buttons { display: flex; gap: 8px; justify-content: flex-end; }
+.label-buttons button, .selection-footer button { padding: 6px 12px; border: 1px solid var(--border); background: var(--panel-elevated); color: var(--text-primary); cursor: pointer; }
+.label-buttons button.primary, .selection-footer button.primary { background: var(--accent); color: var(--accent-contrast); border-color: var(--accent); }
+.label-buttons button:disabled { opacity: .45; cursor: default; }
+.inspector-note { margin: 0; padding: 10px 14px; color: var(--text-secondary); border-bottom: 1px solid var(--border); }
+/* The ordered selection and its measurement, over the viewport. */
+.selection-card { position: absolute; top: 54px; right: 12px; z-index: 6; display: grid; gap: 6px; width: min(300px, calc(100% - 24px)); padding: 8px 10px; background: var(--panel-bg); color: var(--text-primary); border: 1px solid var(--border-strong); box-shadow: 0 6px 18px var(--shadow); font-size: var(--type-ui); }
+.selection-chips { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+.selection-chip { display: inline-flex; align-items: center; gap: 4px; padding: 2px 2px 2px 6px; background: color-mix(in srgb, var(--selection) 16%, transparent); border: 1px solid color-mix(in srgb, var(--selection) 50%, transparent); font-variant-numeric: tabular-nums; }
+.selection-chip b { color: var(--selection); }
+.selection-chip button { padding: 0 5px; background: transparent; color: var(--text-secondary); cursor: pointer; }
+.selection-clear { margin-left: auto; padding: 2px 6px; background: transparent; color: var(--text-secondary); cursor: pointer; }
+.selection-measure { display: grid; gap: 2px; font-variant-numeric: tabular-nums; }
+.selection-measure small { color: var(--text-secondary); }
+.selection-footer { display: flex; justify-content: space-between; }

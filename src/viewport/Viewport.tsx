@@ -1,4 +1,4 @@
-import { MeasurementTool, bindMeasurementPicking, measurementLines, pmiLines, pmiMeshes, pmiBodyMaterial } from '@aetheris/three-telos';
+import { measurementLines, pmiLines, pmiMeshes, pmiBodyMaterial, type MeasurementResult } from '@aetheris/three-telos';
 import {
   lazy,
   Suspense,
@@ -7,6 +7,7 @@ import {
   useState,
   useMemo,
   type MutableRefObject,
+  type ReactNode,
 } from "react";
 import {
   TelosHost,
@@ -34,9 +35,10 @@ const LegacyViewport = lazy(() =>
 );
 
 interface Props extends FeaturePlacementProps {
-  measurementDisabledReason?: string;
-  measurementTool?: MeasurementTool;
-  measurementTick?: number;
+  /** Witness lines of the current selection's measurement. */
+  measurement?: MeasurementResult | null;
+  /** Further selected faces or edges beyond the primary one, highlighted the same way. */
+  extraSelections?: readonly { readonly occurrenceId: string; readonly topologyId: string }[];
   showConcepts?: boolean;
   busyMessage?: string | null;
   errorMessage?: string | null;
@@ -54,12 +56,16 @@ interface Props extends FeaturePlacementProps {
   displayMode: DisplayMode;
   viewMode: ViewMode;
   viewCommand: string;
-  selectionMode: "face" | "edge";
+  /** `auto` picks an edge under the pointer and the face otherwise; Alt forces the face. */
+  selectionMode: "face" | "edge" | "auto";
   onSelect(
     entityId: string | null,
     faceId: string | null,
     selection?: SelectionDescription | null,
+    options?: { readonly additive: boolean },
   ): void;
+  /** Overlays drawn over the viewport (the selection card). */
+  children?: ReactNode;
   captureRef?: MutableRefObject<(() => string) | null>;
 }
 
@@ -78,23 +84,8 @@ export function probeWebGpu(): Promise<string | null> {
 /** WebGPU (Telos) when the device has an adapter; otherwise, or when Telos fails to start, the WebGL
  * renderer. Both share the camera convention in viewCommands.ts, so the model looks the same. */
 export function Viewport(props: Props) {
-  const panel = useRef<HTMLDivElement>(null), tool = useRef<MeasurementTool | undefined>(undefined);
-  const latestModel = useRef(props.model); latestModel.current = props.model;
-  const [measurementTick, setMeasurementTick] = useState(0);
-  useEffect(() => {
-    if (!panel.current) return;
-    tool.current = new MeasurementTool(panel.current, request => {
-      if (!latestModel.current) throw new Error('Build a model before measuring.');
-      return latestModel.current.measure(request);
-    }, () => setMeasurementTick(value => value + 1));
-    setMeasurementTick(value => value + 1);
-    return () => { tool.current?.dispose(); tool.current = undefined; };
-  }, []);
-  useEffect(() => { tool.current?.setContext(`${props.model?.id}:${props.model?.revision}`,
-    props.measurementDisabledReason || (props.pose ? 'Return to the built pose before measuring.' : !props.model ? 'Build a model before measuring.' : props.model.measurementAvailable === false ? 'This scene or mesh-only build has no retained BRep measurement geometry.' : '')); },
-    [props.model, props.model?.revision, props.pose, props.measurementDisabledReason]);
-  return <div tabIndex={0} style={{position:'relative',width:'100%',height:'100%'}} aria-label="Model measurement workspace">
-    <ViewportRenderer {...props} measurementTool={tool.current} measurementTick={measurementTick} /><div ref={panel} />
+  return <div tabIndex={0} style={{position:'relative',width:'100%',height:'100%'}} aria-label="Model workspace">
+    <ViewportRenderer {...props} />{props.children}
     {!!props.model?.mesh.annotations?.length && <aside className="pmi-legend" aria-label="PMI annotations"><strong>PMI · mm</strong>{props.model.mesh.annotations.map(item => <div key={item.id}><span>{item.name}</span> {item.text}</div>)}<small>Gold marks the referenced surface.</small></aside>}
   </div>;
 }
@@ -135,6 +126,12 @@ function ViewportRenderer(props: Props) {
   );
 }
 
+/** An edge within a few pixels in `auto` mode (unless Alt is held), else the face under the pointer. */
+function pickAt(host: TelosHost, pixel: [number, number], mode: Props['selectionMode'], faceOnly: boolean) {
+  if (mode !== 'auto') return host.picker.pick(pixel, mode);
+  return (faceOnly ? null : host.picker.pick(pixel, 'edge')) ?? host.picker.pick(pixel, 'face');
+}
+
 function TelosViewport(props: Props & { onRetry(): void; onUnavailable(reason: string): void }) {
   const container = useRef<HTMLDivElement>(null),
     canvas = useRef<HTMLCanvasElement>(null),
@@ -168,7 +165,6 @@ function TelosViewport(props: Props & { onRetry(): void; onUnavailable(reason: s
         : { occurrenceIds: [], ranges: [] };
     const selectedIds = new Set(selected.occurrenceIds);
     const topology = !!value.selectedTopologyId;
-    const inSelection = (occurrenceId: string) => value.selectedOccurrenceId ? occurrenceId === value.selectedOccurrenceId : selectedIds.has(occurrenceId);
     const meshes: TelosMesh[] = scene.meshes.map((mesh) => ({
       ...mesh,
       material: pmiBodyMaterial(mesh.material, !!value.model?.mesh.annotations?.length,
@@ -176,14 +172,17 @@ function TelosViewport(props: Props & { onRetry(): void; onUnavailable(reason: s
       selected: !topology && selectedIds.has(mesh.identity.occurrenceId),
       visible: value.displayMode !== "wireframe",
     }));
-    if (
-      value.model &&
-      value.selectedTopologyId &&
-      !value.selectedTopologyId.startsWith("edge:")
-    ) {
+    // The primary selection and any further picks, each a face or an edge of one occurrence.
+    const targets = [
+      ...(value.selectedTopologyId ? [{ occurrenceId: value.selectedOccurrenceId ?? null, topologyId: value.selectedTopologyId }] : []),
+      ...(value.extraSelections ?? []),
+    ];
+    const targeted = (topologyId: string | number | undefined, occurrenceId: string) => topologyId !== undefined && targets.some(t => t.topologyId === String(topologyId)
+      && (t.occurrenceId ? t.occurrenceId === occurrenceId : selectedIds.has(occurrenceId)));
+    if (value.model && targets.some(t => !t.topologyId.startsWith("edge:"))) {
       for (const mesh of [...scene.meshes, ...scene.fields.filter(f=>f.proxy).map(f=>({definition:f.proxy!, identity:f.identity, transform:f.transform!, material:f.material}))])
         for (const range of mesh.definition.ranges ?? [])
-          if (range.faceId === value.selectedTopologyId && inSelection(mesh.identity.occurrenceId)) {
+          if (targeted(range.faceId, mesh.identity.occurrenceId)) {
             meshes.push({
               ...mesh,
               definition: {
@@ -202,19 +201,19 @@ function TelosViewport(props: Props & { onRetry(): void; onUnavailable(reason: s
     const lines = scene.lines.map((line) => ({
       ...line,
       selected:
-        topology ? line.identity.edgeId === value.selectedTopologyId && inSelection(line.identity.occurrenceId)
+        topology ? targeted(line.identity.edgeId, line.identity.occurrenceId)
           : selectedIds.has(line.identity.occurrenceId),
-      widthPixels: topology && line.identity.edgeId === value.selectedTopologyId && inSelection(line.identity.occurrenceId) ? 4 : 1,
-      visible: value.displayMode !== "shaded" || topology && line.identity.edgeId === value.selectedTopologyId && inSelection(line.identity.occurrenceId),
+      widthPixels: topology && targeted(line.identity.edgeId, line.identity.occurrenceId) ? 4 : 1,
+      visible: value.displayMode !== "shaded" || topology && targeted(line.identity.edgeId, line.identity.occurrenceId),
       color:
         value.theme === "bronze-age"
           ? [0.18, 0.22, 0.2, 0.85]
           : [0.3, 0.35, 0.32, 0.85],
     }));
-    const selectedEdges = lines.filter(line => line.selected && value.selectedTopologyId?.startsWith('edge:'));
+    const selectedEdges = lines.filter(line => line.selected && topology && !!line.identity.edgeId);
     const edgeHalos = selectedEdges.map(line => ({ ...line, id: `${line.id}:selection-halo`, selected: false,
       overlay: true, pickable: false, depthMode: 'always-on-top' as const, widthPixels: 10, color: [1, .68, .12, .25] }));
-    canvas.current?.setAttribute('data-topology-highlight', JSON.stringify({ edge: value.selectedTopologyId, edges: selectedEdges.length,
+    canvas.current?.setAttribute('data-topology-highlight', JSON.stringify({ edge: value.selectedTopologyId, targets: targets.length, edges: selectedEdges.length,
       bodies: meshes.filter(mesh => mesh.selected && !mesh.overlay).length, occurrence: value.selectedOccurrenceId ?? null }));
     const concepts = value.showConcepts && value.model ? conceptWireframe(posedMesh(value.model.mesh, value.pose)) : [];
     const preview = value.wireframePreview ? operationPreviewWireframe(value.wireframePreview.mesh) : [];
@@ -224,7 +223,7 @@ function TelosViewport(props: Props & { onRetry(): void; onUnavailable(reason: s
     const inspected = inspectSurfaces(inspection.current.mode === "normal" && !inspection.current.face ? displayScene : scene,
       inspection.current.mode, inspection.current.face);
     current.setScene({ ...inspected, meshes: [...inspected.meshes, ...pmiMeshes(value.model?.mesh.annotations)],
-      lines: [...inspected.lines, ...edgeHalos, ...concepts, ...preview, ...placementLines(value.placementGuide), ...measurementLines(value.measurementTool?.result ?? null), ...pmiLines(value.model?.mesh.annotations)] });
+      lines: [...inspected.lines, ...edgeHalos, ...concepts, ...preview, ...placementLines(value.placementGuide), ...measurementLines(value.measurement ?? null), ...pmiLines(value.model?.mesh.annotations)] });
     canvas.current?.setAttribute('data-feature-placement', JSON.stringify(value.placementGuide ? { center: value.placementGuide.center, diameter: value.placementGuide.diameter, selector: value.placementGuide.selection.selector } : null));
     canvas.current?.setAttribute("data-surface-inspection", JSON.stringify({ mode: inspection.current.mode,
       isolatedFace: inspection.current.face ?? null,
@@ -280,18 +279,11 @@ function TelosViewport(props: Props & { onRetry(): void; onUnavailable(reason: s
       const rect = element.getBoundingClientRect();
       return [event.clientX - rect.left, event.clientY - rect.top];
     };
-    const unbindMeasurement = bindMeasurementPicking(element, () => latest.current.measurementTool, (x,y) => {
-      const current = host.current; if (!current) return null;
-      const ray = current.camera.worldRay([x,y]), hit = current.picker.pick([x,y], 'face');
-      if (!hit) return null;
-      const face = hit.faceId == null ? null : Number(String(hit.faceId).split(':').pop());
-      return { occurrenceId: hit.occurrenceId, faceId: Number.isInteger(face) ? face : null, rayOrigin: ray.origin.toArray(), rayDirection: ray.direction.toArray() };
-    });
     const click = (event: MouseEvent) => {
       const current = host.current;
       if (!current) return;
       const value = latest.current,
-        hit = current.picker.pick(pixel(event), value.selectionMode);
+        hit = pickAt(current, pixel(event), value.selectionMode, event.altKey);
       element.setAttribute("data-surface-inspection-pick", JSON.stringify(hit ?? null));
       if (inspection.current.mode !== "normal" && hit?.faceId !== undefined)
         setIsolatedFaceKey(inspectionFaceKey(hit.occurrenceId, hit.faceId));
@@ -313,6 +305,7 @@ function TelosViewport(props: Props & { onRetry(): void; onUnavailable(reason: s
         selection?.semanticEntityId ?? null,
         selection?.faceId ?? null,
         selection,
+        { additive: event.ctrlKey || event.metaKey || event.shiftKey },
       );
     };
     const unbindPlacement = bindFeaturePlacement(element, () => latest.current, p => {
@@ -327,17 +320,17 @@ function TelosViewport(props: Props & { onRetry(): void; onUnavailable(reason: s
       const hit =
         event.type === "pointerleave"
           ? null
-          : current.picker.pick(pixel(event), latest.current.selectionMode);
+          : pickAt(current, pixel(event), latest.current.selectionMode, event.altKey);
       let changed = false;
       for (const mesh of current.scene.meshes) {
         const hovered =
-          latest.current.selectionMode !== 'edge' && !mesh.overlay && mesh.identity.occurrenceId === hit?.occurrenceId;
+          !hit?.edgeId && latest.current.selectionMode !== 'edge' && !mesh.overlay && mesh.identity.occurrenceId === hit?.occurrenceId;
         changed ||= mesh.hovered !== hovered;
         mesh.hovered = hovered;
       }
       for (const line of current.scene.lines) {
         if (!line.identity.edgeId || line.overlay) continue;
-        const hovered = latest.current.selectionMode === 'edge' && line.identity.edgeId === hit?.edgeId && line.identity.occurrenceId === hit?.occurrenceId;
+        const hovered = latest.current.selectionMode !== 'face' && !!hit?.edgeId && line.identity.edgeId === hit.edgeId && line.identity.occurrenceId === hit.occurrenceId;
         const width = line.selected ? 4 : hovered ? 3 : 1;
         changed ||= line.widthPixels !== width; line.widthPixels = width;
         line.color = hovered ? [.2, .85, 1, 1] : latest.current.theme === 'bronze-age' ? [.18,.22,.2,.85] : [.3,.35,.32,.85];
@@ -369,7 +362,6 @@ function TelosViewport(props: Props & { onRetry(): void; onUnavailable(reason: s
         if (!disposed) latest.current.onUnavailable(`WebGPU could not start (${error instanceof Error ? error.message : String(error)}).`);
       });
     return () => {
-      unbindMeasurement();
       unbindPlacement();
       disposed = true;
       initialization.abort();
@@ -383,7 +375,7 @@ function TelosViewport(props: Props & { onRetry(): void; onUnavailable(reason: s
   }, []);
   useEffect(() => {
     apply();
-  }, [props.measurementTick, props.measurementTool, props.showConcepts, props.model, props.model?.revision, props.wireframePreview, props.wireframePreview?.revision, props.pose, props.selectedEntityId, props.selectedTopologyId, props.selectedOccurrenceId,
+  }, [props.measurement, props.extraSelections, props.showConcepts, props.model, props.model?.revision, props.wireframePreview, props.wireframePreview?.revision, props.pose, props.selectedEntityId, props.selectedTopologyId, props.selectedOccurrenceId,
     props.theme, props.displayMode, props.viewMode, props.viewCommand, props.aaMode, props.aaDebug,
     inspectionMode, isolatedFaceKey, props.placementGuide]);
   useEffect(() => { setIsolatedFaceKey(""); }, [props.model?.id, props.model?.revision]);

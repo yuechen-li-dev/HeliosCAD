@@ -7,7 +7,7 @@ import { unzipSync, zipSync } from 'fflate';
 
 const output = 'artifacts/local/solidworks';
 const cli = resolve('../Aetheris/Aetheris.CLI/bin/Release/net10.0/aetheris.dll');
-test('SolidWorks AP214 part accepts attached datum/diameter and exports semantic AP242 and annotated GLB', async ({ page }) => {
+test('SolidWorks AP214 part is labeled with a datum and diameter in the Label tab and exports semantic AP242 and annotated GLB', async ({ page }) => {
   await mkdir(output, { recursive: true });
   let archive = process.env.HELIOS_SOLIDWORKS_ARCHIVE;
   if (!archive) {
@@ -21,20 +21,25 @@ test('SolidWorks AP214 part accepts attached datum/diameter and exports semantic
   await page.getByRole('banner').locator('input[type=file]').setInputFiles(archive);
   await expect(page.locator('.status-ready')).toContainText('Ready');
   await expect(page.locator('.workspace-identity')).toContainText('part.firmament');
-  expect(await pickNearCenter(page, async () => page.getByRole('button', { name: 'Add datum', exact: true }).isVisible(), 180, 15)).toBe(true);
-  await page.getByLabel('PMI name', { exact: true }).fill('A');
-  await page.getByRole('button', { name: 'Add datum', exact: true }).click();
+  await page.getByRole('tab', { name: 'Label', exact: true }).click();
+  const datumForm = page.getByRole('form', { name: 'Add Datum', exact: true });
+  expect(await pickNearCenter(page, async () => datumForm.isVisible(), 180, 15)).toBe(true);
+  await expect(datumForm.getByLabel('Name', { exact: true })).toHaveValue('A');
+  await datumForm.getByRole('button', { name: 'Apply', exact: true }).click();
   await expect(page.locator('.status-ready')).toContainText('Ready');
   await expect(page.getByLabel('PMI annotations', { exact: true })).toContainText('A');
+  await expect(page.getByLabel('PMI records', { exact: true })).toContainText('Datum');
+  const diameterForm = page.getByRole('form', { name: 'Add HoleDiameter', exact: true });
   expect(await pickNearCenter(page, async () => {
-    const nominal = page.getByLabel('Nominal diameter (mm)', { exact: true });
+    const nominal = diameterForm.getByLabel('Nominal (mm)', { exact: true });
     return await nominal.isVisible() && Math.abs(Number(await nominal.inputValue()) - 10) < .001;
   }, 180, 8)).toBe(true);
-  await page.getByLabel('PMI name', { exact: true }).fill('Bore');
-  await page.getByLabel('Nominal diameter (mm)', { exact: true }).fill('10');
-  await page.getByLabel('Upper allowance (mm)', { exact: true }).fill('0.02');
-  await page.getByLabel('Lower allowance (mm)', { exact: true }).fill('0.01');
-  await page.getByRole('button', { name: 'Add diameter', exact: true }).click();
+  await diameterForm.getByLabel('Name', { exact: true }).fill('Bore');
+  await diameterForm.getByLabel('Nominal (mm)', { exact: true }).fill('10');
+  await diameterForm.getByLabel('Upper + (mm)', { exact: true }).fill('0.02');
+  await diameterForm.getByLabel('Lower − (mm)', { exact: true }).fill('0.01');
+  await expect(diameterForm.getByLabel('Source to write', { exact: true })).toContainText('HoleDiameter Bore');
+  await diameterForm.getByRole('button', { name: 'Apply', exact: true }).click();
   await expect(page.locator('.status-ready')).toContainText('Ready');
   await expect(page.getByLabel('PMI annotations', { exact: true })).toContainText('Bore');
   await page.screenshot({ path: `${output}/helios-annotated.png` });

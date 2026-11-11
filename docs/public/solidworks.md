@@ -68,16 +68,15 @@ only the configured Helios origin and an unpredictable capability URL; it closes
 after delivery or timeout. There is no installed transfer service. If the browser
 handoff fails, use **Open file** in Helios to open the saved workspace.
 
-Pick a planar face and add a datum. Pick a cylindrical face to add a nominal
-diameter and explicit upper/lower allowances. These requirements become part of
-the Firmament layer; geometry stays unchanged. Choose **Export → STEP AP242**
+Use the [Label tab](label.md) to add datums, diameters and geometric tolerances.
+These requirements become part of the Firmament layer; geometry stays unchanged. Choose **Export → STEP AP242**
 and/or **GLB** to retain supported engineering semantics and 3D callouts. **Save
 workspace** retains the original assets and annotations for reopening.
 See [export formats and limits](exports.md).
 
 Re-exporting after a SolidWorks geometry change creates a new workspace. Existing
 face attachments are not guessed onto a new snapshot. Imported-geometry repair,
-general dimension/GD&T authoring, assemblies and automatic PMI extraction from
+assemblies and automatic PMI extraction from
 SolidWorks are outside this initial command's scope. Supported geometry is
 determined by Aetheris admission, not by the presence of a STEP file extension.
 

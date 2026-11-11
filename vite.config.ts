@@ -65,14 +65,15 @@ function localTerminal(): Plugin {
 }
 
 /** The linked telos package, as Vite sees it after resolving symlinks (a symlinked checkout would otherwise 403 its shaders). */
-function telosRoot() {
-  const linked = fileURLToPath(new URL('../Aetheris/Aetheris.Web.Runtime/telos', import.meta.url));
+function linkedRoot(name: 'telos' | 'sdk') {
+  const linked = fileURLToPath(new URL(`../Aetheris/Aetheris.Web.Runtime/${name}`, import.meta.url));
   return existsSync(linked) ? realpathSync(linked) : linked;
 }
+const telosRoot = () => linkedRoot('telos');
 
 export default defineConfig({
   resolve: { dedupe: ['three'] },
   plugins: [aetherisCad(), patchedMonacoSanitizer(), react(), localTerminal()],
-  server: { port: 4173, watch: { ignored: ['**/artifacts/**', '**/test-results/**'] }, fs: { allow: [fileURLToPath(new URL('.', import.meta.url)), telosRoot(), fileURLToPath(new URL('../Aetheris/Aetheris.Web.Runtime/sdk', import.meta.url))] }, proxy: { '/api': { target: process.env.HELIOS_API_URL ?? 'http://127.0.0.1:5189', ws: true } } },
+  server: { port: 4173, watch: { ignored: ['**/artifacts/**', '**/test-results/**'] }, fs: { allow: [fileURLToPath(new URL('.', import.meta.url)), telosRoot(), linkedRoot('sdk')] }, proxy: { '/api': { target: process.env.HELIOS_API_URL ?? 'http://127.0.0.1:5189', ws: true } } },
   test: { include: ['src/**/*.test.ts', 'src/**/*.test.tsx'], environment: 'jsdom', setupFiles: './src/test/setup.ts', css: true }
 });

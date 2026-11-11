@@ -42,7 +42,8 @@ import type { ExportFormat } from '@aetheris/cad';
 import { ExportPicker } from './ExportPicker';
 import { importedProject, isStep, packProject, sourceFiles, unpackProject } from './localProject';
 import { registerRecoverableSource } from './crashRecovery';
-import { PmiAuthor } from '../inspector/PmiAuthor';
+import { LabelPanel } from '../label/LabelPanel';
+import { SelectionCard, useSelectionMeasurement } from '../label/SelectionCard';
 import { AuthoringPanel, type AuthoringAction, type PendingAuthoring } from '../graph/AuthoringPanel';
 import { TutorialPanel } from '../learn/TutorialPanel';
 import type { PlacementActions, PlacementGuide } from '../viewport/featurePlacement';
@@ -55,10 +56,10 @@ export function HeliosApp({ project, initialWorkspace, chooseBase = false, onSho
   const [learnPage, setLearnPage] = useState<string | null>(null);
   const [runtime] = useState(() => new WebSdkCadRuntime());
   const [buildClient] = useState(() => new AetherisWorkerClient(runtime));
-  const [editorMode, setEditorMode] = useState<'graph' | 'source'>(() => chooseBase ? 'graph' : initialWorkspace?.lessonId ? 'source' : readEditorMode());
+  const [editorMode, setEditorMode] = useState<'graph' | 'source' | 'label'>(() => chooseBase ? 'graph' : initialWorkspace?.lessonId ? 'source' : readEditorMode());
   const [intelliDraft, setIntelliDraft] = useState<{ revision: number; source?: string; node?: string | null } | null>(null);
   const openIntelliDraftRef = useRef<(node?: string | null) => void>(() => {});
-  const shellLayout = useShellLayout(editorMode);
+  const shellLayout = useShellLayout(editorMode === 'graph' ? 'graph' : 'source');
   const [model, setModel] = useState<ModelSession | null>(null);
   const [showConcepts, setShowConcepts] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
@@ -82,6 +83,10 @@ export function HeliosApp({ project, initialWorkspace, chooseBase = false, onSho
   const [selectedEntityId, setSelectedEntityId] = useState<string | null>(null);
   const [selectedFaceId, setSelectedFaceId] = useState<string | null>(null);
   const [selectedSelection, setSelectedSelection] = useState<SelectionDescription | null>(null);
+  /** The ordered selection: the first entry is also `selectedSelection`. */
+  const [picks, setPicks] = useState<SelectionDescription[]>([]);
+  const [measureInches, setMeasureInches] = useState(false);
+  const editorModeRef = useRef(editorMode); editorModeRef.current = editorMode;
   const [busy, setBusy] = useState<BusyState>('Initializing Aetheris Worker');
   const [workerFailed, setWorkerFailed] = useState(false);
   const [sourceRevision, setSourceRevision] = useState(0);
@@ -195,8 +200,14 @@ export function HeliosApp({ project, initialWorkspace, chooseBase = false, onSho
       const snapshot = snapshotSession(result.model);
       setModel(snapshot);
       setDisplayRevision(result.request.sourceRevision);
-      setSelectedEntityId(null);
-      setSelectedFaceId(null); setSelectedSelection(null);
+      // Imported faces keep their selectors across builds: labeling continues on the same selection.
+      const kept = editorModeRef.current === 'label' ? keptPicks.current.filter(p => p.selector && snapshot?.mesh.definitions.some(d => d.ranges.some(r => r.selector === p.selector))) : [];
+      if (kept.length && kept.length === keptPicks.current.length) {
+        setSelectedEntityId(kept[0]!.semanticEntityId); setSelectedFaceId(kept[0]!.faceId); setSelectedSelection(kept[0]!);
+      } else {
+        setSelectedEntityId(null);
+        setSelectedFaceId(null); setSelectedSelection(null); setPicks([]);
+      }
       setViewCommand(`${snapshot?.mesh.cameras?.length ? 'authored' : 'fit'}-${Date.now()}`);
       setLastTiming({ label: 'Built in', milliseconds: result.milliseconds });
       if (snapshot?.timings) setPhaseTiming(`COMPILE ${snapshot.timings.compileMilliseconds.toFixed(0)}MS · MESH ${(snapshot.timings.meshMilliseconds ?? 0).toFixed(0)}MS · TRANSFER ${(snapshot.workerTiming?.transportMilliseconds ?? 0).toFixed(0)}MS · ${(snapshot.workerTiming?.payloadBytes ?? 0)}B`);
@@ -261,12 +272,13 @@ export function HeliosApp({ project, initialWorkspace, chooseBase = false, onSho
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's') { event.preventDefault(); if (onSave) void save(); else downloadSource(); }
       if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.key.toLowerCase() === 'p') { event.preventDefault(); if (canLeaveGraphFields()) setPaletteOpen(true); }
       if (event.key.toLowerCase() === 'f' && !isTyping(event.target)) setViewCommand(`fit-${Date.now()}`);
+      if (event.key === 'Escape' && !isTyping(event.target) && !paletteOpen && keptPicks.current.length) clearPicks();
       if ((event.ctrlKey || event.metaKey) && !isTyping(event.target) && ['z', 'y'].includes(event.key.toLowerCase())) {
         event.preventDefault(); void runHistory(event.key.toLowerCase() === 'y' || event.shiftKey ? 'redo' : 'undo');
       }
     };
     addEventListener('keydown', onKey); return () => removeEventListener('keydown', onKey);
-  }, [source, sourceName, onSave, busy, buildStarted, pendingAuthoring, learnPage]);
+  }, [source, sourceName, onSave, busy, buildStarted, pendingAuthoring, learnPage, paletteOpen, picks]);
 
   const save = async () => {
     if (!canLeaveGraphFields()) return;
@@ -300,7 +312,42 @@ export function HeliosApp({ project, initialWorkspace, chooseBase = false, onSho
     pushOutput(`Source download started · ${sourceName}`);
   };
 
-  const select = (entityId: string | null, faceId: string | null = null, selection: SelectionDescription | null = null) => { if (!canLeaveGraphFields()) return; setSelectedEntityId(entityId); setSelectedFaceId(faceId); setSelectedSelection(selection); };
+  const select = (entityId: string | null, faceId: string | null = null, selection: SelectionDescription | null = null, options?: { readonly additive: boolean }) => {
+    if (!canLeaveGraphFields()) return;
+    if (options?.additive) {
+      // Ctrl/Shift-click adds a face or edge, or removes it when already selected; on empty space it keeps the selection.
+      if (!selection) return;
+      const same = (p: SelectionDescription) => p.occurrenceId === selection.occurrenceId && p.faceId === selection.faceId;
+      const current = keptPicks.current;
+      const next = current.some(same) ? current.filter(p => !same(p)) : [...current, selection];
+      setPicks(next); const first = next[0] ?? null;
+      setSelectedEntityId(first?.semanticEntityId ?? null); setSelectedFaceId(first?.faceId ?? null); setSelectedSelection(first);
+      return;
+    }
+    setPicks(selection ? [selection] : []);
+    setSelectedEntityId(entityId); setSelectedFaceId(faceId); setSelectedSelection(selection);
+  };
+  const keptPicks = useRef<SelectionDescription[]>([]); keptPicks.current = picks;
+  const removePick = (index: number) => { const next = picks.filter((_, i) => i !== index), first = next[0] ?? null;
+    setPicks(next); setSelectedEntityId(first?.semanticEntityId ?? null); setSelectedFaceId(first?.faceId ?? null); setSelectedSelection(first); };
+  const clearPicks = () => select(null);
+  /** Selects the faces a PMI record targets, in order. */
+  const selectBySelectors = (selectors: readonly string[]) => {
+    if (!model || !canLeaveGraphFields()) return;
+    const next: SelectionDescription[] = [];
+    for (const selector of selectors)
+      for (const occurrence of model.mesh.occurrences) {
+        const definition = model.mesh.definitions.find(d => d.id === (occurrence.definitionId ?? occurrence.id));
+        const range = definition?.ranges.find(r => r.selector === selector);
+        if (!definition || !range) continue;
+        const described = model.describeSelection(definition.id, range.startTriangle, occurrence.id);
+        if (described) { next.push(described); break; }
+      }
+    const first = next[0] ?? null;
+    setPicks(next); setSelectedEntityId(first?.semanticEntityId ?? null); setSelectedFaceId(first?.faceId ?? null); setSelectedSelection(first);
+  };
+  const selectionMeasurement = useSelectionMeasurement(previewModel ? null : model, picks);
+  const extraSelections = useMemo(() => picks.slice(1).map(p => ({ occurrenceId: p.occurrenceId, topologyId: p.faceId })), [picks]);
   useEffect(() => {
     let current = true;
     setFieldProjection(null);
@@ -311,7 +358,7 @@ export function HeliosApp({ project, initialWorkspace, chooseBase = false, onSho
   }, [model, selectedEntityId]);
   // Imported PMI also inserts compiler-owned declarations while Source is open.
   useEffect(() => {
-    if (editorMode !== 'graph' && !model?.mesh.importedAsset) return;
+    if (editorMode === 'source' && !model?.mesh.importedAsset) return;
     let current = true;
     const timer = setTimeout(() => {
       void runtime.outline(source, sourceName, String(sourceRevision))
@@ -343,6 +390,8 @@ export function HeliosApp({ project, initialWorkspace, chooseBase = false, onSho
     openedForErrors.current = errorCount;
   }, [errorCount]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { try { localStorage.setItem('helios-editor-mode', editorMode); } catch { /* per-viewer convenience only */ } }, [editorMode]);
+  // Label picks edges as well as faces: show them.
+  useEffect(() => { if (editorMode === 'label') setDisplayMode(mode => mode === 'shaded' ? 'edges' : mode); }, [editorMode]);
   // Geometry or tree selection highlights the unit, and row, that declares it. A selection the
   // graph itself made is not echoed back: the entity found for a container is often a child.
   const graphPickedEntity = useRef<string | null>(null);
@@ -833,6 +882,7 @@ export function HeliosApp({ project, initialWorkspace, chooseBase = false, onSho
         <div className="editor-mode"><div className="segmented" role="tablist" aria-label="Editing view">
           <button role="tab" aria-selected={editorMode === 'graph'} className={editorMode === 'graph' ? 'active' : ''} onClick={() => setEditorMode('graph')}>Graph</button>
           <button role="tab" disabled={!!pendingAuthoring || pendingGraphFields} title={pendingGraphFields ? 'Apply or discard graph field edits first' : undefined} aria-selected={editorMode === 'source'} className={editorMode === 'source' ? 'active' : ''} onClick={() => setEditorMode('source')}>Source</button>
+          <button role="tab" disabled={!!pendingAuthoring || pendingGraphFields} title={pendingGraphFields ? 'Apply or discard graph field edits first' : 'Annotate the part: datums, sizes, tolerances'} aria-selected={editorMode === 'label'} className={editorMode === 'label' ? 'active' : ''} onClick={() => setEditorMode('label')}>Label</button>
         </div></div>
         {editorMode === 'graph' && <GraphPanel layouts={graphLayouts.current} pendingFields={pendingGraphFields} pending={!!pendingAuthoring} outline={outline} error={outlineError} diagnostics={shownDiagnostics} selection={graphSelection} theme={theme}
           onSelect={(unitId, row, graph) => selectFromGraph(unitId, row, graph)} onOpenSource={(unitId, row, graph) => openFromGraph(unitId, row, graph)}
@@ -863,6 +913,12 @@ export function HeliosApp({ project, initialWorkspace, chooseBase = false, onSho
                   readOnly={inspectorProps().readOnly} onCommit={commitGraphField} onRename={graphActions.onRename} onDelete={graphActions.onDelete}
                   onAdd={parameterActions.onAdd} onSelect={selectGraphNode} />}</>}
           </div>} />}
+        {editorMode === 'label' && <LabelPanel picks={picks} model={model} outline={outline?.document === sourceName && outline.revision === String(sourceRevision) ? outline : null}
+          runtime={runtime} source={source} sourceName={sourceName} sourceRevision={sourceRevision} documents={projectDocuments.current} root={projectRoot.current ?? sourceName}
+          disabled={busy ? 'Wait for the build to finish.' : sourceRevision !== displayRevision ? 'Build the current source before labeling.' : !model ? 'Open or build a part to label.' : null}
+          onPreview={setPreviewModel}
+          onApply={(operations, label) => structuralEdit(operations, { nodeId: '', label, select: null })}
+          onSelectTargets={selectors => selectBySelectors(selectors)} />}
         <div className="source-host" hidden={editorMode !== 'source'}>
         <SourcePanel ref={sourcePanel} sourceRevision={sourceRevision} onNavigateSource={navigateSource} onHistoryState={setHistoryState} onHistoryApplied={value => { setGraphEdit(null); void submitBuild(value, sourceName, sourceRevisionRef.current); }} disabled={!!busy} fileName={sourceName} dirty={dirtyFiles.has(sourceName)} source={source} diagnostics={shownDiagnostics.filter(item => !item.source || item.source.source === sourceName)} runtime={runtime} model={model} selectedSelector={selectedSelection?.selector} theme={theme} onSourceChange={value => editSource(value)} onCursorChange={onSourceCursor} onRebuild={() => void rebuildSource()} onLiveDiagnostics={setLiveDiagnostics} onLanguageError={error => { setDiagnostics([toDiagnostic(error, 'FIRMAMENT-FORMAT')]); pushOutput(`Format refused · ${error instanceof Error ? error.message : String(error)}`); }} onDiagnosticClick={diagnostic => { if (diagnostic.source) setSelectedEntityId(null); }} />
         </div>
@@ -874,7 +930,8 @@ export function HeliosApp({ project, initialWorkspace, chooseBase = false, onSho
           <button title="Show retained geometric Concept Structs as gold wireframes; disabled when none are available" aria-pressed={showConcepts}
             disabled={!model?.mesh.definitions.some(d => d.concepts?.length) && !model?.mesh.occurrences.some(o => o.concepts?.length)} onClick={() => setShowConcepts(value => !value)}>Concepts</button></div>
           <div className="toolbar-views"><button title="Front view" onClick={() => namedView('front')}>Front</button><button title="Top view" onClick={() => namedView('top')}>Top</button><button title="Right view" onClick={() => namedView('right')}>Right</button><button title="Isometric view" onClick={() => namedView('iso')}>Iso</button><button title="Fit model · F" onClick={() => setViewCommand(`fit-${Date.now()}`)}>Fit</button><button title="Fit selection" disabled={!selectedEntityId} onClick={() => setViewCommand(`fitselection-${Date.now()}`)}>Fit selection</button></div>
-          <div className="toolbar-display"><select aria-label="Display mode" value={displayMode} onChange={event => setDisplayMode(event.target.value as DisplayMode)}><option value="shaded">Shaded</option><option value="edges">Shaded with edges</option><option value="wireframe">Wireframe</option></select><button aria-label="Selection mode" title="Switch face or edge selection" onClick={() => { setSelectionMode(value => value === 'face' ? 'edge' : 'face'); setDisplayMode('edges'); }}>{selectionMode === 'face' ? 'Faces' : 'Edges'}</button><button title="Toggle camera projection" onClick={() => setViewMode(value => value === 'perspective' ? 'orthographic' : 'perspective')}>{viewMode === 'perspective' ? 'Perspective' : 'Orthographic'}</button></div>
+          <div className="toolbar-display"><select aria-label="Display mode" value={displayMode} onChange={event => setDisplayMode(event.target.value as DisplayMode)}><option value="shaded">Shaded</option><option value="edges">Shaded with edges</option><option value="wireframe">Wireframe</option></select>{editorMode === 'label' ? <button aria-label="Selection mode" disabled title="Label picks the edge under the pointer and the face otherwise; Alt-click picks the face. Ctrl- or Shift-click adds to the selection.">Faces + edges</button>
+            : <button aria-label="Selection mode" title="Switch face or edge selection" onClick={() => { setSelectionMode(value => value === 'face' ? 'edge' : 'face'); setDisplayMode('edges'); }}>{selectionMode === 'face' ? 'Faces' : 'Edges'}</button>}<button title="Toggle camera projection" onClick={() => setViewMode(value => value === 'perspective' ? 'orthographic' : 'perspective')}>{viewMode === 'perspective' ? 'Perspective' : 'Orthographic'}</button></div>
         </div>
         <div className="viewport-stage" style={shellLayout.place('stage')}>
         {!pendingAuthoring && selectedSelection?.topologyKind === 'Edge' && <div className="edge-feature-actions" aria-label="Selected edge actions">
@@ -890,7 +947,11 @@ export function HeliosApp({ project, initialWorkspace, chooseBase = false, onSho
           const item = palette.find(p => p.id === 'hole'); if (item) beginAuthoring({ kind: 'feature', item });
         }}>Add hole on selected face</button>}
         {previewModel && <div className="authoring-preview-banner" role="status">Preview · {wireframePreview ? 'gold boundaries · ' : ''}source unchanged · Apply or Cancel</div>}
-        <Viewport placingFeature={placingHole} placementGuide={placementGuide} placementActions={placementActions} measurementDisabledReason={previewModel ? 'Apply or cancel the preview before measuring.' : busy || displayRevision !== sourceRevision ? "Build the current source successfully before measuring." : undefined} showConcepts={showConcepts} pose={previewModel ? null : pose} busyMessage={busy === 'Worker failed' ? null : busy} errorMessage={shownDiagnostics.some(item => item.severity === 'error') ? (model ? 'Build failed. The last valid model remains visible; see Problems for details.' : 'Build needs attention. See Problems for the compiler diagnostic.') : null} model={wireframePreview ? model : previewModel ?? model} wireframePreview={wireframePreview} selectedEntityId={previewModel ? null : selectedEntityId} selectedTopologyId={previewModel ? null : selectedFaceId} selectedOccurrenceId={previewModel ? null : selectedSelection?.occurrenceId} theme={theme} displayMode={displayMode} viewMode={viewMode} viewCommand={previewModel && !wireframePreview ? `fit-preview-${previewModel.id}` : viewCommand} selectionMode={selectionMode} onSelect={previewModel ? () => {} : select} captureRef={capturePreview} />
+        <Viewport placingFeature={placingHole} placementGuide={placementGuide} placementActions={placementActions} measurement={previewModel ? null : selectionMeasurement.result}
+          extraSelections={previewModel ? undefined : extraSelections} showConcepts={showConcepts} pose={previewModel ? null : pose} busyMessage={busy === 'Worker failed' ? null : busy} errorMessage={shownDiagnostics.some(item => item.severity === 'error') ? (model ? 'Build failed. The last valid model remains visible; see Problems for details.' : 'Build needs attention. See Problems for the compiler diagnostic.') : null} model={wireframePreview ? model : previewModel ?? model} wireframePreview={wireframePreview} selectedEntityId={previewModel ? null : selectedEntityId} selectedTopologyId={previewModel ? null : selectedFaceId} selectedOccurrenceId={previewModel ? null : selectedSelection?.occurrenceId} theme={theme} displayMode={displayMode} viewMode={viewMode} viewCommand={previewModel && !wireframePreview ? `fit-preview-${previewModel.id}` : viewCommand} selectionMode={editorMode === 'label' ? 'auto' : selectionMode} onSelect={previewModel ? () => {} : select} captureRef={capturePreview}>
+          {!previewModel && !pendingAuthoring && <SelectionCard picks={picks} measurement={selectionMeasurement} inches={measureInches} onToggleUnits={() => setMeasureInches(v => !v)}
+            onRemove={removePick} onClear={clearPicks} onLabel={editorMode === 'label' ? undefined : () => { if (canLeaveGraphFields()) setEditorMode('label'); }} />}
+        </Viewport>
         {intelliDraft && <IntelliDraftPanel key={intelliDraft.source === undefined ? 'new' : `existing:${intelliDraft.node ?? ''}`} runtime={runtime} initialSource={intelliDraft.source}
           document={intelliDraft.source === undefined ? undefined : sourceName} initialNode={intelliDraft.node ?? null}
           onSource={intelliDraft.source === undefined ? undefined : span => { setIntelliDraft(null); setEditorMode('source'); navigateSource({ source: sourceName, ...span, line: 1, column: 1 }); }}
@@ -925,8 +986,8 @@ export function HeliosApp({ project, initialWorkspace, chooseBase = false, onSho
             tutorial: () => <TutorialPanel lessonId={projectRoot.current === initialWorkspace?.root ? initialWorkspace?.lessonId : undefined} buildCurrent={!!model && sourceRevision === displayRevision && buildStarted === null && !busy && !shownDiagnostics.some(d => d.severity === 'error')} onRead={setLearnPage} />,
             files: () => <><ProjectExplorer projectName={workspaceTitle} fileName={sourceName} dirty={dirtyFiles.has(sourceName)} dirtyFiles={dirtyFiles} documents={projectFileNames.length ? projectFileNames : [sourceName]} cloud={!!project} onSelectFile={projectFileNames.length ? switchFile : undefined} onOpen={() => fileInput.current?.click()} onNew={() => loadSample('new')} onReveal={() => sourcePanel.current?.focusAt()} /><ModelTree tree={model?.tree ?? null} selectedId={selectedEntityId} onSelect={id => select(id)} /></>,
             inspector: () => <><ModelTree tree={model?.tree ?? null} selectedId={selectedEntityId} onSelect={id => select(id)} /><Inspector model={model} schema={semanticSchema} projection={fieldProjection} projectionCurrent={source === model?.source} entityId={selectedEntityId} faceId={selectedFaceId} selection={selectedSelection} diagnostics={diagnostics} onApply={applyProperty} onRewriteField={rewriteField} onGoToSource={navigateSource} onReferenceFace={referenceFace} onReferenceHoleWall={referenceHoleWall}
-              annotationEditor={selectedSelection?.sourceAddressability === 'ImportedStable' && selectedSelection.selector && ['Plane', 'Cylinder'].includes(selectedSelection.surfaceKind ?? '') ?
-                <PmiAuthor key={`${model?.revision}:${selectedSelection.selector}`} selection={selectedSelection} outline={outline?.document === sourceName && outline.revision === String(sourceRevision) ? outline : null} disabled={!!busy || sourceRevision !== displayRevision} onApply={(operations, label) => structuralEdit(operations, { nodeId: '', label })} /> : undefined} /></>,
+              annotationEditor={selectedSelection?.sourceAddressability === 'ImportedStable' && selectedSelection.selector ?
+                <p className="inspector-note">Annotate imported faces in the <button type="button" className="source-link" onClick={() => { if (canLeaveGraphFields()) setEditorMode('label'); }}>Label</button> tab.</p> : undefined} /></>,
             examples: () => <div className="dock-gallery"><ExampleGallery onOpen={id => void openExample(id)} opening={openingExample} unavailableReason={busy ? "A project operation is running. Open another example when it finishes." : undefined} /></div>,
             llm: () => null,
             'version-control': () => null,
@@ -965,8 +1026,8 @@ export function HeliosApp({ project, initialWorkspace, chooseBase = false, onSho
   </div>;
 }
 
-function readEditorMode(): 'graph' | 'source' {
-  try { return localStorage.getItem('helios-editor-mode') === 'graph' ? 'graph' : 'source'; } catch { return 'source'; }
+function readEditorMode(): 'graph' | 'source' | 'label' {
+  try { const mode = localStorage.getItem('helios-editor-mode'); return mode === 'graph' || mode === 'label' ? mode : 'source'; } catch { return 'source'; }
 }
 function stripExtension(name: string) { return name.replace(/\.[^.]+$/, ''); }
 function snapshotSession(session: ModelSession | null) { return session ? Object.assign(Object.create(Object.getPrototypeOf(session)), session) as ModelSession : null; }
