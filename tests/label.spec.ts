@@ -17,6 +17,18 @@ async function openPart(page: Page) {
   await page.getByRole('tab', { name: 'Label', exact: true }).click();
 }
 
+/** Pick the washer's bore, which SolidWorks exported as two half-cylinders, and name it as one hole. */
+async function recognizeBore(page: Page, name = 'Bore') {
+  const form = page.getByRole('form', { name: 'Add Recognize', exact: true });
+  expect(await pickNearCenter(page, async () => form.isVisible(), 120, 6)).toBe(true);
+  await expect(page.getByRole('radio', { name: 'Recognize hole (2 faces)', exact: true })).toBeChecked();
+  await form.getByLabel('Name', { exact: true }).fill(name);
+  await expect(form.getByLabel('Source to write', { exact: true })).toHaveText(new RegExp(`^Region ${name} \\{ kind: HoleShaft stepFaceEntities: \\["#\\d+", "#\\d+"\\] \\}$`));
+  await form.getByRole('button', { name: 'Apply', exact: true }).click();
+  await expect(page.locator('.status-ready')).toContainText('Ready');
+  await expect(page.getByLabel('PMI records', { exact: true })).toContainText(name);
+}
+
 test('a hole and a datum face offer axis perpendicularity; the datum picker admits only declared datums', async ({ page }) => {
   await openPart(page);
   const canvas = page.locator('.viewport-canvas canvas'), box = (await canvas.boundingBox())!;
@@ -32,7 +44,10 @@ test('a hole and a datum face offer axis perpendicularity; the datum picker admi
   await expect(page.getByRole('radio', { name: /this face is A/ })).toBeDisabled();
 
   // The bore, then Ctrl-click the datum face: one hole, one plane.
-  expect(await pickNearCenter(page, async () => page.getByRole('form', { name: 'Add HoleDiameter', exact: true }).isVisible(), 120, 6)).toBe(true);
+  await recognizeBore(page);
+  // The selection stays on the hole, now labeled by its name.
+  await expect(page.getByRole('radio', { name: 'Diameter Ø10.000', exact: true })).toBeChecked();
+  await expect(page.getByRole('radio', { name: /^Recognize/ })).toHaveCount(0);
   await expect(page.locator('.selection-measure')).toContainText('Ø');
   // Alt picks the face even next to an edge.
   await canvas.click({ position: top, modifiers: ['Control', 'Alt'] });
@@ -43,7 +58,7 @@ test('a hole and a datum face offer axis perpendicularity; the datum picker admi
   await expect(form.getByLabel('Primary datum', { exact: true })).toHaveValue('A');
   await expect(form.getByLabel('Primary datum', { exact: true }).locator('option')).toHaveText(['Choose…', 'A']);
   await form.getByLabel('Tolerance Ø (mm)', { exact: true }).fill('0.05');
-  await expect(form.getByLabel('Source to write', { exact: true })).toContainText('zone: Cylindrical datumRefs: [A]');
+  await expect(form.getByLabel('Source to write', { exact: true })).toContainText('target: part.region("Bore") tolerance: 0.05mm zone: Cylindrical datumRefs: [A]');
   await form.getByRole('button', { name: 'Preview', exact: true }).click();
   await expect(page.locator('.authoring-preview-banner')).toBeVisible();
   await form.getByRole('button', { name: 'Apply', exact: true }).click();
@@ -58,8 +73,8 @@ test('a hole and a datum face offer axis perpendicularity; the datum picker admi
 
 test('an out-of-band nominal warns and needs a second click', async ({ page }) => {
   await openPart(page);
+  await recognizeBore(page);
   const form = page.getByRole('form', { name: 'Add HoleDiameter', exact: true });
-  expect(await pickNearCenter(page, async () => form.isVisible(), 120, 6)).toBe(true);
   await form.getByLabel('Nominal (mm)', { exact: true }).fill('9.5');
   await form.getByLabel('Fit', { exact: true }).selectOption('H7');
   await expect(form.getByLabel('Upper + (mm)', { exact: true })).toHaveValue('0.015');

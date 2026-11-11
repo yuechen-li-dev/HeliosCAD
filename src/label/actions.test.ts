@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { LanguageOutline, SelectionDescription } from '@aetheris/cad';
+import { recognizedHoles } from './holes';
 import { checkValues, emitDeclarations, labelActions, labelOperations, nextDatumLetter, pmiRecords, type LabelDatum } from './actions';
 import type { LabelFace } from './geometry';
 import { defaultGrid, fitAllowances, roundTo } from './fits';
@@ -44,7 +45,7 @@ describe('label actions', () => {
   });
   it('offers a hole its diameter, position and axis perpendicularity', () => {
     const { actions } = labelActions([pick(9, { diameterMm: 6.6002 })], [face(9, 'Cylinder', z, 6.6002)], [datumA], withA);
-    expect(actions.map(a => a.id)).toEqual(['diameter', 'position', 'axis-perpendicularity', 'cylindricity', 'datum']);
+    expect(actions.map(a => a.id)).toEqual(['diameter', 'position', 'axis-perpendicularity', 'cylindricity', 'datum', 'recognize']);
     expect(actions[0]!.measured).toBe(6.6002);
     expect(actions[2]!.disabled).toBeNull();
     const tilted = labelActions([pick(9)], [face(9, 'Cylinder', x, 6)], [datumA], withA).actions;
@@ -104,6 +105,47 @@ describe('label actions', () => {
   it('offers a note with nothing selected', () => {
     const [note] = labelActions([], [], [], null).actions;
     expect(emitDeclarations(note!, { name: 'Material', text: 'PA12, black' })).toEqual(['Note Material { text: "PA12, black" }']);
+  });
+});
+
+describe('holes', () => {
+  const half = (id: number, axisPoint = [0, 0, 0], d = 6.6) => ({ ...face(id, 'Cylinder', z, d), axisPoint });
+  const recognized = (name: string, ...ids: number[]) => node(name, 'Region', name, 'r', { kind: 'HoleShaft', stepFaceEntities: `[${ids.map(i => `"#${i}"`).join(', ')}]` });
+  const tree = (...regions: LanguageOutline['nodes']) => outline(node('i', 'InlineStep', 'part', 'm'), node('r', 'Recognize', 'part', 'm'), ...regions,
+    node('p', 'Pmi', null, 'm'), node('a', 'Datum', 'A', 'p', { target: 'part.face("#1")' }));
+  it('asks to recognize a hole split into halves before labeling it', () => {
+    const halves = [half(20), half(21)];
+    const { actions, notice } = labelActions([pick(20, { diameterMm: 6.6 })], [halves[0]!], [datumA], withA, [], halves);
+    expect(actions.map(a => a.id)).toEqual(['recognize']);
+    expect(notice).toMatch(/split this hole/);
+    expect(emitDeclarations(actions[0]!, { name: 'Bore' })).toEqual(['Region Bore { kind: HoleShaft stepFaceEntities: ["#20", "#21"] }']);
+    expect(labelOperations(tree(), ['Region Bore { kind: HoleShaft stepFaceEntities: ["#20", "#21"] }'], 'part'))
+      .toEqual([{ kind: 'insertDeclaration', parent: 'r', source: 'Region Bore { kind: HoleShaft stepFaceEntities: ["#20", "#21"] }' }]);
+    expect(labelOperations(withA, ['Region Bore { kind: HoleShaft stepFaceEntities: ["#20"] }'], 'part')[0])
+      .toMatchObject({ parent: 'm', source: 'Recognize part {\n    Region Bore { kind: HoleShaft stepFaceEntities: ["#20"] }\n}' });
+  });
+  it('labels a recognized hole by its name, whichever half is picked', () => {
+    const t = tree(recognized('Bore', 20, 21));
+    const holes = recognizedHoles(t), halves = [half(20), half(21)];
+    const { actions } = labelActions([pick(21)], [halves[1]!], [datumA], t, holes, halves);
+    expect(actions.map(a => a.id)).toEqual(['diameter', 'position', 'axis-perpendicularity', 'cylindricity']);
+    expect(actions.every(a => a.target === 'part.region("Bore")')).toBe(true);
+    // Both halves picked are still one hole.
+    expect(labelActions([pick(20), pick(21)], halves, [datumA], t, holes, halves).actions[0]!.title).toBe('Diameter Ø6.600');
+  });
+  it('recognizes several holes at once, then gives them one 4X callout', () => {
+    const four = [1, 2, 3, 4].map(i => half(30 + i, [i * 20, 0, 0], 35));
+    const fresh = labelActions(four.map((_, i) => pick(31 + i)), four, [datumA], withA, [], four).actions;
+    expect(fresh.map(a => a.title)).toEqual(['Recognize 4 holes']);
+    expect(emitDeclarations(fresh[0]!, { name: 'Hole' })).toHaveLength(4);
+    expect(checkValues(fresh[0]!, { name: 'Hole' }, withA).errors).toEqual([]);
+    const t = tree(...[1, 2, 3, 4].map(i => recognized(`Hole${i}`, 30 + i)));
+    const { actions } = labelActions(four.map((_, i) => pick(31 + i)), four, [datumA], t, recognizedHoles(t), four);
+    expect(actions.map(a => a.title)).toEqual(['4X Ø35.000', '4X Position']);
+    expect(emitDeclarations(actions[0]!, { name: 'Bolt', nominal: 35, plus: 0.1, minus: 0 }))
+      .toEqual(['HoleDiameter Bolt { target: [Hole1, Hole2, Hole3, Hole4] value: 35mm tolerance: PlusMinus(0.1mm, 0mm) }']);
+    const mixed = [...four.slice(0, 3), half(34, [80, 0, 0], 25)];
+    expect(labelActions(mixed.map((_, i) => pick(31 + i)), mixed, [datumA], t, recognizedHoles(t), mixed).actions[0]!.disabled).toMatch(/differ in diameter/);
   });
 });
 

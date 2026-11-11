@@ -2,8 +2,9 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Diagnostic, LanguageEditOperation, LanguageOutline, ModelSession, SelectionDescription } from '@aetheris/cad';
 import type { CadRuntime } from '../sdk/CadRuntime';
 import { uniqueName } from '../graph/graphAuthoring';
-import { checkValues, emitDeclarations, labelActions, labelOperations, pmiRecords, type LabelAction, type LabelDatum, type LabelValues } from './actions';
-import { findFace } from './geometry';
+import { checkValues, emitDeclarations, labelActions, labelOperations, pmiRecords, recognizeNames, type LabelAction, type LabelDatum, type LabelValues } from './actions';
+import { allFaces, findFace } from './geometry';
+import { recognizedHoles } from './holes';
 import { GRIDS_MM, HOLE_FITS, defaultGrid, fitAllowances, formatMm, roundTo, type HoleFit } from './fits';
 
 interface Props {
@@ -38,7 +39,9 @@ export function LabelPanel(props: Props) {
   const faces = useMemo(() => picks.map(p => model && p.selector && p.topologyKind !== 'Edge' ? findFace(model.mesh, p.selector, p.occurrenceId) : null), [picks, model]);
   const datums = useMemo<LabelDatum[]>(() => records.filter(r => r.kind === 'Datum' && r.target).map(r => ({
     name: r.name, selector: r.target!, nodeId: r.nodeId, face: model ? findFace(model.mesh, r.target!) : null })), [records, model]);
-  const { actions, notice } = useMemo(() => labelActions(picks, faces, datums, outline), [picks, faces, datums, outline]);
+  const holes = useMemo(() => recognizedHoles(outline), [outline]);
+  const cylinders = useMemo(() => model ? allFaces(model.mesh).filter(f => f.surfaceKind === 'Cylinder') : [], [model]);
+  const { actions, notice } = useMemo(() => labelActions(picks, faces, datums, outline, holes, cylinders), [picks, faces, datums, outline, holes, cylinders]);
   const firstEnabled = actions.find(a => !a.disabled)?.id ?? actions[0]?.id ?? null;
   const [chosen, setChosen] = useState<string | null>(firstEnabled);
   const key = picks.map(p => `${p.occurrenceId}/${p.faceId}`).join('|');
@@ -47,6 +50,10 @@ export function LabelPanel(props: Props) {
   const action = actions.find(a => a.id === chosen && !a.disabled) ?? actions.find(a => a.id === firstEnabled) ?? null;
   return <section className="label-panel" aria-label="Label">
     <div className="label-records" aria-label="PMI records">
+      {holes.length > 0 && <div className="label-group"><h3>Holes</h3>
+        {holes.map(h => <button key={h.nodeId} type="button" className="label-record" title={h.entities.join(', ')}
+          onClick={() => props.onSelectTargets(h.entities.map(e => `${h.body}.face("${e}")`))}>
+          <b>{h.name}</b><span>Recognized</span><small>{h.entities.length} face{h.entities.length > 1 ? 's' : ''}</small></button>)}</div>}
       {records.length === 0 && <p className="label-empty">No PMI yet. Select a face of the imported part to start: datums first, then sizes and tolerances.</p>}
       {GROUPS.map(([title, kinds]) => {
         const items = records.filter(r => kinds.includes(r.kind));
@@ -104,7 +111,7 @@ function LabelForm(props: Props & { action: LabelAction }) {
   const preview = async () => {
     const mine = ++ticket.current; setState('previewing'); setMessage(null);
     try {
-      const edit = await props.runtime.edit(props.source, labelOperations(outline, declarations()), props.sourceName, String(props.sourceRevision));
+      const edit = await props.runtime.edit(props.source, labelOperations(outline, declarations(), action.recognize?.body), props.sourceName, String(props.sourceRevision));
       const documents = { ...props.documents, [props.sourceName]: edit.text };
       const result = await props.runtime.preview(props.root === props.sourceName ? edit.text : documents[props.root]!, props.root, props.sourceRevision, documents);
       if (mine !== ticket.current) { await result.model?.dispose(); return; }
@@ -116,7 +123,7 @@ function LabelForm(props: Props & { action: LabelAction }) {
   const apply = async () => {
     if (warnings.length && !confirming) { setConfirming(true); return; }
     setState('applying');
-    const failure = await props.onApply(labelOperations(outline, declarations()), `Labeled ${action.record} ${values.name}${action.target ? ` on ${action.target}` : ''}`);
+    const failure = await props.onApply(labelOperations(outline, declarations(), action.recognize?.body), `Labeled ${action.record} ${values.name}${action.target ? ` on ${action.target}` : ''}`);
     clearPreview();
     if (failure) { setMessage(failure); setState('idle'); }
   };
@@ -126,6 +133,9 @@ function LabelForm(props: Props & { action: LabelAction }) {
 
   return <form className="label-form" aria-label={`Add ${action.record}`} onSubmit={e => { e.preventDefault(); void apply(); }}>
     {field('Name', name, setName)}
+    {action.record === 'Recognize' && <p className="label-hint">{action.recognize!.holes.length > 1
+      ? `Names the holes ${recognizeNames(action, values).join(', ')}. Requirements then list them, and 4X callouts name them together.`
+      : 'Names the hole so requirements apply to all of its faces.'} The geometry is not changed.</p>}
     {action.newDatum && <>
       <p className="label-hint">The second face becomes datum {newDatumName || action.newDatum.letter}: a tolerance can only reference a declared datum.</p>
       {field('New datum', newDatumName, value => { const before = newDatumName.trim() || action.newDatum!.letter; setNewDatumName(value); setRefs(r => r.map(x => x === before ? value.trim() : x)); })}

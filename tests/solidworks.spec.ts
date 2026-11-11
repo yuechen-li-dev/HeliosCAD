@@ -29,11 +29,14 @@ test('SolidWorks AP214 part is labeled with a datum and diameter in the Label ta
   await expect(page.locator('.status-ready')).toContainText('Ready');
   await expect(page.getByLabel('PMI annotations', { exact: true })).toContainText('A');
   await expect(page.getByLabel('PMI records', { exact: true })).toContainText('Datum');
+  // SolidWorks exports the bore as two half-cylinders: name it as one hole, then size it.
+  const recognizeForm = page.getByRole('form', { name: 'Add Recognize', exact: true });
+  expect(await pickNearCenter(page, async () => recognizeForm.isVisible(), 180, 8)).toBe(true);
+  await recognizeForm.getByLabel('Name', { exact: true }).fill('BoreHole');
+  await recognizeForm.getByRole('button', { name: 'Apply', exact: true }).click();
+  await expect(page.locator('.status-ready')).toContainText('Ready');
   const diameterForm = page.getByRole('form', { name: 'Add HoleDiameter', exact: true });
-  expect(await pickNearCenter(page, async () => {
-    const nominal = diameterForm.getByLabel('Nominal (mm)', { exact: true });
-    return await nominal.isVisible() && Math.abs(Number(await nominal.inputValue()) - 10) < .001;
-  }, 180, 8)).toBe(true);
+  await expect(diameterForm.getByLabel('Nominal (mm)', { exact: true })).toHaveValue('10');
   await diameterForm.getByLabel('Name', { exact: true }).fill('Bore');
   await diameterForm.getByLabel('Nominal (mm)', { exact: true }).fill('10');
   await diameterForm.getByLabel('Upper + (mm)', { exact: true }).fill('0.02');
@@ -63,7 +66,7 @@ test('SolidWorks AP214 part is labeled with a datum and diameter in the Label ta
   const bore = analysis.semanticPmi.items.find((item: { kind: string }) => item.kind === 'Diameter');
   expect(datum.name).toBe('A');
   expect(bore).toMatchObject({ value: 10, tolerancePlus: .02, toleranceMinus: .01, valueUnit: 'mm', authoredName: 'Bore' });
-  expect(datum.geometricFaceEntityIds).toHaveLength(1); expect(bore.geometricFaceEntityIds).toHaveLength(1);
+  expect(datum.geometricFaceEntityIds).toHaveLength(1); expect(bore.geometricFaceEntityIds).toHaveLength(2);
   expect(datum.geometricFaceEntityIds[0]).not.toBe(bore.geometricFaceEntityIds[0]);
   await writeFile(`${output}/enriched-analysis.json`, JSON.stringify(analysis, null, 2));
   const glb = Buffer.from(files[glbName]); await writeFile(`${output}/enriched.glb`, glb);

@@ -14,6 +14,8 @@ export interface LabelFace {
   readonly point: readonly number[];
   /** Outward surface normal at `point`. */
   readonly pointNormal: readonly number[];
+  /** A point on a cylinder's axis, world coordinates. */
+  readonly axisPoint?: readonly number[] | null;
 }
 
 type V = readonly number[];
@@ -60,8 +62,22 @@ export function findFace(mesh: DisplayMesh, selector: string, occurrenceId?: str
       for (let i = 1; i < normals.length; i++) { const c = cross(normals[0]!, normals[i]!), l = Math.hypot(c[0]!, c[1]!, c[2]!); if (l > size) { size = l; best = c; } }
       direction = best && size > 1e-3 ? unit(transformVector(m, best)) : null;
     }
+    let axisPoint: number[] | null = null;
+    const r = (range.diameterMm ?? 0) / 2;
+    if (kind === 'Cylinder' && direction && r > 0) {
+      // Vertices lie on the surface and their normals are radial: the axis is r along the normal, one way or the other.
+      // The right way is the one on which a second, differently facing vertex is also r from the axis.
+      const first = range.startTriangle * 3, last = (range.startTriangle + range.triangleCount) * 3;
+      const p0 = transformPoint(m, vertex(first)), n0 = unit(transformVector(m, normal(first)))!;
+      let other = first;
+      for (let i = first; i < last; i++) if (dot(unit(normal(i)) ?? n0, n0) < dot(unit(normal(other)) ?? n0, n0)) other = i;
+      const p1 = transformPoint(m, vertex(other));
+      const off = (c: number[]) => { const d = sub(p1, c), along = dot(d, direction!); return Math.abs(Math.hypot(...d.map((x, i) => x - along * direction![i]!)) - r); };
+      const candidates = [p0.map((x, i) => x + n0[i]! * r), p0.map((x, i) => x - n0[i]! * r)];
+      axisPoint = off(candidates[0]!) <= off(candidates[1]!) ? candidates[0]! : candidates[1]!;
+    }
     return { selector, occurrenceId: occurrence.id, faceId: range.faceId, surfaceKind: kind, diameterMm: range.diameterMm ?? null,
-      direction, point: transformPoint(m, near), pointNormal: atNormal };
+      direction, point: transformPoint(m, near), pointNormal: atNormal, axisPoint };
   }
   return null;
 }
@@ -85,4 +101,23 @@ export function facePick(face: LabelFace): MeasurementPick {
 export function planeDistance(a: LabelFace | null, b: LabelFace | null, degrees = 0.5) {
   if (a?.surfaceKind !== 'Plane' || b?.surfaceKind !== 'Plane' || !a.direction || !b.direction || acuteAngle(a.direction, b.direction) >= degrees) return null;
   return Math.abs(dot([b.point[0]! - a.point[0]!, b.point[1]! - a.point[1]!, b.point[2]! - a.point[2]!], a.direction));
+}
+
+/** Whether two cylindrical faces are the same cylinder: equal diameter on one axis line (a hole the exporting system split). */
+export function sameCylinder(a: LabelFace, b: LabelFace, tolerance = 1e-4) {
+  if (a.surfaceKind !== 'Cylinder' || b.surfaceKind !== 'Cylinder' || !a.direction || !b.direction || !a.axisPoint || !b.axisPoint) return false;
+  if (Math.abs((a.diameterMm ?? 0) - (b.diameterMm ?? 0)) > tolerance || acuteAngle(a.direction, b.direction) > 0.01) return false;
+  const d = sub(b.axisPoint, a.axisPoint), along = dot(d, a.direction);
+  return Math.hypot(...d.map((x, i) => x - along * a.direction![i]!)) <= Math.max(tolerance, 1e-3);
+}
+
+/** Every face of the mesh named by a selector, resolved. */
+export function allFaces(mesh: DisplayMesh, occurrenceId?: string | null): LabelFace[] {
+  const out: LabelFace[] = [];
+  for (const occurrence of mesh.occurrences) {
+    if (occurrenceId && occurrence.id !== occurrenceId) continue;
+    const definition = mesh.definitions.find(d => d.id === (occurrence.definitionId ?? occurrence.id));
+    for (const range of definition?.ranges ?? []) if (range.selector) { const face = findFace(mesh, range.selector, occurrence.id); if (face) out.push(face); }
+  }
+  return out;
 }

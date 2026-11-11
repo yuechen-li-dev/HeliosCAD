@@ -44,6 +44,8 @@ import { importedProject, isStep, packProject, sourceFiles, unpackProject } from
 import { registerRecoverableSource } from './crashRecovery';
 import { LabelPanel } from '../label/LabelPanel';
 import { SelectionCard, useSelectionMeasurement } from '../label/SelectionCard';
+import { allFaces, findFace } from '../label/geometry';
+import { holeFaceSelectors, recognizedHoles } from '../label/holes';
 import { AuthoringPanel, type AuthoringAction, type PendingAuthoring } from '../graph/AuthoringPanel';
 import { TutorialPanel } from '../learn/TutorialPanel';
 import type { PlacementActions, PlacementGuide } from '../viewport/featurePlacement';
@@ -347,7 +349,21 @@ export function HeliosApp({ project, initialWorkspace, chooseBase = false, onSho
     setPicks(next); setSelectedEntityId(first?.semanticEntityId ?? null); setSelectedFaceId(first?.faceId ?? null); setSelectedSelection(first);
   };
   const selectionMeasurement = useSelectionMeasurement(previewModel ? null : model, picks);
-  const extraSelections = useMemo(() => picks.slice(1).map(p => ({ occurrenceId: p.occurrenceId, topologyId: p.faceId })), [picks]);
+  // Every face of a picked hole lights up: the hole is what is selected, even when its STEP split it into halves.
+  const extraSelections = useMemo(() => {
+    const extra = picks.slice(1).map(p => ({ occurrenceId: p.occurrenceId, topologyId: p.faceId }));
+    const cylinders = picks.some(p => p.surfaceKind === 'Cylinder') && model ? allFaces(model.mesh).filter(f => f.surfaceKind === 'Cylinder') : [];
+    const holes = recognizedHoles(outline);
+    for (const pick of picks) {
+      const face = pick.surfaceKind === 'Cylinder' && pick.selector && model ? findFace(model.mesh, pick.selector, pick.occurrenceId) : null;
+      if (!face) continue;
+      for (const selector of holeFaceSelectors(face, holes, cylinders.filter(c => c.occurrenceId === pick.occurrenceId))) {
+        const sibling = cylinders.find(c => c.selector === selector && c.occurrenceId === pick.occurrenceId);
+        if (sibling && sibling.faceId !== pick.faceId && !extra.some(e => e.topologyId === sibling.faceId)) extra.push({ occurrenceId: pick.occurrenceId, topologyId: sibling.faceId });
+      }
+    }
+    return extra;
+  }, [picks, model, outline]);
   useEffect(() => {
     let current = true;
     setFieldProjection(null);

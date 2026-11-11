@@ -1,9 +1,10 @@
 import type { LanguageEditOperation, LanguageOutline, OutlineNode, SelectionDescription } from '@aetheris/cad';
 import { bodyParent } from '../graph/graphAuthoring';
 import { acuteAngle, planeDistance, type LabelFace } from './geometry';
+import { holeTarget, holeUnits, type RecognizedHole } from './holes';
 
 /** The records Label writes. Each maps to one `Pmi` declaration. */
-export type LabelRecord = 'Datum' | 'Distance' | 'Flatness' | 'Parallelism' | 'Perpendicularity' | 'HoleDiameter' | 'Position' | 'Cylindricity' | 'Note';
+export type LabelRecord = 'Recognize' | 'Datum' | 'Distance' | 'Flatness' | 'Parallelism' | 'Perpendicularity' | 'HoleDiameter' | 'Position' | 'Cylindricity' | 'Note';
 
 /** Two directions within this many degrees count as parallel (or perpendicular). Imported planes that are meant to be
  * parallel agree to far better than this; planes that are not are far outside it. */
@@ -36,6 +37,10 @@ export interface LabelAction {
   /** A face that must become a datum for this record (the second of two picked faces), with its proposed letter. */
   readonly newDatum: { readonly selector: string; readonly letter: string } | null;
   readonly fits: boolean;
+  /** For Recognize: the faces of each hole to name, on one body. */
+  readonly recognize?: { readonly body: string; readonly holes: readonly (readonly string[])[] };
+  /** For a quantity callout on several holes. */
+  readonly quantity?: number;
 }
 
 export interface LabelValues {
@@ -75,13 +80,13 @@ const usable = (pick: SelectionDescription) => pick.topologyKind !== 'Edge' && p
 /** What a selection offers, ranked: the first enabled action is the one the card preselects. Records the selection
  * cannot express are left out; records it nearly can are present and disabled with the measured reason. */
 export function labelActions(picks: readonly SelectionDescription[], faces: readonly (LabelFace | null)[], datums: readonly LabelDatum[],
-  outline: LanguageOutline | null): { actions: LabelAction[]; notice: string | null } {
-  const result = offeredActions(picks, faces, datums, outline);
+  outline: LanguageOutline | null, holes: readonly RecognizedHole[] = [], siblings: readonly LabelFace[] = []): { actions: LabelAction[]; notice: string | null } {
+  const result = offeredActions(picks, faces, datums, outline, holes, siblings);
   // A face takes each requirement once: a second record of the same kind on the same target is a contradiction or a
   // duplicate, never what was meant. Datums are handled above with their letter.
   const records = pmiRecords(outline);
   const actions = result.actions.map(action => {
-    if (action.disabled || action.record === 'Datum' || action.record === 'Note') return action;
+    if (action.disabled || action.record === 'Datum' || action.record === 'Note' || action.record === 'Recognize') return action;
     const existing = action.between
       ? records.find(r => r.kind === 'Distance' && sameFaces(r.fields.between, action.between!))
       : records.find(r => r.kind === action.record && r.target === action.target && (action.zone === 'Cylindrical') === /\bCylindrical\b/.test(r.fields.zone ?? ''));
@@ -97,7 +102,7 @@ function sameFaces(written: string | undefined, faces: readonly [string, string]
 }
 
 function offeredActions(picks: readonly SelectionDescription[], faces: readonly (LabelFace | null)[], datums: readonly LabelDatum[],
-  outline: LanguageOutline | null): { actions: LabelAction[]; notice: string | null } {
+  outline: LanguageOutline | null, holes: readonly RecognizedHole[], siblings: readonly LabelFace[]): { actions: LabelAction[]; notice: string | null } {
   const base = { measured: null, tolerance: 'zone', zone: null, datums: 'none', defaultDatums: [], allowedDatums: [], modifiers: false, newDatum: null, fits: false } as const;
   if (picks.length === 0)
     return { actions: [{ ...base, id: 'note', record: 'Note', title: 'Note', disabled: null, target: null, tolerance: 'none', nameStem: 'Note' }], notice: null };
@@ -107,7 +112,7 @@ function offeredActions(picks: readonly SelectionDescription[], faces: readonly 
   if (notImported) return { actions: [], notice: notImported.sourceAddressability === 'ImportedStable'
     ? `This face has no stable selector${notImported.selectorReason ? `: ${notImported.selectorReason}` : ''}.`
     : `Label annotates imported STEP faces. This face comes from ${notImported.originFeature ?? 'a construction feature'}; annotate it in Source.` };
-  const kinds = faces.map(f => f?.surfaceKind ?? null);
+  let kinds = faces.map(f => f?.surfaceKind ?? null);
   const datumOn = (selector: string) => datums.find(d => d.selector === selector);
   const relation = (a: LabelFace | null, b: LabelFace | null) => {
     if (!a?.direction || !b?.direction) return null;
@@ -120,6 +125,44 @@ function offeredActions(picks: readonly SelectionDescription[], faces: readonly 
   const all = datums.map(d => d.name);
   const actions: LabelAction[] = [];
   const letter = nextDatumLetter(outline);
+
+  // Holes: faces of one cylinder are one hole, and a hole is labeled by its recognized name. A hole split into several
+  // faces, or several holes, must be recognized first; a whole single-face cylinder can be labeled by its face as well.
+  let holeTargetOf: string | null = null, holeFace: LabelFace | null = null, holeCount = 0;
+  if (kinds.includes('Cylinder') && kinds.every(k => k === 'Cylinder' || k === 'Plane') && kinds.filter(k => k === 'Plane').length <= 1) {
+    const units = holeUnits(faces.filter((f): f is LabelFace => f?.surfaceKind === 'Cylinder'), holes, siblings);
+    const fresh = units.filter(u => u.kind === 'cylinder');
+    const recognizeAction = (title: string): LabelAction => ({ ...base, id: 'recognize', record: 'Recognize', title, target: null, tolerance: 'none', disabled: null,
+      nameStem: fresh.length > 1 ? 'Hole' : 'Bore', recognize: { body: fresh[0]!.body, holes: fresh.map(u => u.kind === 'cylinder' ? u.selectors : []) } });
+    const plain = units.length === 1 && fresh.length === 1 && fresh[0]!.kind === 'cylinder' && fresh[0]!.selectors.length === 1;
+    if (fresh.length && !plain) {
+      const split = fresh.length === 1 && fresh[0]!.kind === 'cylinder' ? fresh[0]!.selectors.length : 0;
+      return { actions: [recognizeAction(fresh.length > 1 ? `Recognize ${fresh.length} holes` : `Recognize hole (${split} faces)`)],
+        notice: fresh.length > 1 || units.length > 1 ? 'Name each hole first; a requirement on several holes lists them by name.'
+          : 'The exporting system split this hole into several faces. Name it as one hole first.' };
+    }
+    if (units.length > 1 && kinds.includes('Plane')) return { actions: [], notice: 'Select one hole with a face, or several holes alone.' };
+    if (units.length > 1) {
+      // A quantity callout: alike holes, one requirement. Patterns are not inferred; the holes are listed.
+      const diameters = units.map(u => u.diameterMm ?? NaN);
+      const alike = diameters.every(d => Math.abs(d - diameters[0]!) <= 1e-4);
+      const names = units.map(u => u.kind === 'recognized' ? u.hole.name : '');
+      const target = `[${names.join(', ')}]`, n = units.length;
+      const differ = alike ? null : `The holes differ in diameter (${[...new Set(diameters.map(d => d.toFixed(3)))].join(', ')}): a ${n}X callout names alike holes.`;
+      actions.push({ ...base, id: 'diameter', record: 'HoleDiameter', title: `${n}X Ø${diameters[0]!.toFixed(3)}`, target, measured: diameters[0]!, quantity: n,
+        tolerance: 'band', fits: true, disabled: differ, nameStem: 'Diameter' });
+      actions.push({ ...base, id: 'position', record: 'Position', title: `${n}X Position`, target, quantity: n, zone: 'Cylindrical', datums: 'required', modifiers: true,
+        defaultDatums: all.slice(0, 3), allowedDatums: all,
+        disabled: differ ?? (all.length ? null : 'Position needs datums: select the faces that locate these holes and make them datums.'), nameStem: 'Position' });
+      return { actions, notice: null };
+    }
+    const unit = units[0]!;
+    holeTargetOf = unit.kind === 'recognized' ? holeTarget(unit.hole) : unit.face.selector;
+    holeFace = unit.face; holeCount = 1;
+    if (unit.kind === 'cylinder') actions.push(recognizeAction('Recognize as hole'));
+    // Faces of the same hole picked twice count once.
+    if (!kinds.includes('Plane')) kinds = ['Cylinder'];
+  }
 
   if (picks.length === 1 && kinds[0] === 'Plane') {
     const face = faces[0]!, selector = picks[0]!.selector!;
@@ -145,9 +188,9 @@ function offeredActions(picks: readonly SelectionDescription[], faces: readonly 
     // The relation that holds goes first.
     const at = actions.findIndex(a => a.id === 'parallelism');
     if (perpendicular.length && !parallel.length) actions.splice(at, 2, actions[at + 1]!, actions[at]!);
-  } else if (picks.length === 1 && kinds[0] === 'Cylinder') {
-    const face = faces[0]!, selector = picks[0]!.selector!;
-    const measured = picks[0]!.diameterMm ?? face?.diameterMm ?? null;
+  } else if (holeCount === 1 && kinds.length === 1) {
+    const face = holeFace!, selector = holeTargetOf!;
+    const measured = face.diameterMm ?? null;
     actions.push({ ...base, id: 'diameter', record: 'HoleDiameter', title: measured ? `Diameter Ø${measured.toFixed(3)}` : 'Diameter', target: selector, measured,
       tolerance: 'band', fits: true, disabled: measured ? null : 'The cylinder diameter is not available from the build.', nameStem: 'Diameter' });
     const square = datumsWhere(face, r => r.parallel);
@@ -159,8 +202,12 @@ function offeredActions(picks: readonly SelectionDescription[], faces: readonly 
       disabled: square.length ? null : all.length ? 'No datum plane is perpendicular to this axis.' : 'Declare a datum plane perpendicular to this axis first.', nameStem: 'AxisPerpendicularity' });
     actions.push({ ...base, id: 'cylindricity', record: 'Cylindricity', title: 'Cylindricity', target: selector, disabled: null, nameStem: 'Cylindricity' });
     const existing = datumOn(selector);
-    actions.push({ ...base, id: 'datum', record: 'Datum', title: existing ? `Datum axis (this axis is ${existing.name})` : `Datum axis ${letter ?? ''}`.trim(), target: selector, tolerance: 'none',
+    // A datum axis is declared on the cylinder face itself.
+    if (!selector.includes('.region(')) actions.push({ ...base, id: 'datum', record: 'Datum', title: existing ? `Datum axis (this axis is ${existing.name})` : `Datum axis ${letter ?? ''}`.trim(), target: selector, tolerance: 'none',
       disabled: existing ? `This axis is already datum ${existing.name}.` : letter ? null : 'Every datum letter is in use.', nameStem: letter ?? 'Datum' });
+    // Recognizing goes last when the face can be labeled as it is.
+    const recognize = actions.findIndex(a => a.id === 'recognize');
+    if (recognize >= 0) actions.push(actions.splice(recognize, 1)[0]!);
   } else if (picks.length === 2 && kinds.every(k => k === 'Plane')) {
     const [a, b] = faces, r = relation(a!, b!);
     const [sa, sb] = [picks[0]!.selector!, picks[1]!.selector!];
@@ -180,10 +227,10 @@ function offeredActions(picks: readonly SelectionDescription[], faces: readonly 
       defaultDatums: refs, allowedDatums: [...new Set([...refs, ...all])], newDatum, nameStem: 'Perpendicularity',
       disabled: noLetter ?? (r?.perpendicular ? null : `The faces are ${angle} apart, not perpendicular.`) });
     if (r?.perpendicular) actions.push(actions.splice(1, 1)[0]!); // perpendicularity before parallelism
-  } else if (picks.length === 2 && kinds.includes('Plane') && kinds.includes('Cylinder')) {
-    const hole = kinds.indexOf('Cylinder'), plane = 1 - hole;
-    const r = relation(faces[hole]!, faces[plane]!);
-    const sp = picks[plane]!.selector!, sh = picks[hole]!.selector!;
+  } else if (holeCount === 1 && kinds.includes('Plane')) {
+    const plane = kinds.indexOf('Plane');
+    const r = relation(holeFace, faces[plane]!);
+    const sp = picks[plane]!.selector!, sh = holeTargetOf!;
     const datum = datumOn(sp);
     const newDatum = datum ? null : letter ? { selector: sp, letter } : null;
     const refs = datum ? [datum.name] : newDatum ? [newDatum.letter] : [];
@@ -193,6 +240,8 @@ function offeredActions(picks: readonly SelectionDescription[], faces: readonly 
       disabled: !refs.length ? 'Every datum letter is in use.' : square ? null : `The face is not perpendicular to the axis (${r ? (90 - r.angle).toFixed(3) : '?'}° off).` });
     actions.push({ ...base, id: 'position', record: 'Position', title: `Position to ${refs[0] ?? 'the face'}`, target: sh, zone: 'Cylindrical', datums: 'required', modifiers: true,
       defaultDatums: refs, allowedDatums: [...new Set([...refs, ...all])], newDatum, nameStem: 'Position', disabled: refs.length ? null : 'Every datum letter is in use.' });
+    const recognize = actions.findIndex(a => a.id === 'recognize');
+    if (recognize >= 0) actions.push(actions.splice(recognize, 1)[0]!);
   } else {
     return { actions: [], notice: picks.length > 2 ? 'Select one or two faces to label.' : 'No label applies to this combination yet.' };
   }
@@ -206,7 +255,7 @@ const mm = (value: number) => `${Number(value.toFixed(6))}mm`;
 export function checkValues(action: LabelAction, values: LabelValues, outline: LanguageOutline | null): { errors: string[]; warnings: string[] } {
   const errors: string[] = [], warnings: string[] = [];
   const taken = new Set((outline?.nodes ?? []).map(n => n.name).filter(Boolean));
-  const names = [values.name, ...(action.newDatum ? [values.newDatumName ?? action.newDatum.letter] : [])];
+  const names = [...recognizeNames(action, values), ...(action.newDatum ? [values.newDatumName ?? action.newDatum.letter] : [])];
   for (const name of names) {
     if (!NAME.test(name)) errors.push(`"${name}" is not a name: start with a letter or underscore, then letters, digits or underscores.`);
     else if (taken.has(name)) errors.push(`The name ${name} is already used.`);
@@ -233,6 +282,12 @@ export function checkValues(action: LabelAction, values: LabelValues, outline: L
   return { errors, warnings };
 }
 
+/** The names Recognize gives its holes: the name itself for one hole, numbered for several. */
+export function recognizeNames(action: LabelAction, values: LabelValues) {
+  const count = action.recognize?.holes.length ?? 1;
+  return count > 1 ? Array.from({ length: count }, (_, i) => `${values.name}${i + 1}`) : [values.name];
+}
+
 /** The declarations Apply writes, in order. */
 export function emitDeclarations(action: LabelAction, values: LabelValues): string[] {
   const out: string[] = [];
@@ -242,6 +297,11 @@ export function emitDeclarations(action: LabelAction, values: LabelValues): stri
   const zone = action.zone ? ` zone: ${action.zone}` : '';
   const modifiers = action.modifiers && values.maximumMaterial ? ' modifiers: [MaximumMaterial]' : '';
   switch (action.record) {
+    case 'Recognize': {
+      const names = recognizeNames(action, values);
+      action.recognize!.holes.forEach((selectors, i) => out.push(`Region ${names[i]} { kind: HoleShaft stepFaceEntities: [${selectors.map(s => JSON.stringify(s.match(/"(#\d+)"/)?.[1] ?? s)).join(', ')}] }`));
+      break;
+    }
     case 'Datum': out.push(`Datum ${values.name} { target: ${action.target} }`); break;
     case 'Note': out.push(`Note ${values.name} { text: ${JSON.stringify(values.text!.trim())} }`); break;
     case 'Distance': out.push(`Distance ${values.name} { between: [${action.between!.join(', ')}] value: ${mm(values.nominal!)} tolerance: PlusMinus(${mm(values.plus!)}, ${mm(values.minus!)}) }`); break;
@@ -252,7 +312,14 @@ export function emitDeclarations(action: LabelAction, values: LabelValues): stri
 }
 
 /** The edit that writes the declarations into the model's `Pmi` block, creating the block when there is none. */
-export function labelOperations(outline: LanguageOutline | null, declarations: readonly string[]): LanguageEditOperation[] {
+export function labelOperations(outline: LanguageOutline | null, declarations: readonly string[], recognizeBody?: string): LanguageEditOperation[] {
+  if (recognizeBody) {
+    // Recognized holes live in the body's Recognize block, beside the import.
+    const block = outline?.nodes.find(n => n.kind === 'Recognize' && n.name === recognizeBody);
+    if (block) return declarations.map(source => ({ kind: 'insertDeclaration', parent: block.id, source }));
+    const imported = outline?.nodes.find(n => n.kind === 'InlineStep' && n.name === recognizeBody);
+    return [{ kind: 'insertDeclaration', parent: imported?.parentId ?? bodyParent(outline, null), ...(imported ? { after: imported.id } : {}), source: `Recognize ${recognizeBody} {\n${declarations.map(d => `    ${d}`).join('\n')}\n}` }];
+  }
   const pmi = outline?.nodes.find(n => n.kind === 'Pmi');
   if (pmi) return declarations.map(source => ({ kind: 'insertDeclaration', parent: pmi.id, source }));
   return [{ kind: 'insertDeclaration', parent: bodyParent(outline, null), source: `Pmi {\n${declarations.map(d => `    ${d}`).join('\n')}\n}` }];
