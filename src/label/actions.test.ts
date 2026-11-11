@@ -9,8 +9,8 @@ const pick = (id: number, extra: Partial<SelectionDescription> = {}): SelectionD
   outputRole: null, originFeature: null, selector: `part.face("#${id}")`, sourceAddressability: 'ImportedStable', selectorReason: null,
   source: null, buildRevision: 1, sourceAddressable: true, ...extra,
 });
-const face = (id: number, kind: 'Plane' | 'Cylinder', direction: number[], diameterMm: number | null = null): LabelFace => ({
-  selector: `part.face("#${id}")`, occurrenceId: 'occ', faceId: `face:${id}`, surfaceKind: kind, diameterMm, direction, point: [0, 0, 0], pointNormal: direction,
+const face = (id: number, kind: 'Plane' | 'Cylinder', direction: number[], diameterMm: number | null = null, point = [0, 0, 0]): LabelFace => ({
+  selector: `part.face("#${id}")`, occurrenceId: 'occ', faceId: `face:${id}`, surfaceKind: kind, diameterMm, direction, point, pointNormal: direction,
 });
 const node = (id: string, kind: string, name: string | null, parentId: string | null, fields: Record<string, string> = {}) => ({
   id, kind, variant: null, modifiers: [], name, occurrence: false, parentId, order: 0, span: { start: 0, length: 0 }, nameSpan: null, schemaId: null,
@@ -44,18 +44,39 @@ describe('label actions', () => {
   });
   it('offers a hole its diameter, position and axis perpendicularity', () => {
     const { actions } = labelActions([pick(9, { diameterMm: 6.6002 })], [face(9, 'Cylinder', z, 6.6002)], [datumA], withA);
-    expect(actions.map(a => a.id)).toEqual(['diameter', 'position', 'axis-perpendicularity', 'cylindricity']);
+    expect(actions.map(a => a.id)).toEqual(['diameter', 'position', 'axis-perpendicularity', 'cylindricity', 'datum']);
     expect(actions[0]!.measured).toBe(6.6002);
     expect(actions[2]!.disabled).toBeNull();
     const tilted = labelActions([pick(9)], [face(9, 'Cylinder', x, 6)], [datumA], withA).actions;
     expect(tilted[2]!.disabled).toMatch(/not perpendicular to this axis|No datum plane/);
   });
+  it('offers the distance between two parallel planes first, measured', () => {
+    const { actions } = labelActions([pick(2), pick(7)], [face(2, 'Plane', z, null, [0, 0, 24.9973]), face(7, 'Plane', [0, 0, -1])], [], outline());
+    const distance = actions[0]!;
+    expect(distance.id).toBe('distance');
+    expect(distance.measured).toBeCloseTo(24.9973, 9);
+    expect(emitDeclarations(distance, { name: 'Thickness', nominal: 25, plus: 0.1, minus: 0.1 })).toEqual([
+      'Distance Thickness { between: [part.face("#2"), part.face("#7")] value: 25mm tolerance: PlusMinus(0.1mm, 0.1mm) }']);
+    const written = outline(node('p', 'Pmi', null, 'm'), node('d', 'Distance', 'Thickness', 'p', { between: '[part.face("#7"), part.face("#2")]' }));
+    expect(labelActions([pick(2), pick(7)], [face(2, 'Plane', z, null, [0, 0, 25]), face(7, 'Plane', [0, 0, -1])], [], written).actions[0]!.disabled)
+      .toBe('Thickness already sets this distance; edit it instead.');
+  });
+  it('offers a distance from a parallel datum plane', () => {
+    const { actions } = labelActions([pick(2)], [face(2, 'Plane', z, null, [5, 5, 12.5])], [datumA], withA);
+    const distance = actions.find(a => a.id === 'distance')!;
+    expect(distance.title).toBe('Distance from A 12.500');
+    expect(distance.between).toEqual(['part.face("#1")', 'part.face("#2")']);
+  });
+  it('makes a cylinder a datum axis', () => {
+    const { actions } = labelActions([pick(9)], [face(9, 'Cylinder', z, 6)], [], outline());
+    expect(emitDeclarations(actions.find(a => a.id === 'datum')!, { name: 'A' })).toEqual(['Datum A { target: part.face("#9") }']);
+  });
   it('makes the second of two parallel planes a datum for parallelism', () => {
     const { actions } = labelActions([pick(2), pick(7)], [face(2, 'Plane', z), face(7, 'Plane', [0, 0, -1])], [], outline());
-    const parallelism = actions[0]!;
+    const parallelism = actions[1]!;
     expect(parallelism.id).toBe('parallelism');
     expect(parallelism.newDatum).toEqual({ selector: 'part.face("#7")', letter: 'A' });
-    expect(actions[1]!.disabled).toMatch(/not perpendicular/);
+    expect(actions[2]!.disabled).toMatch(/not perpendicular/);
     expect(emitDeclarations(parallelism, { name: 'TopParallel', tolerance: 0.05, datumRefs: ['A'] })).toEqual([
       'Datum A { target: part.face("#7") }',
       'Parallelism TopParallel { target: part.face("#2") tolerance: 0.05mm datumRefs: [A] }',
@@ -65,7 +86,8 @@ describe('label actions', () => {
     const tilt = [Math.sin(2 * Math.PI / 180), 0, Math.cos(2 * Math.PI / 180)];
     const { actions } = labelActions([pick(2), pick(7)], [face(2, 'Plane', z), face(7, 'Plane', tilt)], [], outline());
     expect(actions.every(a => a.disabled)).toBe(true);
-    expect(actions[0]!.disabled).toMatch(/2\.000° apart/);
+    expect(actions[0]!.disabled).toMatch(/2\.000° apart: a distance needs parallel faces/);
+    expect(actions[1]!.disabled).toMatch(/2\.000° apart, not parallel/);
   });
   it('refuses edges, generated faces and mixed parts with a reason', () => {
     expect(labelActions([pick(1, { topologyKind: 'Edge' })], [null], [], null).notice).toMatch(/Edges/);

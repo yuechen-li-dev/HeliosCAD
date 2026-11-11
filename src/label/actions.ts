@@ -1,9 +1,9 @@
 import type { LanguageEditOperation, LanguageOutline, OutlineNode, SelectionDescription } from '@aetheris/cad';
 import { bodyParent } from '../graph/graphAuthoring';
-import { acuteAngle, type LabelFace } from './geometry';
+import { acuteAngle, planeDistance, type LabelFace } from './geometry';
 
 /** The records Label writes. Each maps to one `Pmi` declaration. */
-export type LabelRecord = 'Datum' | 'Flatness' | 'Parallelism' | 'Perpendicularity' | 'HoleDiameter' | 'Position' | 'Cylindricity' | 'Note';
+export type LabelRecord = 'Datum' | 'Distance' | 'Flatness' | 'Parallelism' | 'Perpendicularity' | 'HoleDiameter' | 'Position' | 'Cylindricity' | 'Note';
 
 /** Two directions within this many degrees count as parallel (or perpendicular). Imported planes that are meant to be
  * parallel agree to far better than this; planes that are not are far outside it. */
@@ -19,7 +19,9 @@ export interface LabelAction {
   /** Why it cannot be applied to this selection; null when it can. */
   readonly disabled: string | null;
   readonly target: string | null;
-  /** A measured size (diameter) the nominal starts from. */
+  /** The two faces a distance runs between, from the first to the second. */
+  readonly between?: readonly [string, string];
+  /** A measured size (diameter, distance) the nominal starts from. */
   readonly measured: number | null;
   /** `band`: a size with +/− allowances; `zone`: a geometric tolerance value; `none`. */
   readonly tolerance: 'band' | 'zone' | 'none';
@@ -80,10 +82,18 @@ export function labelActions(picks: readonly SelectionDescription[], faces: read
   const records = pmiRecords(outline);
   const actions = result.actions.map(action => {
     if (action.disabled || action.record === 'Datum' || action.record === 'Note') return action;
-    const existing = records.find(r => r.kind === action.record && r.target === action.target && (action.zone === 'Cylindrical') === /\bCylindrical\b/.test(r.fields.zone ?? ''));
+    const existing = action.between
+      ? records.find(r => r.kind === 'Distance' && sameFaces(r.fields.between, action.between!))
+      : records.find(r => r.kind === action.record && r.target === action.target && (action.zone === 'Cylindrical') === /\bCylindrical\b/.test(r.fields.zone ?? ''));
     return existing ? { ...action, disabled: `${existing.name} already sets this ${action.record === 'HoleDiameter' ? 'diameter' : action.record.toLowerCase()}; edit it instead.` } : action;
   });
   return { actions, notice: result.notice };
+}
+
+/** Whether a written `between: [...]` names the same two faces, in either order. */
+function sameFaces(written: string | undefined, faces: readonly [string, string]) {
+  const named = (written ?? '').match(/[A-Za-z_]\w*\.face\("[^"]*"\)/g) ?? [];
+  return named.length === 2 && faces.every(f => named.includes(f));
 }
 
 function offeredActions(picks: readonly SelectionDescription[], faces: readonly (LabelFace | null)[], datums: readonly LabelDatum[],
@@ -116,8 +126,15 @@ function offeredActions(picks: readonly SelectionDescription[], faces: readonly 
     const existing = datumOn(selector);
     actions.push({ ...base, id: 'datum', record: 'Datum', title: existing ? `Datum (this face is ${existing.name})` : `Datum ${letter ?? ''}`.trim(), target: selector, tolerance: 'none',
       disabled: existing ? `This face is already datum ${existing.name}.` : letter ? null : 'Every datum letter is in use.', nameStem: letter ?? 'Datum' });
-    actions.push({ ...base, id: 'flatness', record: 'Flatness', title: 'Flatness', target: selector, disabled: null, nameStem: 'Flatness' });
     const parallel = datumsWhere(face, r => r.parallel), perpendicular = datumsWhere(face, r => r.perpendicular);
+    // A location from a parallel datum plane: what an inspector measures from the datum.
+    for (const name of parallel.slice(0, 1)) {
+      const datum = datums.find(d => d.name === name)!;
+      const measured = planeDistance(datum.face, face);
+      if (measured != null && measured > 1e-6) actions.push({ ...base, id: 'distance', record: 'Distance', title: `Distance from ${name} ${measured.toFixed(3)}`, target: selector,
+        between: [datum.selector, selector], measured, tolerance: 'band', disabled: null, nameStem: 'Distance' });
+    }
+    actions.push({ ...base, id: 'flatness', record: 'Flatness', title: 'Flatness', target: selector, disabled: null, nameStem: 'Flatness' });
     const none = datums.filter(d => d.selector !== selector).length === 0;
     actions.push({ ...base, id: 'parallelism', record: 'Parallelism', title: parallel.length ? `Parallelism to ${parallel[0]}` : 'Parallelism to a datum', target: selector,
       datums: 'required', defaultDatums: parallel.slice(0, 1), allowedDatums: all.filter(n => n !== existing?.name),
@@ -126,7 +143,8 @@ function offeredActions(picks: readonly SelectionDescription[], faces: readonly 
       datums: 'required', defaultDatums: perpendicular.slice(0, 1), allowedDatums: all.filter(n => n !== existing?.name),
       disabled: none ? 'Declare a datum first: select its face and choose Datum.' : perpendicular.length ? null : 'No datum plane is perpendicular to this face.', nameStem: 'Perpendicularity' });
     // The relation that holds goes first.
-    if (perpendicular.length && !parallel.length) actions.splice(2, 2, actions[3]!, actions[2]!);
+    const at = actions.findIndex(a => a.id === 'parallelism');
+    if (perpendicular.length && !parallel.length) actions.splice(at, 2, actions[at + 1]!, actions[at]!);
   } else if (picks.length === 1 && kinds[0] === 'Cylinder') {
     const face = faces[0]!, selector = picks[0]!.selector!;
     const measured = picks[0]!.diameterMm ?? face?.diameterMm ?? null;
@@ -140,6 +158,9 @@ function offeredActions(picks: readonly SelectionDescription[], faces: readonly 
       zone: 'Cylindrical', datums: 'required', defaultDatums: square.slice(0, 1), allowedDatums: all,
       disabled: square.length ? null : all.length ? 'No datum plane is perpendicular to this axis.' : 'Declare a datum plane perpendicular to this axis first.', nameStem: 'AxisPerpendicularity' });
     actions.push({ ...base, id: 'cylindricity', record: 'Cylindricity', title: 'Cylindricity', target: selector, disabled: null, nameStem: 'Cylindricity' });
+    const existing = datumOn(selector);
+    actions.push({ ...base, id: 'datum', record: 'Datum', title: existing ? `Datum axis (this axis is ${existing.name})` : `Datum axis ${letter ?? ''}`.trim(), target: selector, tolerance: 'none',
+      disabled: existing ? `This axis is already datum ${existing.name}.` : letter ? null : 'Every datum letter is in use.', nameStem: letter ?? 'Datum' });
   } else if (picks.length === 2 && kinds.every(k => k === 'Plane')) {
     const [a, b] = faces, r = relation(a!, b!);
     const [sa, sb] = [picks[0]!.selector!, picks[1]!.selector!];
@@ -148,13 +169,17 @@ function offeredActions(picks: readonly SelectionDescription[], faces: readonly 
     const refs = datumB ? [datumB.name] : newDatum ? [newDatum.letter] : [];
     const noLetter = !datumB && !letter ? 'Every datum letter is in use.' : null;
     const angle = r ? `${r.angle.toFixed(3)}°` : 'unknown';
+    const measured = planeDistance(a!, b!);
+    actions.push({ ...base, id: 'distance', record: 'Distance', title: measured != null ? `Distance ${measured.toFixed(3)}` : 'Distance', target: sa, between: [sa, sb],
+      measured, tolerance: 'band', nameStem: 'Distance',
+      disabled: measured == null ? `The faces are ${angle} apart: a distance needs parallel faces.` : measured < 1e-6 ? 'The faces are coplanar.' : null });
     actions.push({ ...base, id: 'parallelism', record: 'Parallelism', title: `Parallelism to ${refs[0] ?? 'the second face'}`, target: sa, datums: 'required',
       defaultDatums: refs, allowedDatums: [...new Set([...refs, ...all])], newDatum, nameStem: 'Parallelism',
       disabled: noLetter ?? (r?.parallel ? null : `The faces are ${angle} apart, not parallel.`) });
     actions.push({ ...base, id: 'perpendicularity', record: 'Perpendicularity', title: `Perpendicularity to ${refs[0] ?? 'the second face'}`, target: sa, datums: 'required',
       defaultDatums: refs, allowedDatums: [...new Set([...refs, ...all])], newDatum, nameStem: 'Perpendicularity',
       disabled: noLetter ?? (r?.perpendicular ? null : `The faces are ${angle} apart, not perpendicular.`) });
-    if (r?.perpendicular) actions.reverse();
+    if (r?.perpendicular) actions.push(actions.splice(1, 1)[0]!); // perpendicularity before parallelism
   } else if (picks.length === 2 && kinds.includes('Plane') && kinds.includes('Cylinder')) {
     const hole = kinds.indexOf('Cylinder'), plane = 1 - hole;
     const r = relation(faces[hole]!, faces[plane]!);
@@ -219,6 +244,7 @@ export function emitDeclarations(action: LabelAction, values: LabelValues): stri
   switch (action.record) {
     case 'Datum': out.push(`Datum ${values.name} { target: ${action.target} }`); break;
     case 'Note': out.push(`Note ${values.name} { text: ${JSON.stringify(values.text!.trim())} }`); break;
+    case 'Distance': out.push(`Distance ${values.name} { between: [${action.between!.join(', ')}] value: ${mm(values.nominal!)} tolerance: PlusMinus(${mm(values.plus!)}, ${mm(values.minus!)}) }`); break;
     case 'HoleDiameter': out.push(`HoleDiameter ${values.name} { target: ${action.target} value: ${mm(values.nominal!)} tolerance: PlusMinus(${mm(values.plus!)}, ${mm(values.minus!)}) }`); break;
     default: out.push(`${action.record} ${values.name} { target: ${action.target} tolerance: ${mm(values.tolerance!)}${zone}${refs}${modifiers} }`);
   }

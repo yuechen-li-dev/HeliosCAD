@@ -79,3 +79,10 @@ export function facePick(face: LabelFace): MeasurementPick {
   return { occurrenceId: face.occurrenceId, faceId: Number.isInteger(id) ? id : null,
     rayOrigin: face.point.map((x, i) => x + n[i]! * Math.min(1, (face.diameterMm ?? 4) / 4)), rayDirection: n.map(x => -x) };
 }
+
+/** Separation of two parallel planar faces, or null when either is not a plane or they are not parallel. Display
+ * vertices of a planar face lie on its exact plane, so this agrees with the B-rep to rounding. */
+export function planeDistance(a: LabelFace | null, b: LabelFace | null, degrees = 0.5) {
+  if (a?.surfaceKind !== 'Plane' || b?.surfaceKind !== 'Plane' || !a.direction || !b.direction || acuteAngle(a.direction, b.direction) >= degrees) return null;
+  return Math.abs(dot([b.point[0]! - a.point[0]!, b.point[1]! - a.point[1]!, b.point[2]! - a.point[2]!], a.direction));
+}

@@ -24,7 +24,7 @@ interface Props {
 }
 
 const GROUPS: readonly [string, readonly string[]][] = [
-  ['Datums', ['Datum']], ['Sizes', ['HoleDiameter', 'Size', 'Dimension', 'Location']],
+  ['Datums', ['Datum']], ['Sizes', ['HoleDiameter', 'Distance', 'Dimension', 'Location']],
   ['Geometric tolerances', ['Flatness', 'Straightness', 'Roundness', 'Cylindricity', 'Parallelism', 'Perpendicularity', 'Angularity', 'Position', 'CircularRunout', 'TotalRunout', 'LineProfile', 'SurfaceProfile']],
   ['Notes', ['Note']],
 ];
@@ -43,16 +43,18 @@ export function LabelPanel(props: Props) {
   const [chosen, setChosen] = useState<string | null>(firstEnabled);
   const key = picks.map(p => `${p.occurrenceId}/${p.faceId}`).join('|');
   useEffect(() => setChosen(firstEnabled), [key, firstEnabled]);
-  const action = actions.find(a => a.id === chosen) ?? null;
+  // A choice that became unavailable (the record was just written) falls back to the first one that is.
+  const action = actions.find(a => a.id === chosen && !a.disabled) ?? actions.find(a => a.id === firstEnabled) ?? null;
   return <section className="label-panel" aria-label="Label">
     <div className="label-records" aria-label="PMI records">
       {records.length === 0 && <p className="label-empty">No PMI yet. Select a face of the imported part to start: datums first, then sizes and tolerances.</p>}
       {GROUPS.map(([title, kinds]) => {
         const items = records.filter(r => kinds.includes(r.kind));
         return items.length ? <div key={title} className="label-group"><h3>{title}</h3>
-          {items.map(r => <button key={r.nodeId} type="button" className="label-record" title={r.target ?? undefined}
-            onClick={() => r.target && props.onSelectTargets([r.target])}>
-            <b>{r.name}</b><span>{r.kind}</span><small>{summary(r.fields)}</small></button>)}</div> : null;
+          {items.map(r => { const targets = r.target ? [r.target] : r.fields.between?.match(/[A-Za-z_]\w*\.face\("[^"]*"\)/g) ?? [];
+            return <button key={r.nodeId} type="button" className="label-record" title={targets.join(' → ') || undefined}
+            onClick={() => targets.length && props.onSelectTargets(targets)}>
+            <b>{r.name}</b><span>{r.kind}</span><small>{summary(r.fields)}</small></button>; })}</div> : null;
       })}
       {records.some(r => !GROUPS.some(([, kinds]) => kinds.includes(r.kind))) && <div className="label-group"><h3>Other</h3>
         {records.filter(r => !GROUPS.some(([, kinds]) => kinds.includes(r.kind))).map(r => <div key={r.nodeId} className="label-record"><b>{r.name}</b><span>{r.kind}</span></div>)}</div>}
@@ -62,7 +64,7 @@ export function LabelPanel(props: Props) {
       {notice && <p className="label-notice" role="status">{notice}</p>}
       {actions.length > 0 && <div className="label-actions" role="radiogroup" aria-label="Record to add">
         {actions.map(a => <label key={a.id} className={a.disabled ? 'disabled' : ''} title={a.disabled ?? undefined}>
-          <input type="radio" name="label-action" value={a.id} checked={chosen === a.id} disabled={!!a.disabled} onChange={() => setChosen(a.id)} />
+          <input type="radio" name="label-action" value={a.id} checked={action?.id === a.id} disabled={!!a.disabled} onChange={() => setChosen(a.id)} />
           <span>{a.title}</span>{a.disabled && <small>{a.disabled}</small>}</label>)}
       </div>}
       {action && !action.disabled && <LabelForm key={`${key}:${action.id}:${outline?.revision}`} action={action} {...props} />}

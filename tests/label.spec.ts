@@ -67,3 +67,30 @@ test('an out-of-band nominal warns and needs a second click', async ({ page }) =
   await form.getByRole('button', { name: 'Apply', exact: true }).click();
   await expect(form.getByRole('button', { name: 'Apply anyway', exact: true })).toBeVisible();
 });
+
+test('the face opposite a datum plane takes its thickness, measured and rounded', async ({ page }) => {
+  await openPart(page);
+  const canvas = page.locator('.viewport-canvas canvas'), box = (await canvas.boundingBox())!;
+  await canvas.click({ position: { x: box.width / 2, y: box.height / 2 - 100 }, modifiers: ['Alt'] });
+  await page.getByRole('form', { name: 'Add Datum', exact: true }).getByRole('button', { name: 'Apply', exact: true }).click();
+  await expect(page.locator('.status-ready')).toContainText('Ready');
+  // Orbit below the part and pick its bottom face.
+  const cx = box.x + box.width / 2, cy = box.y + box.height / 2;
+  await page.mouse.move(cx, cy + 150); await page.mouse.down(); await page.mouse.move(cx, cy - 250, { steps: 16 }); await page.mouse.up();
+  await canvas.click({ position: { x: box.width / 2, y: box.height / 2 + 100 }, modifiers: ['Alt'] });
+  const radio = page.getByRole('radio', { name: /^Distance from A 9\.000$/ });
+  await radio.check();
+  const form = page.getByRole('form', { name: 'Add Distance', exact: true });
+  await expect(form.getByLabel('Nominal (mm)', { exact: true })).toHaveValue('9');
+  await form.getByLabel('Name', { exact: true }).fill('Thickness');
+  await form.getByLabel('Upper + (mm)', { exact: true }).fill('0.1');
+  await form.getByLabel('Lower − (mm)', { exact: true }).fill('0.1');
+  await expect(form.getByLabel('Source to write', { exact: true })).toHaveText(/^Distance Thickness \{ between: \[part\.face\("#\d+"\), part\.face\("#\d+"\)\] value: 9mm tolerance: PlusMinus\(0\.1mm, 0\.1mm\) \}$/);
+  await form.getByRole('button', { name: 'Apply', exact: true }).click();
+  await expect(page.locator('.status-ready')).toContainText('Ready');
+  await expect(page.getByLabel('PMI records', { exact: true })).toContainText('Thickness');
+  await expect(page.getByLabel('PMI annotations', { exact: true })).toContainText('Thickness');
+  // The same pair now refuses a second distance.
+  await expect(page.getByRole('radio', { name: /^Distance from A/ })).toBeDisabled();
+  await page.screenshot({ path: `${output}/label-thickness.png` });
+});
