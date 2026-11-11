@@ -37,10 +37,19 @@ Datum attachments use a small patch inside the selected plane. Diameter attachme
 highlight the associated cylindrical wall and physical rim wires, with a leader
 ending on the wall rather than inside the solid or at a rim corner. Surface-normal
 stems identify the attachments. The default body look is lightly translucent when
-PMI is present; explicitly authored appearances remain unchanged. Gold markers do
-not intercept face/edge selection and do not alter the STEP or body mesh.
-Callout geometry currently uses a static XY plane; orbit to read it, or use the
-viewport legend. It is not a camera-facing text system or a production drawing.
+PMI is present; explicitly authored appearances remain unchanged. PMI is drawn in
+one of two styles, chosen in the viewport's PMI legend and remembered per browser:
+
+- **Markers** (default): each record's surface is tinted in its own colour and a
+  numbered tag, `3 Ø10 +0.02/-0.01 · BoreSize`, sits beside it with a leader. Numbers
+  follow the order of the `Pmi` block and match the legend; tags never overlap, and
+  move with the view. Screenshots of the viewport (such as a published preview)
+  include the tags.
+- **Drawing**: the ASME presentation exported to annotated GLB: feature control
+  frames, datum symbols and dimensions with filled text on white panels, in fixed
+  planes in model space. Orbit to read a callout square-on.
+
+Neither style intercepts face/edge selection or alters the STEP or body mesh.
 USDA, STL and OBJ do not carry PMI.
 
 **Import STEP** opens a supported canonical single part as immutable geometry

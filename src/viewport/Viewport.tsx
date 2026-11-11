@@ -1,4 +1,6 @@
-import { measurementLines, pmiLines, pmiMeshes, pmiBodyMaterial, type MeasurementResult } from '@aetheris/three-telos';
+import { measurementLines, pmiLines, pmiMeshes, pmiBodyMaterial, type MeasurementResult, type PmiStyle } from '@aetheris/three-telos';
+import { PmiMarkers, type Project } from './PmiMarkers';
+import { markerColor } from './pmiMarkers';
 import {
   lazy,
   Suspense,
@@ -66,6 +68,10 @@ interface Props extends FeaturePlacementProps {
   ): void;
   /** Overlays drawn over the viewport (the selection card). */
   children?: ReactNode;
+  /** How PMI is presented; set by the viewport wrapper. */
+  pmiStyle?: PmiStyle;
+  /** World millimetres to viewport CSS pixels and depth, or null off screen; set by the renderer. */
+  projectRef?: MutableRefObject<Project | null>;
   captureRef?: MutableRefObject<(() => string) | null>;
 }
 
@@ -83,10 +89,48 @@ export function probeWebGpu(): Promise<string | null> {
 
 /** WebGPU (Telos) when the device has an adapter; otherwise, or when Telos fails to start, the WebGL
  * renderer. Both share the camera convention in viewCommands.ts, so the model looks the same. */
+const PMI_STYLE_KEY = 'helios.viewport.pmi-style';
+function readPmiStyle(): PmiStyle { try { return localStorage.getItem(PMI_STYLE_KEY) === 'drawing' ? 'drawing' : 'markers'; } catch { return 'markers'; } }
+
 export function Viewport(props: Props) {
-  return <div tabIndex={0} style={{position:'relative',width:'100%',height:'100%'}} aria-label="Model workspace">
-    <ViewportRenderer {...props} />{props.children}
-    {!!props.model?.mesh.annotations?.length && <aside className="pmi-legend" aria-label="PMI annotations"><strong>PMI · mm</strong>{props.model.mesh.annotations.map(item => <div key={item.id}><span>{item.name}</span> {item.text}</div>)}<small>Gold marks the referenced surface.</small></aside>}
+  const [pmiStyle, setPmiStyle] = useState<PmiStyle>(readPmiStyle);
+  const projectRef = useRef<Project | null>(null);
+  const composeRef = useRef<((context: CanvasRenderingContext2D, scale: number) => void) | null>(null);
+  const rendererCapture = useRef<(() => string) | null>(null);
+  const shell = useRef<HTMLDivElement>(null);
+  const annotations = props.model?.mesh.annotations ?? [];
+  const markers = pmiStyle === 'markers' && annotations.length > 0;
+  const { captureRef } = props;
+  useEffect(() => {
+    if (!captureRef) return;
+    // A screenshot carries what the viewport shows: in Markers, the tags are drawn over the rendered image.
+    captureRef.current = () => {
+      const image = rendererCapture.current?.() ?? '';
+      const canvas = shell.current?.querySelector('canvas');
+      if (!markers || !canvas || !composeRef.current || !image) return image;
+      const out = document.createElement('canvas'); out.width = canvas.width; out.height = canvas.height;
+      const context = out.getContext('2d'); if (!context) return image;
+      context.drawImage(canvas, 0, 0);
+      composeRef.current(context, canvas.width / Math.max(1, canvas.clientWidth));
+      return out.toDataURL('image/png');
+    };
+    return () => { captureRef.current = null; };
+  }, [captureRef, markers]);
+  const choose = (style: PmiStyle) => { setPmiStyle(style); try { localStorage.setItem(PMI_STYLE_KEY, style); } catch { /* per-viewer preference */ } };
+  return <div ref={shell} tabIndex={0} style={{position:'relative',width:'100%',height:'100%'}} aria-label="Model workspace">
+    <ViewportRenderer {...props} pmiStyle={pmiStyle} projectRef={projectRef} captureRef={rendererCapture} />
+    {markers && <PmiMarkers annotations={annotations} projectRef={projectRef} composeRef={composeRef} />}
+    {props.children}
+    {annotations.length > 0 && <aside className="pmi-legend" aria-label="PMI annotations">
+      <div className="pmi-legend-head"><strong>PMI · mm</strong>
+        <span role="radiogroup" aria-label="PMI style">{(['markers', 'drawing'] as const).map(style =>
+          <button key={style} type="button" role="radio" aria-checked={pmiStyle === style} className={pmiStyle === style ? 'active' : ''}
+            title={style === 'markers' ? 'Numbered tags on coloured targets: for checking and screenshots' : 'ASME drawing presentation, as exported to annotated GLB'}
+            onClick={() => choose(style)}>{style === 'markers' ? 'Markers' : 'Drawing'}</button>)}</span></div>
+      {annotations.map((item, i) => <div key={item.id} className="pmi-legend-row">
+        {pmiStyle === 'markers' && <b style={{ background: markerColor(i) }}>{i + 1}</b>}<span>{item.name}</span> {item.text}</div>)}
+      {pmiStyle === 'markers' && <small>Numbers follow the Pmi block; each colour marks its referenced surface.</small>}
+    </aside>}
   </div>;
 }
 /** An explicit "Use WebGL" choice is remembered per browser; the automatic probe result is not. */
@@ -222,8 +266,8 @@ function TelosViewport(props: Props & { onRetry(): void; onUnavailable(reason: s
     const displayScene = { ...scene, meshes, lines, fields: scene.fields.map(f=>({...f, selected:!topology && selectedIds.has(f.identity.occurrenceId), visible:value.displayMode !== "wireframe"})) };
     const inspected = inspectSurfaces(inspection.current.mode === "normal" && !inspection.current.face ? displayScene : scene,
       inspection.current.mode, inspection.current.face);
-    current.setScene({ ...inspected, meshes: [...inspected.meshes, ...pmiMeshes(value.model?.mesh.annotations)],
-      lines: [...inspected.lines, ...edgeHalos, ...concepts, ...preview, ...placementLines(value.placementGuide), ...measurementLines(value.measurement ?? null), ...pmiLines(value.model?.mesh.annotations)] });
+    current.setScene({ ...inspected, meshes: [...inspected.meshes, ...pmiMeshes(value.model?.mesh.annotations, value.pmiStyle)],
+      lines: [...inspected.lines, ...edgeHalos, ...concepts, ...preview, ...placementLines(value.placementGuide), ...measurementLines(value.measurement ?? null), ...pmiLines(value.model?.mesh.annotations, value.pmiStyle)] });
     canvas.current?.setAttribute('data-feature-placement', JSON.stringify(value.placementGuide ? { center: value.placementGuide.center, diameter: value.placementGuide.diameter, selector: value.placementGuide.selection.selector } : null));
     canvas.current?.setAttribute("data-surface-inspection", JSON.stringify({ mode: inspection.current.mode,
       isolatedFace: inspection.current.face ?? null,
@@ -356,6 +400,11 @@ function TelosViewport(props: Props & { onRetry(): void; onUnavailable(reason: s
             current.render();
             return element.toDataURL("image/png");
           };
+        if (latest.current.projectRef)
+          latest.current.projectRef.current = (point) => {
+            const [x, y, z] = current.camera.project(point);
+            return z < 0 || z > 1 ? null : [x, y, z];
+          };
       })
       .catch((error) => {
         // Telos never started: the WebGL renderer can still show the model.
@@ -369,13 +418,14 @@ function TelosViewport(props: Props & { onRetry(): void; onUnavailable(reason: s
       element.removeEventListener("pointermove", move);
       element.removeEventListener("pointerleave", move);
       if (latest.current.captureRef) latest.current.captureRef.current = null;
+      if (latest.current.projectRef) latest.current.projectRef.current = null;
       host.current?.dispose();
       host.current = null;
     };
   }, []);
   useEffect(() => {
     apply();
-  }, [props.measurement, props.extraSelections, props.showConcepts, props.model, props.model?.revision, props.wireframePreview, props.wireframePreview?.revision, props.pose, props.selectedEntityId, props.selectedTopologyId, props.selectedOccurrenceId,
+  }, [props.measurement, props.extraSelections, props.pmiStyle, props.showConcepts, props.model, props.model?.revision, props.wireframePreview, props.wireframePreview?.revision, props.pose, props.selectedEntityId, props.selectedTopologyId, props.selectedOccurrenceId,
     props.theme, props.displayMode, props.viewMode, props.viewCommand, props.aaMode, props.aaDebug,
     inspectionMode, isolatedFaceKey, props.placementGuide]);
   useEffect(() => { setIsolatedFaceKey(""); }, [props.model?.id, props.model?.revision]);

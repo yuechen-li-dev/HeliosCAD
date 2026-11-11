@@ -506,7 +506,18 @@ button.viewport-renderer-note:hover { color: var(--text-primary); border-color: 
 .viewport-pane canvas { transition: filter .18s ease; }
 .viewport-pane.ghosted canvas { filter: grayscale(.85) opacity(.5); }
 
-.pmi-legend { position: absolute; right: 14px; bottom: 44px; padding: 10px 14px; background: #fffffff2; color: #153356; border: 1px solid #ccd4df; pointer-events: none; font-size: 12px; line-height: 1.6; }
+.pmi-legend { position: absolute; right: 14px; bottom: 44px; z-index: 5; max-width: min(360px, calc(100% - 28px)); max-height: 45%; overflow: auto; padding: 8px 12px; background: #fffffff2; color: #153356; border: 1px solid #ccd4df; font-size: 12px; line-height: 1.6; }
+.pmi-legend-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 2px; }
+.pmi-legend-head [role=radiogroup] { display: inline-flex; border: 1px solid #ccd4df; }
+.pmi-legend-head button { padding: 1px 8px; background: transparent; color: #153356; font: inherit; cursor: pointer; }
+.pmi-legend-head button.active { background: #153356; color: #fff; }
+.pmi-legend-row b { display: inline-block; min-width: 16px; margin-right: 6px; text-align: center; color: #10131a; font-weight: 700; }
+.pmi-legend small { display: block; color: #4a5a70; }
+/* Markers: numbered tags laid out in screen space over the 3D view. */
+.pmi-markers { position: absolute; inset: 0; z-index: 4; pointer-events: none; overflow: hidden; }
+.pmi-markers svg { position: absolute; inset: 0; }
+.pmi-marker { position: absolute; display: flex; align-items: center; box-sizing: border-box; background: #fffffff0; border: 1px solid; color: #10131a; font: 12px "IBM Plex Sans", system-ui, sans-serif; white-space: nowrap; }
+.pmi-marker b { display: inline-flex; align-items: center; justify-content: center; align-self: stretch; width: 20px; margin-right: 5px; color: #10131a; }
 .pmi-legend span { font-weight: 600; padding-right: 8px; }
 
 /* Pattern coordinates are compiler-projected local layout values. */
