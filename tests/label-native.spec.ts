@@ -109,3 +109,40 @@ test('a native hole is labeled by its name, with zone and material condition', a
   await expect(records(page)).toContainText('Position');
   await expect(page.locator('.statusbar, .status-problems')).not.toContainText(/[1-9]\d* problems?/);
 });
+
+const pocketBlock = (pmi: string) => `Model PocketBlock {
+  units: mm
+  Profile stock = Rect2 { center: [0mm, 0mm]; size: [50mm, 32mm] }
+  Profile recess = Rect2 { center: [0mm, 0mm]; size: [24mm, 14mm] }
+  Compose Body {
+    Base Stock { profile: stock; from: 0mm; to: 10mm; role: Stock }
+    Pocket Recess { on: Top; profile: recess; depth: 4mm; minimumFloorThickness: 3mm }
+  }
+  Pmi {
+${pmi}
+  }
+}
+`;
+
+test('faces of a composed part take requirements from the Label tab by their construction names', async ({ page }) => {
+  await open(page, pocketBlock('    Distance Scratch { between: [face(Stock.Top), face(Recess.Floor)] value: 4mm tolerance: PlusMinus(1mm, 1mm) }'));
+  await records(page).getByRole('button', { name: /Scratch/ }).first().click();
+  await expect(page.locator('.selection-chip')).toHaveCount(2);
+  await records(page).getByRole('button', { name: 'Edit Scratch', exact: true }).click();
+  const editor = page.getByRole('form', { name: 'Edit Scratch', exact: true });
+  await editor.getByRole('button', { name: 'Delete', exact: true }).click();
+  await editor.getByRole('button', { name: 'Delete Scratch?', exact: true }).click();
+  await ready(page);
+
+  // The pocket's floor and the stock's top: the depth is measured and written against the caps' names.
+  await expect(page.getByRole('radio', { name: /^Distance 4\.000$/ })).toBeChecked();
+  const form = page.getByRole('form', { name: 'Add Distance', exact: true });
+  await form.getByLabel('Name', { exact: true }).fill('Depth');
+  await form.getByLabel('Upper + (mm)', { exact: true }).fill('0.1');
+  await form.getByLabel('Lower − (mm)', { exact: true }).fill('0.1');
+  await expect(form.getByLabel('Source to write', { exact: true })).toHaveText(/^Distance Depth \{ between: \[face\((Stock\.Top|Recess\.Floor)\), face\((Stock\.Top|Recess\.Floor)\)\] value: 4mm/);
+  await form.getByRole('button', { name: 'Apply', exact: true }).click();
+  await ready(page);
+  await expect(records(page)).toContainText('Depth');
+  await expect(page.locator('.status-problems, .statusbar')).not.toContainText(/[1-9]\d* problems?/);
+});
