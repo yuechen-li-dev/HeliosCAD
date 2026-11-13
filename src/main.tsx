@@ -12,16 +12,20 @@ import { ShowcaseApp } from './showcase/ShowcaseApp';
 import { readTheme } from './themes/useTheme';
 import { AppErrorBoundary } from './app/AppErrorBoundary';
 import { SolidWorksImport } from './desktop/SolidWorksImport';
+import { onRouteChange, routePath } from './navigation';
 
 document.documentElement.dataset.theme = readTheme();
 
 const LocalEditor = lazy(() => import('./app/HeliosApp').then(module => ({ default: module.HeliosApp })));
 const Learning = lazy(() => import('./learn/LearnApp').then(module => ({ default: module.LearnApp })));
 
-ReactDOM.createRoot(document.getElementById('root')!).render(
-  <AppErrorBoundary>
-    {location.pathname === '/learn' ? <Suspense fallback={<div className="app-loading">Opening Firmament manual…</div>}><Learning /></Suspense> : location.pathname === '/solidworks' ? <SolidWorksImport /> : location.pathname === '/local'
+const root = ReactDOM.createRoot(document.getElementById('root')!);
+const render = () => { const path = routePath(); root.render(
+  <AppErrorBoundary key={path}>
+    {path === '/learn' ? <Suspense fallback={<div className="app-loading">Opening Firmament manual…</div>}><Learning /></Suspense> : path === '/solidworks' ? <SolidWorksImport /> : path === '/local'
       ? <Suspense fallback={<div className="discovery-page">Opening local editor…</div>}><LocalEditor /></Suspense>
-      : location.pathname === '/' ? <ShowcaseApp /> : <CloudApp />}
+      : path === '/' ? <ShowcaseApp /> : <CloudApp />}
   </AppErrorBoundary>
-);
+); };
+render();
+onRouteChange(render);

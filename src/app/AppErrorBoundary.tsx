@@ -1,5 +1,6 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react';
 import { downloadRecoveredSource, recoverableSource } from './crashRecovery';
+import { navigate } from '../navigation';
 
 interface State { error: Error | null }
 
@@ -28,7 +29,7 @@ export class AppErrorBoundary extends Component<{ children: ReactNode }, State> 
       <div className="crash-actions">
         {source && <button className="crash-primary" onClick={() => downloadRecoveredSource(source)}>Download source</button>}
         <button onClick={() => location.reload()}>Reload Helios</button>
-        <button onClick={() => { location.href = '/'; }}>Back to start</button>
+        <button onClick={() => { navigate('/'); }}>Back to start</button>
       </div>
       <details><summary>Error details</summary><pre>{error.message}{error.stack ? `\n\n${error.stack}` : ''}</pre></details>
     </main>;
