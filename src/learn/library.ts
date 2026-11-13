@@ -2,6 +2,7 @@ import snapshot from './content.json';
 import { Text } from 'machinalayout/text';
 import { marked, Renderer } from 'marked';
 import DOMPurify from 'dompurify';
+import { saveFile } from '../platform/saveFile';
 
 export type DocPage = { title: string; markdown: string; section: string };
 export type DocFile = { mediaType: string; data: string };
@@ -70,7 +71,5 @@ export function renderDoc(id: string, markdown: string) {
 export function downloadDocFile(id: string) {
   const file = files[id];
   if (!file || file.mediaType !== 'text/plain') return;
-  const url = URL.createObjectURL(new Blob([file.data], { type: 'text/plain' }));
-  const anchor = document.createElement('a'); anchor.href = url; anchor.download = id.split('/').at(-1)!; anchor.click();
-  setTimeout(() => URL.revokeObjectURL(url), 0);
+  void saveFile(new Blob([file.data], { type: 'text/plain' }), id.split('/').at(-1)!).catch(error => console.error(error));
 }

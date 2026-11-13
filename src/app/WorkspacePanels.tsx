@@ -4,6 +4,7 @@ import { Checkpoints, type Checkpoint } from '../version-control/checkpoints';
 import { VersionControlPanel } from '../version-control/VersionControlPanel';
 import type { EditableWorkspace, ProjectSnapshot } from './projectSnapshot';
 import { ReferenceLibrary } from '../author/ReferenceLibrary';
+import { artifactBuild } from '../platform/target';
 
 const history = new Checkpoints();
 const errorText = (error: unknown) => error instanceof Error ? error.message : String(error);
@@ -63,13 +64,14 @@ export function WorkspacePanels({ workspace, active }: { workspace: EditableWork
     } finally { setRestoring(false); }
   }
   return <>
-    <div hidden={active !== 'llm'}><AuthorPanel workspace={{ ...current.current, busy: !!workspace.busy || referenceBusy || saving || restoring }}
+    {/* The AI Author and its reference library need the Helios server, which the artifact build has none of. */}
+    {!artifactBuild && <div hidden={active !== 'llm'}><AuthorPanel workspace={{ ...current.current, busy: !!workspace.busy || referenceBusy || saving || restoring }}
       requirements={requirements} onRequirementsChange={setRequirements} onCheckpoint={checkpoint}
-      restoredRevision={restoredRevision} onBusyChange={setAgentBusy} /></div>
+      restoredRevision={restoredRevision} onBusyChange={setAgentBusy} /></div>}
     <div hidden={active !== 'version-control'}><VersionControlPanel checkpoints={checkpoints} busy={busy}
       restoring={restoring} error={error} onSave={() => void save()} onRestore={saved => void restore(saved)} /></div>
-    <div className="reference-library-container" hidden={active !== 'files'}><ReferenceLibrary selected={referenceIds} disabled={busy} onBusyChange={setReferenceBusy} onChange={ids => {
+    {!artifactBuild && <div className="reference-library-container" hidden={active !== 'files'}><ReferenceLibrary selected={referenceIds} disabled={busy} onBusyChange={setReferenceBusy} onChange={ids => {
       setReferenceIds(ids); setRestoredRevision(revision => revision + 1);
-    }} /></div>
+    }} /></div>}
   </>;
 }

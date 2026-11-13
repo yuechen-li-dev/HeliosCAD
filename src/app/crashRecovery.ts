@@ -1,4 +1,5 @@
 import { packProject } from './localProject';
+import { saveFile } from '../platform/saveFile';
 
 /** The editor's latest source, kept outside React so it survives a render crash that unmounts the editor. */
 export interface RecoverableSource { root: string; documents: Record<string, string> }
@@ -19,7 +20,5 @@ export function downloadRecoveredSource(value: RecoverableSource) {
     ? new Blob([value.documents[names[0]]], { type: 'text/plain' })
     : new Blob([Uint8Array.from(packProject(value)).buffer], { type: 'application/zip' });
   const name = names.length === 1 ? names[0] : `${value.root.replace(/\.[^.]+$/, '')}.helios.zip`;
-  const url = URL.createObjectURL(blob), anchor = document.createElement('a');
-  anchor.href = url; anchor.download = name; anchor.click();
-  setTimeout(() => URL.revokeObjectURL(url), 0);
+  void saveFile(blob, name).catch(error => console.error(error));
 }

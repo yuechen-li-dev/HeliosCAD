@@ -1,10 +1,12 @@
+import { artifactBuild } from './platform/target';
+
 /**
- * Page routes. A normal deployment routes on the path (`/learn?practice=…`). A build with
- * VITE_HASH_ROUTES=true (the claude.ai artifact preview) is served from one fixed page whose
+ * Page routes. A normal deployment routes on the path (`/learn?practice=…`). The artifact build
+ * (src/platform/target.ts) is served from one fixed page whose
  * only usable address part is a plain `#name`, so the route is the hash and the query is
  * carried in session storage across the reload that switches pages.
  */
-const hashRoutes = import.meta.env.VITE_HASH_ROUTES === 'true';
+const hashRoutes = artifactBuild;
 export const hashRouting = hashRoutes;
 const paramsKey = 'helios.route.params';
 

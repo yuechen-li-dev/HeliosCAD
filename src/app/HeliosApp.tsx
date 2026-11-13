@@ -50,6 +50,8 @@ import { AuthoringPanel, type AuthoringAction, type PendingAuthoring } from '../
 import { TutorialPanel } from '../learn/TutorialPanel';
 import type { PlacementActions, PlacementGuide } from '../viewport/featurePlacement';
 import { navigate } from '../navigation';
+import { saveFile } from '../platform/saveFile';
+import { artifactBuild } from '../platform/target';
 
 const LearnCenter = lazy(() => import('../learn/LearnCenter').then(m => ({ default: m.LearnCenter })));
 
@@ -997,7 +999,7 @@ export function HeliosApp({ project, initialWorkspace, chooseBase = false, onSho
         <div className="viewport-caption" style={shellLayout.place('caption')}><span>{partName}</span><span>{previewModel ? 'Preview · source unchanged' : ghosted ? 'Last good model · the current draft does not build' : displayRevision !== sourceRevision && model ? 'Last valid model · source changed' : model ? 'Compiled geometry' : 'Waiting for geometry'}</span></div>
         </div>
       <aside className="utility-dock" aria-label="Utility panel" style={shellLayout.place('utility')} hidden={!shellLayout.utilityOpen}>
-        <div className="dock-tabs" role="tablist" aria-label="Utilities">{([['files', 'Files'], ['inspector', 'Inspector'], ['tutorial', 'Tutorial'], ['examples', 'Examples'], ['llm', 'AI Author'], ['version-control', 'Version Control']] as const).map(([id, label]) => <button key={id} role="tab" aria-selected={utilityTab.kind === id} className={utilityTab.kind === id ? 'active' : ''} onClick={() => setUtilityTab({ kind: id })}>{label}</button>)}</div>
+        <div className="dock-tabs" role="tablist" aria-label="Utilities">{utilityTabs.map(([id, label]) => <button key={id} role="tab" aria-selected={utilityTab.kind === id} className={utilityTab.kind === id ? 'active' : ''} onClick={() => setUtilityTab({ kind: id })}>{label}</button>)}</div>
         <div className="utility-content">
           {matchKind(utilityTab, {
             tutorial: () => <TutorialPanel lessonId={projectRoot.current === initialWorkspace?.root ? initialWorkspace?.lessonId : undefined} buildCurrent={!!model && sourceRevision === displayRevision && buildStarted === null && !busy && !shownDiagnostics.some(d => d.severity === 'error')} onRead={setLearnPage} />,
@@ -1052,4 +1054,7 @@ function isTyping(target: EventTarget | null) { return target instanceof HTMLInp
 function toDiagnostic(error: unknown, code: string): Diagnostic { return { severity: 'error', code: error && typeof error === 'object' && 'code' in error && typeof error.code === 'string' ? error.code : code, message: error instanceof Error ? error.message : String(error), details: error instanceof Error && 'details' in error && typeof error.details === 'string' ? error.details : undefined }; }
 function isWorkerFailure(error: unknown) { return !!error && typeof error === 'object' && 'code' in error && ['worker-error', 'worker-message-error', 'worker-terminated', 'worker-protocol', 'worker-revision'].includes(String(error.code)); }
 function downloadText(value: string, name: string) { downloadBlob(new Blob([value], { type: 'text/plain' }), name); }
-function downloadBlob(blob: Blob, name: string) { const url = URL.createObjectURL(blob); const anchor = document.createElement('a'); anchor.href = url; anchor.download = name; anchor.click(); setTimeout(() => URL.revokeObjectURL(url), 0); }
+/** The AI Author needs the Helios server, which the artifact build does not have. */
+const utilityTabs = ([['files', 'Files'], ['inspector', 'Inspector'], ['tutorial', 'Tutorial'], ['examples', 'Examples'], ['llm', 'AI Author'], ['version-control', 'Version Control']] as const)
+  .filter(([id]) => !artifactBuild || id !== 'llm');
+function downloadBlob(blob: Blob, name: string) { void saveFile(blob, name).catch(error => console.error(error)); }

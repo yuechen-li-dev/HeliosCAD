@@ -1,11 +1,13 @@
 import { useEffect, useState } from 'react';
 import { request } from '../cloud/api';
 import './local-host.css';
+import { artifactBuild } from '../platform/target';
 
 /** A projection of the packaged host; web deployments keep their normal header. */
 export function useLocalHost() {
   const [local, setLocal] = useState(false);
   useEffect(() => {
+    if (artifactBuild) return;
     const abort = new AbortController();
     void request<{ mode: string }>('/__helios/status', { signal: abort.signal })
       .then(status => setLocal(status.mode === 'desktop')).catch(() => {});

@@ -14,6 +14,7 @@
     "prebuild": "npm run docs:check",
     "prebuild:fast": "npm run docs:check",
     "build:fast": "tsc -b && vite build --config vite.config.ts --mode development",
+    "build:artifact": "tsc -b && node scripts/build-artifact.mjs",
     "test": "vitest run",
     "test:e2e": "playwright test",
     "test:learning": "npm run docs:check && playwright test --config playwright.learning.config.ts",

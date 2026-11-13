@@ -109,6 +109,41 @@ available for supported dimensioned part families.
 Use **Quit Helios** when you're done; closing the browser tab alone leaves the
 local host running. Download working files and keep backups.
 
+## Run Helios as a Claude artifact
+
+Helios can run inside a [claude.ai](https://claude.ai) artifact: a private web
+page that Claude publishes for you, which you can open from any browser and
+share from its Share menu. The artifact build has the gallery, the editor,
+**Learn**, **Open file** and **Import STEP**. It has no accounts, projects,
+publishing or AI Author, because those need the Helios server. Saving and
+exporting ask you to confirm the download. Files the artifact can't offer
+directly, such as `.step`, `.firmament` or `.stl`, arrive inside a `.zip`.
+
+To publish one, give Claude a session with this repository and
+[Aetheris](https://github.com/yuechen-li-dev/Aetheris) checked out side by
+side (`HeliosCAD/` and `Aetheris/`), then ask:
+
+> Build Helios as a Claude artifact and publish it. Follow "Run Helios as a
+> Claude artifact" in the README.
+
+What Claude does:
+
+1. Installs Node 22 and the .NET 10 SDK, then runs `dotnet workload install wasm-tools`.
+2. Runs `npm ci`, `npm run sdk:link` and `git checkout package-lock.json` in
+   `HeliosCAD/`.
+3. Runs `npm run build:artifact`. This writes
+   `artifacts/local/helios-artifact/publish.json` with the page, the site
+   folder and the list of about 160 files.
+4. Publishes with the Artifact tool, passing `file_path`, `root`, `files`,
+   `capabilities`, `icon` and `description` from `publish.json` unchanged. To
+   update an artifact it published before, it also passes that artifact's
+   `url`. `capabilities: { downloads: true }` is what lets saving and
+   exporting work.
+
+The artifact runs the trimmed WebAssembly runtime, not the ahead-of-time
+compiled one in the Windows release, so large models rebuild more slowly
+than in the release.
+
 ## Where 0.1 stands
 
 This is an early release. Start with the examples and

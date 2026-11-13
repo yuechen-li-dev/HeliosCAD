@@ -4,6 +4,7 @@ import { AgentWorkspace, runAgent, type AgentGateway, type AgentTurn } from './a
 import { cloneProject, type EditableWorkspace, type ProjectSnapshot } from '../app/projectSnapshot';
 import { projectHashes } from './engineeringEvidence';
 import { runLocalAgent } from './localAgent';
+import { saveFile } from '../platform/saveFile';
 const gateway: AgentGateway = { async respond(model, snapshot, requirements, input, signal) {
   const documentHashes = await projectHashes(snapshot);
   const result = await request<{ turn: AgentTurn }>('/api/helios/author/respond', { method: 'POST', signal,
@@ -248,8 +249,7 @@ export function AuthorPanel({ workspace, requirements, onRequirementsChange, onC
       {applied && !activity && <button onClick={() => void undoApplied()}>Undo AI changes</button>}
       {answer && <div className="agent-answer">{answer}</div>}
       {reviewPackage && <button onClick={() => {
-        const url = URL.createObjectURL(new Blob([reviewPackage.bytes.slice().buffer], { type: 'application/zip' }));
-        const anchor = document.createElement('a'); anchor.href = url; anchor.download = reviewPackage.fileName; anchor.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
+        void saveFile(new Blob([reviewPackage.bytes.slice().buffer], { type: 'application/zip' }), reviewPackage.fileName).catch(error => setError(errorText(error)));
       }}>Download draft review package</button>}
       {candidate && <div><strong>{candidate.built ? 'Built candidate' : 'Rejected candidate'} · source changes</strong>
         {Object.keys(candidate.project.documents).filter(p => candidate!.project.documents[p] !== candidate!.base.documents[p]).map(path => <details key={path}><summary>{path}</summary><p>Before</p><pre>{candidate!.base.documents[path] ?? '(new file)'}</pre><p>After</p><pre>{candidate!.project.documents[path]}</pre></details>)}
