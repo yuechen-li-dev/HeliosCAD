@@ -1,9 +1,12 @@
-# Labeling imported parts
+# Labeling parts
 
-The **Label** tab, beside Graph and Source, adds manufacturing requirements to an
-imported STEP part: datums, sizes and geometric tolerances. Each one becomes a record
-in the model's `Pmi` block and is exported in STEP AP242 and annotated GLB. The
-geometry is not changed.
+The **Label** tab, beside Graph and Source, adds manufacturing requirements to a part,
+native or imported from STEP: datums, sizes and geometric tolerances. Each one becomes
+a record in the model's `Pmi` block and is exported in STEP AP242 and annotated GLB.
+The geometry is not changed. A native face is named in the record the way the
+Inspector names it (`face(bracket.Side("profile:section.Outer.Vertex1_Vertex2"))`,
+`face(bracket.Top)`, `face(+X)`); an imported face by its STEP entity
+(`part.face("#51")`).
 
 ## Selecting
 
@@ -22,22 +25,28 @@ same selection.
 
 ## What a selection offers
 
-The Label tab lists only the records the selection can carry, best match first. Records
-that are close but wrong for the measured geometry are shown disabled with the reason,
-for example "No datum plane is perpendicular to this face."
+The Label tab lists the records the selection can carry, best match first. Records the
+measured geometry rules out are listed under **Not available for this selection**, each
+with what it would take, for example "No datum plane is perpendicular to this face."
 
 | Selection | Records |
 | --- | --- |
 | Nothing | Note |
-| One plane | Datum (next free letter, skipping I, O and Q), Distance from a parallel datum plane, Flatness, Parallelism or Perpendicularity to a declared datum |
-| One hole | Diameter, Position, axis Perpendicularity to a datum plane, Cylindricity; Datum axis on an unrecognized cylinder; Recognize as hole |
-| Several holes | Recognize them, then one `NX` Diameter and `NX` Position over all of them |
-| Two planes | Distance between them when parallel; Parallelism or Perpendicularity of the first to the second |
-| A hole and a plane | Axis Perpendicularity or Position relative to the plane |
+| One plane | Datum (next free letter, skipping I, O and Q), Distance from a parallel datum plane, Flatness, Straightness, Parallelism, Perpendicularity or Angularity to a declared datum plane, Surface and Line profile, Circular and Total runout about a datum axis square to the face |
+| One hole or shaft | Diameter, Position, axis Perpendicularity, Parallelism or Angularity to a datum plane, Cylindricity, Roundness, axis Straightness, Circular and Total runout about a coaxial datum axis, Surface profile; Datum axis on an imported cylinder; Recognize on an imported part |
+| Several holes | One `NX` Diameter and `NX` Position over all of them (imported holes are recognized first) |
+| Two planes | Distance between them when parallel; Parallelism, Perpendicularity or Angularity of the first to the second |
+| A hole and a plane | Axis Perpendicularity, Parallelism or Position relative to the plane |
+
+The relation the geometry has is offered first: perpendicularity for a face square to
+the datum, angularity for one at another angle.
 
 ## Holes
 
-A hole is labeled as a whole. **Recognize** names it in the part's `Recognize`
+A hole of a native part is labeled by its name (`target: mount`), whichever of its
+faces is picked.
+
+On an imported part a hole is labeled as a whole. **Recognize** names it in the part's `Recognize`
 block, with every face of its cylinder, so a hole that the exporting CAD system split
 into half-cylinders is one hole. Picking any face of a recognized hole selects the
 hole, highlights all of its faces, and its requirements target it by name. A split
@@ -63,8 +72,14 @@ refused and the existing record is named.
 - **Tolerance.** Never inferred. Enter both allowances, or choose a hole fit (H7, H8),
   which fills them from ISO 286 for the nominal size.
 - **Datum references.** Chosen from the declared datums, primary first. A datum cannot
-  be referenced twice. Form tolerances (flatness, cylindricity) have no datum
-  references.
+  be referenced twice. Form tolerances (flatness, straightness, roundness,
+  cylindricity) have no datum references; profiles may have up to three or none.
+- **Zone and modifiers.** An axis control (position, axis orientation, axis
+  straightness) has a diameter zone Ø by default; choose **Between planes** for a
+  zone between two parallel planes. A feature of size takes a material condition,
+  Ⓜ or Ⓛ, regardless of feature size by default. Any control can be marked Free
+  state Ⓕ or Statistical ⟨ST⟩; a requirement on several holes can share a Common
+  zone.
 - If the model's measured size lies outside the band you entered, the card says so and
   Apply needs a second click. The compiler repeats the check as the warning
   `pmi-nominal-outside-geometry`.
@@ -72,6 +87,15 @@ refused and the existing record is named.
 The card shows the exact source it will write. **Preview** builds the model with the
 record and shows it in the viewport; **Apply** writes it. Undo, checkpoints and
 downloads work as for any other edit.
+
+## Changing a record
+
+**Edit** beside a record in the list opens its fields: rename it, change its value,
+tolerance, datum references, zone or modifiers as written in the source, or delete it.
+**Save** writes the change and rebuilds; a value the compiler refuses shows as a
+problem like any other edit, and Undo reverts it. A datum that
+other records reference cannot be deleted until they no longer do. To move a
+requirement to other faces, delete it and label the new faces.
 
 ## Viewing what is labeled
 
@@ -82,7 +106,9 @@ export carries. See [Exports](exports.md).
 
 ## Limits
 
-Labels apply to faces of imported STEP parts; faces generated by Firmament features are
-annotated in Source. Edges and angles cannot be labeled yet. A hole's location is
+A face the Inspector cannot name (it shows no Selector) cannot be labeled; label a
+neighbouring face, or write the record in Source. Sizes projected from construction
+(`Dimension`, `Location`, `HoleCallout`) are written in Source. Edges and angles
+cannot be labeled yet. A hole's location is
 the basic location implied by the model when it has a Position to datum planes; there
 is no separate location record.

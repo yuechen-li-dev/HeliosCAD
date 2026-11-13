@@ -111,6 +111,13 @@ export function sameCylinder(a: LabelFace, b: LabelFace, tolerance = 1e-4) {
   return Math.hypot(...d.map((x, i) => x - along * a.direction![i]!)) <= Math.max(tolerance, 1e-3);
 }
 
+/** Whether two cylinders share one axis line (coaxial diameters, whatever their sizes). */
+export function sameLine(a: LabelFace, b: LabelFace) {
+  if (!a.direction || !b.direction || !a.axisPoint || !b.axisPoint || acuteAngle(a.direction, b.direction) > 0.01) return false;
+  const d = sub(b.axisPoint, a.axisPoint), along = dot(d, a.direction);
+  return Math.hypot(...d.map((x, i) => x - along * a.direction![i]!)) <= 1e-3;
+}
+
 /** Every face of the mesh named by a selector, resolved. */
 export function allFaces(mesh: DisplayMesh, occurrenceId?: string | null): LabelFace[] {
   const out: LabelFace[] = [];

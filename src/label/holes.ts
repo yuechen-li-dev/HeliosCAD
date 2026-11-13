@@ -16,12 +16,19 @@ export function recognizedHoles(outline: LanguageOutline | null): RecognizedHole
     .filter(h => h.entities.length > 0);
 }
 
+/** The hole a native wall selector names. */
+export const nativeHoleOf = (selector: string) => selector.match(/^face\(([A-Za-z_]\w*)\.Wall\)$/)?.[1] ?? null;
+/** What a requirement on one hole targets: its recognized region, its native name, or its face. */
+export const unitTarget = (unit: HoleUnit) => unit.kind === 'recognized' ? holeTarget(unit.hole) : unit.kind === 'native' ? unit.name : unit.face.selector;
+export const unitName = (unit: HoleUnit) => unit.kind === 'recognized' ? unit.hole.name : unit.kind === 'native' ? unit.name : null;
 const entityOf = (selector: string) => selector.match(/^([A-Za-z_]\w*)\.face\("(#\d+)"\)$/);
 export const holeTarget = (hole: RecognizedHole) => `${hole.body}.region("${hole.name}")`;
 
 /** One hole of the selection: either recognized (named), or a cylinder not yet recognized, with every face of it. */
 export type HoleUnit =
   | { readonly kind: 'recognized'; readonly hole: RecognizedHole; readonly diameterMm: number | null; readonly face: LabelFace }
+  /** A hole of a native part, named by its construction: `face(mount.Wall)` is hole `mount`. */
+  | { readonly kind: 'native'; readonly name: string; readonly diameterMm: number | null; readonly face: LabelFace }
   | { readonly kind: 'cylinder'; readonly body: string; readonly selectors: readonly string[]; readonly diameterMm: number | null; readonly face: LabelFace };
 
 /** Groups cylindrical faces into holes. A face of a recognized hole is that hole; any other face takes every face of its
@@ -29,6 +36,8 @@ export type HoleUnit =
 export function holeUnits(faces: readonly LabelFace[], holes: readonly RecognizedHole[], siblings: readonly LabelFace[]): HoleUnit[] {
   const units: HoleUnit[] = [];
   for (const face of faces) {
+    const native = nativeHoleOf(face.selector);
+    if (native) { if (!units.some(u => u.kind === 'native' && u.name === native)) units.push({ kind: 'native', name: native, diameterMm: face.diameterMm, face }); continue; }
     const match = entityOf(face.selector);
     const hole = match && holes.find(h => h.body === match[1] && h.entities.includes(match[2]!));
     if (hole) { if (!units.some(u => u.kind === 'recognized' && u.hole.nodeId === hole.nodeId)) units.push({ kind: 'recognized', hole, diameterMm: face.diameterMm, face }); continue; }
@@ -43,5 +52,5 @@ export function holeUnits(faces: readonly LabelFace[], holes: readonly Recognize
 export function holeFaceSelectors(face: LabelFace, holes: readonly RecognizedHole[], siblings: readonly LabelFace[]): string[] {
   const [unit] = holeUnits([face], holes, siblings);
   if (!unit) return [face.selector];
-  return unit.kind === 'cylinder' ? [...unit.selectors] : unit.hole.entities.map(e => `${unit.hole.body}.face("${e}")`);
+  return unit.kind === 'cylinder' ? [...unit.selectors] : unit.kind === 'native' ? [face.selector] : unit.hole.entities.map(e => `${unit.hole.body}.face("${e}")`);
 }

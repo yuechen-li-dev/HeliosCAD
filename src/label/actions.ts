@@ -1,10 +1,16 @@
 import type { LanguageEditOperation, LanguageOutline, OutlineNode, SelectionDescription } from '@aetheris/cad';
 import { bodyParent } from '../graph/graphAuthoring';
-import { acuteAngle, planeDistance, type LabelFace } from './geometry';
-import { holeTarget, holeUnits, type RecognizedHole } from './holes';
+import { acuteAngle, planeDistance, sameLine, type LabelFace } from './geometry';
+import { holeUnits, unitName, unitTarget, type RecognizedHole } from './holes';
 
 /** The records Label writes. Each maps to one `Pmi` declaration. */
-export type LabelRecord = 'Recognize' | 'Datum' | 'Distance' | 'Flatness' | 'Parallelism' | 'Perpendicularity' | 'HoleDiameter' | 'Position' | 'Cylindricity' | 'Note';
+export type LabelRecord = 'Recognize' | 'Datum' | 'Distance' | 'HoleDiameter' | 'Note'
+  | 'Straightness' | 'Flatness' | 'Roundness' | 'Cylindricity' | 'Parallelism' | 'Perpendicularity' | 'Angularity' | 'Position'
+  | 'LineProfile' | 'SurfaceProfile' | 'CircularRunout' | 'TotalRunout';
+export type ZoneForm = 'Cylindrical' | 'Spherical' | 'BetweenSurfaces';
+/** Modifiers that apply to any control; a material condition (Ⓜ/Ⓛ) only to a feature of size. */
+export const CONTROL_MODIFIERS = ['FreeState', 'Statistical', 'CommonZone'] as const;
+export type ControlModifier = typeof CONTROL_MODIFIERS[number];
 
 /** Two directions within this many degrees count as parallel (or perpendicular). Imported planes that are meant to be
  * parallel agree to far better than this; planes that are not are far outside it. */
@@ -26,12 +32,15 @@ export interface LabelAction {
   readonly measured: number | null;
   /** `band`: a size with +/− allowances; `zone`: a geometric tolerance value; `none`. */
   readonly tolerance: 'band' | 'zone' | 'none';
-  readonly zone: 'Cylindrical' | null;
-  readonly datums: 'none' | 'required';
+  readonly zone: ZoneForm | null;
+  /** Zone forms the author may pick instead of `zone` (an axis control may be Ø or between planes). */
+  readonly zones?: readonly (ZoneForm | null)[];
+  readonly datums: 'none' | 'required' | 'optional';
   /** Datum references preselected, in precedence order. */
   readonly defaultDatums: readonly string[];
   /** Datums the record may reference: only these are offered by the picker. */
   readonly allowedDatums: readonly string[];
+  /** Whether a material condition (Ⓜ or Ⓛ) applies: the target is a feature of size. */
   readonly modifiers: boolean;
   readonly nameStem: string;
   /** A face that must become a datum for this record (the second of two picked faces), with its proposed letter. */
@@ -51,6 +60,10 @@ export interface LabelValues {
   readonly tolerance?: number;
   readonly datumRefs?: readonly string[];
   readonly maximumMaterial?: boolean;
+  readonly material?: 'MaximumMaterial' | 'LeastMaterial' | null;
+  readonly extraModifiers?: readonly ControlModifier[];
+  /** The zone form chosen from `zones`; undefined keeps the action's. */
+  readonly zone?: ZoneForm | null;
   readonly text?: string;
   readonly newDatumName?: string;
 }
@@ -75,7 +88,9 @@ export function pmiRecords(outline: LanguageOutline | null): LabelRecordEntry[] 
   }));
 }
 
-const usable = (pick: SelectionDescription) => pick.topologyKind !== 'Edge' && pick.sourceAddressability === 'ImportedStable' && !!pick.selector;
+/** Faces Label can name: imported faces by source entity, native faces by the selector the compiler gives them. */
+const STABLE = new Set(['ImportedStable', 'AuthoredStable', 'DerivedStable']);
+const usable = (pick: SelectionDescription) => pick.topologyKind !== 'Edge' && STABLE.has(pick.sourceAddressability) && !!pick.selector;
 
 /** What a selection offers, ranked: the first enabled action is the one the card preselects. Records the selection
  * cannot express are left out; records it nearly can are present and disabled with the measured reason. */
@@ -95,9 +110,29 @@ export function labelActions(picks: readonly SelectionDescription[], faces: read
   return { actions, notice: result.notice };
 }
 
+/** The items of a written target: a bracketed list split at its top-level commas, or the one target. Selectors keep
+ * their calls and quoted arguments. */
+export function targetItems(written: string | null | undefined): string[] {
+  const text = (written ?? '').trim();
+  if (!text) return [];
+  if (!text.startsWith('[') || !text.endsWith(']')) return [text];
+  const items: string[] = [];
+  let depth = 0, quoted = false, start = 1;
+  for (let i = 1; i < text.length - 1; i++) {
+    const c = text[i];
+    if (c === '"' && text[i - 1] !== '\\') quoted = !quoted;
+    else if (quoted) continue;
+    else if (c === '(' || c === '[') depth++;
+    else if (c === ')' || c === ']') depth--;
+    else if (c === ',' && depth === 0) { items.push(text.slice(start, i).trim()); start = i + 1; }
+  }
+  items.push(text.slice(start, -1).trim());
+  return items.filter(Boolean);
+}
+
 /** Whether a written `between: [...]` names the same two faces, in either order. */
 function sameFaces(written: string | undefined, faces: readonly [string, string]) {
-  const named = (written ?? '').match(/[A-Za-z_]\w*\.face\("[^"]*"\)/g) ?? [];
+  const named = targetItems(written);
   return named.length === 2 && faces.every(f => named.includes(f));
 }
 
@@ -109,9 +144,7 @@ function offeredActions(picks: readonly SelectionDescription[], faces: readonly 
   if (new Set(picks.map(p => p.occurrenceId)).size > 1) return { actions: [], notice: 'The selection spans parts. Labels apply to one part: select faces of one part.' };
   if (picks.some(p => p.topologyKind === 'Edge')) return { actions: [], notice: 'Edges cannot be labeled yet: select the faces the edge separates.' };
   const notImported = picks.find(p => !usable(p));
-  if (notImported) return { actions: [], notice: notImported.sourceAddressability === 'ImportedStable'
-    ? `This face has no stable selector${notImported.selectorReason ? `: ${notImported.selectorReason}` : ''}.`
-    : `Label annotates imported STEP faces. This face comes from ${notImported.originFeature ?? 'a construction feature'}; annotate it in Source.` };
+  if (notImported) return { actions: [], notice: `This face has no name a requirement can use${notImported.selectorReason ? `: ${notImported.selectorReason}` : ''}. Select a neighbouring face, or annotate it in Source.` };
   let kinds = faces.map(f => f?.surfaceKind ?? null);
   const datumOn = (selector: string) => datums.find(d => d.selector === selector);
   const relation = (a: LabelFace | null, b: LabelFace | null) => {
@@ -122,13 +155,18 @@ function offeredActions(picks: readonly SelectionDescription[], faces: readonly 
   /** Datum planes whose normal relates to a direction as asked (parallel normals for plane∥plane, or plane⊥axis). */
   const datumsWhere = (face: LabelFace | null, test: (r: NonNullable<ReturnType<typeof relation>>) => boolean) =>
     datums.filter(d => d.face?.surfaceKind === 'Plane' && d.selector !== face?.selector).filter(d => { const r = relation(face, d.face); return !!r && test(r); }).map(d => d.name);
+  /** Datum axes (cylinder datums) whose axis relates to a direction as asked. */
+  const axesWhere = (face: LabelFace | null, test: (r: NonNullable<ReturnType<typeof relation>>) => boolean) =>
+    datums.filter(d => d.face?.surfaceKind === 'Cylinder' && d.selector !== face?.selector).filter(d => { const r = relation(face, d.face); return !!r && test(r); }).map(d => d.name);
+  const angled = (r: NonNullable<ReturnType<typeof relation>>) => !r.parallel && !r.perpendicular;
   const all = datums.map(d => d.name);
+  const AXIS_ZONES = ['Cylindrical', null] as const;
   const actions: LabelAction[] = [];
   const letter = nextDatumLetter(outline);
 
   // Holes: faces of one cylinder are one hole, and a hole is labeled by its recognized name. A hole split into several
   // faces, or several holes, must be recognized first; a whole single-face cylinder can be labeled by its face as well.
-  let holeTargetOf: string | null = null, holeFace: LabelFace | null = null, holeCount = 0;
+  let holeTargetOf: string | null = null, holeFace: LabelFace | null = null, holeCount = 0, unit0Imported = true;
   if (kinds.includes('Cylinder') && kinds.every(k => k === 'Cylinder' || k === 'Plane') && kinds.filter(k => k === 'Plane').length <= 1) {
     const units = holeUnits(faces.filter((f): f is LabelFace => f?.surfaceKind === 'Cylinder'), holes, siblings);
     const fresh = units.filter(u => u.kind === 'cylinder');
@@ -146,18 +184,19 @@ function offeredActions(picks: readonly SelectionDescription[], faces: readonly 
       // A quantity callout: alike holes, one requirement. Patterns are not inferred; the holes are listed.
       const diameters = units.map(u => u.diameterMm ?? NaN);
       const alike = diameters.every(d => Math.abs(d - diameters[0]!) <= 1e-4);
-      const names = units.map(u => u.kind === 'recognized' ? u.hole.name : '');
+      const names = units.map(u => unitName(u) ?? '');
       const target = `[${names.join(', ')}]`, n = units.length;
       const differ = alike ? null : `The holes differ in diameter (${[...new Set(diameters.map(d => d.toFixed(3)))].join(', ')}): a ${n}X callout names alike holes.`;
       actions.push({ ...base, id: 'diameter', record: 'HoleDiameter', title: `${n}X Ø${diameters[0]!.toFixed(3)}`, target, measured: diameters[0]!, quantity: n,
         tolerance: 'band', fits: true, disabled: differ, nameStem: 'Diameter' });
-      actions.push({ ...base, id: 'position', record: 'Position', title: `${n}X Position`, target, quantity: n, zone: 'Cylindrical', datums: 'required', modifiers: true,
+      actions.push({ ...base, id: 'position', record: 'Position', title: `${n}X Position`, target, quantity: n, zone: 'Cylindrical', zones: AXIS_ZONES, datums: 'required', modifiers: true,
         defaultDatums: all.slice(0, 3), allowedDatums: all,
         disabled: differ ?? (all.length ? null : 'Position needs datums: select the faces that locate these holes and make them datums.'), nameStem: 'Position' });
       return { actions, notice: null };
     }
     const unit = units[0]!;
-    holeTargetOf = unit.kind === 'recognized' ? holeTarget(unit.hole) : unit.face.selector;
+    holeTargetOf = unitTarget(unit);
+    unit0Imported = unit.kind !== 'native';
     holeFace = unit.face; holeCount = 1;
     if (unit.kind === 'cylinder') actions.push(recognizeAction('Recognize as hole'));
     // Faces of the same hole picked twice count once.
@@ -185,25 +224,59 @@ function offeredActions(picks: readonly SelectionDescription[], faces: readonly 
     actions.push({ ...base, id: 'perpendicularity', record: 'Perpendicularity', title: perpendicular.length ? `Perpendicularity to ${perpendicular[0]}` : 'Perpendicularity to a datum', target: selector,
       datums: 'required', defaultDatums: perpendicular.slice(0, 1), allowedDatums: all.filter(n => n !== existing?.name),
       disabled: none ? 'Declare a datum first: select its face and choose Datum.' : perpendicular.length ? null : 'No datum plane is perpendicular to this face.', nameStem: 'Perpendicularity' });
+    const tilted = datumsWhere(face, angled), others = all.filter(n => n !== existing?.name);
+    actions.push({ ...base, id: 'angularity', record: 'Angularity', title: tilted.length ? `Angularity to ${tilted[0]}` : 'Angularity to a datum', target: selector,
+      datums: 'required', defaultDatums: tilted.slice(0, 1), allowedDatums: others, nameStem: 'Angularity',
+      disabled: none ? 'Declare a datum first: select its face and choose Datum.' : tilted.length ? null : 'No datum plane is at an angle to this face: use parallelism or perpendicularity.' });
     // The relation that holds goes first.
     const at = actions.findIndex(a => a.id === 'parallelism');
     if (perpendicular.length && !parallel.length) actions.splice(at, 2, actions[at + 1]!, actions[at]!);
+    if (tilted.length && !parallel.length && !perpendicular.length) actions.splice(at, 0, actions.pop()!);
+    actions.push({ ...base, id: 'surface-profile', record: 'SurfaceProfile', title: 'Surface profile', target: selector, datums: 'optional',
+      defaultDatums: [], allowedDatums: others, disabled: null, nameStem: 'Profile' });
+    actions.push({ ...base, id: 'line-profile', record: 'LineProfile', title: 'Line profile', target: selector, datums: 'optional',
+      defaultDatums: [], allowedDatums: others, disabled: null, nameStem: 'LineProfile' });
+    actions.push({ ...base, id: 'straightness', record: 'Straightness', title: 'Straightness of line elements', target: selector, disabled: null, nameStem: 'Straightness' });
+    // Face runout: the face turns about a datum axis square to it.
+    const axes = axesWhere(face, r => r.parallel);
+    for (const [id, record, title] of [['circular-runout', 'CircularRunout', 'Circular runout'], ['total-runout', 'TotalRunout', 'Total runout']] as const)
+      actions.push({ ...base, id, record, title: axes.length ? `${title} about ${axes[0]}` : title, target: selector, datums: 'required',
+        defaultDatums: axes.slice(0, 1), allowedDatums: others, nameStem: record,
+        disabled: axes.length ? null : 'Runout is measured about a datum axis square to this face: make that axis a datum first.' });
   } else if (holeCount === 1 && kinds.length === 1) {
     const face = holeFace!, selector = holeTargetOf!;
     const measured = face.diameterMm ?? null;
     actions.push({ ...base, id: 'diameter', record: 'HoleDiameter', title: measured ? `Diameter Ø${measured.toFixed(3)}` : 'Diameter', target: selector, measured,
       tolerance: 'band', fits: true, disabled: measured ? null : 'The cylinder diameter is not available from the build.', nameStem: 'Diameter' });
     const square = datumsWhere(face, r => r.parallel);
-    actions.push({ ...base, id: 'position', record: 'Position', title: 'Position', target: selector, zone: 'Cylindrical', datums: 'required', modifiers: true,
+    actions.push({ ...base, id: 'position', record: 'Position', title: 'Position', target: selector, zone: 'Cylindrical', zones: AXIS_ZONES, datums: 'required', modifiers: true,
       defaultDatums: [...square.slice(0, 1), ...all.filter(n => !square.includes(n))].slice(0, 3), allowedDatums: all,
       disabled: all.length ? null : 'Position needs datums: select the faces that locate this hole and make them datums.', nameStem: 'Position' });
     actions.push({ ...base, id: 'axis-perpendicularity', record: 'Perpendicularity', title: square.length ? `Axis perpendicularity to ${square[0]}` : 'Axis perpendicularity', target: selector,
-      zone: 'Cylindrical', datums: 'required', defaultDatums: square.slice(0, 1), allowedDatums: all,
+      zone: 'Cylindrical', zones: AXIS_ZONES, modifiers: true, datums: 'required', defaultDatums: square.slice(0, 1), allowedDatums: all,
       disabled: square.length ? null : all.length ? 'No datum plane is perpendicular to this axis.' : 'Declare a datum plane perpendicular to this axis first.', nameStem: 'AxisPerpendicularity' });
+    const alongside = datumsWhere(face, r => r.perpendicular), tilted = datumsWhere(face, angled);
+    actions.push({ ...base, id: 'axis-parallelism', record: 'Parallelism', title: alongside.length ? `Axis parallelism to ${alongside[0]}` : 'Axis parallelism', target: selector,
+      zone: 'Cylindrical', zones: AXIS_ZONES, modifiers: true, datums: 'required', defaultDatums: alongside.slice(0, 1), allowedDatums: all, nameStem: 'AxisParallelism',
+      disabled: alongside.length ? null : all.length ? 'No datum plane runs along this axis.' : 'Declare a datum plane along this axis first.' });
+    actions.push({ ...base, id: 'axis-angularity', record: 'Angularity', title: tilted.length ? `Axis angularity to ${tilted[0]}` : 'Axis angularity', target: selector,
+      zone: 'Cylindrical', zones: AXIS_ZONES, modifiers: true, datums: 'required', defaultDatums: tilted.slice(0, 1), allowedDatums: all, nameStem: 'AxisAngularity',
+      disabled: tilted.length ? null : 'No datum plane is at an angle to this axis.' });
     actions.push({ ...base, id: 'cylindricity', record: 'Cylindricity', title: 'Cylindricity', target: selector, disabled: null, nameStem: 'Cylindricity' });
+    actions.push({ ...base, id: 'roundness', record: 'Roundness', title: 'Roundness', target: selector, disabled: null, nameStem: 'Roundness' });
+    actions.push({ ...base, id: 'axis-straightness', record: 'Straightness', title: 'Axis straightness', target: selector, zone: 'Cylindrical', zones: AXIS_ZONES, modifiers: true,
+      disabled: null, nameStem: 'Straightness' });
+    // Runout of a diameter about a datum axis on the same line (another diameter of the part).
+    const coaxial = axesWhere(face, r => r.parallel).filter(n => datums.find(d => d.name === n)?.face?.axisPoint && face.axisPoint && sameLine(face, datums.find(d => d.name === n)!.face!));
+    for (const [id, record, title] of [['circular-runout', 'CircularRunout', 'Circular runout'], ['total-runout', 'TotalRunout', 'Total runout']] as const)
+      actions.push({ ...base, id, record, title: coaxial.length ? `${title} about ${coaxial[0]}` : title, target: selector, datums: 'required',
+        defaultDatums: coaxial.slice(0, 1), allowedDatums: all, nameStem: record,
+        disabled: coaxial.length ? null : 'Runout is measured about a datum axis on this axis: make another diameter on it a datum first.' });
+    actions.push({ ...base, id: 'surface-profile', record: 'SurfaceProfile', title: 'Surface profile', target: selector, datums: 'optional',
+      defaultDatums: [], allowedDatums: all, disabled: null, nameStem: 'Profile' });
     const existing = datumOn(selector);
-    // A datum axis is declared on the cylinder face itself.
-    if (!selector.includes('.region(')) actions.push({ ...base, id: 'datum', record: 'Datum', title: existing ? `Datum axis (this axis is ${existing.name})` : `Datum axis ${letter ?? ''}`.trim(), target: selector, tolerance: 'none',
+    // A datum axis is declared on an imported cylinder face itself; a native hole wall is not a datum feature.
+    if (!selector.includes('.region(') && unit0Imported) actions.push({ ...base, id: 'datum', record: 'Datum', title: existing ? `Datum axis (this axis is ${existing.name})` : `Datum axis ${letter ?? ''}`.trim(), target: selector, tolerance: 'none',
       disabled: existing ? `This axis is already datum ${existing.name}.` : letter ? null : 'Every datum letter is in use.', nameStem: letter ?? 'Datum' });
     // Recognizing goes last when the face can be labeled as it is.
     const recognize = actions.findIndex(a => a.id === 'recognize');
@@ -226,7 +299,12 @@ function offeredActions(picks: readonly SelectionDescription[], faces: readonly 
     actions.push({ ...base, id: 'perpendicularity', record: 'Perpendicularity', title: `Perpendicularity to ${refs[0] ?? 'the second face'}`, target: sa, datums: 'required',
       defaultDatums: refs, allowedDatums: [...new Set([...refs, ...all])], newDatum, nameStem: 'Perpendicularity',
       disabled: noLetter ?? (r?.perpendicular ? null : `The faces are ${angle} apart, not perpendicular.`) });
+    actions.push({ ...base, id: 'angularity', record: 'Angularity', title: `Angularity to ${refs[0] ?? 'the second face'}`, target: sa, datums: 'required',
+      defaultDatums: refs, allowedDatums: [...new Set([...refs, ...all])], newDatum, nameStem: 'Angularity',
+      disabled: noLetter ?? (r && angled(r) ? null : `The faces are ${angle} apart: use ${r?.parallel ? 'parallelism' : 'perpendicularity'}.`) });
+    // The relation that holds goes first after the distance.
     if (r?.perpendicular) actions.push(actions.splice(1, 1)[0]!); // perpendicularity before parallelism
+    else if (r && angled(r)) actions.splice(1, 0, actions.pop()!);
   } else if (holeCount === 1 && kinds.includes('Plane')) {
     const plane = kinds.indexOf('Plane');
     const r = relation(holeFace, faces[plane]!);
@@ -238,7 +316,11 @@ function offeredActions(picks: readonly SelectionDescription[], faces: readonly 
     actions.push({ ...base, id: 'axis-perpendicularity', record: 'Perpendicularity', title: `Axis perpendicularity to ${refs[0] ?? 'the face'}`, target: sh, zone: 'Cylindrical',
       datums: 'required', defaultDatums: refs, allowedDatums: [...new Set([...refs, ...all])], newDatum, nameStem: 'AxisPerpendicularity',
       disabled: !refs.length ? 'Every datum letter is in use.' : square ? null : `The face is not perpendicular to the axis (${r ? (90 - r.angle).toFixed(3) : '?'}° off).` });
-    actions.push({ ...base, id: 'position', record: 'Position', title: `Position to ${refs[0] ?? 'the face'}`, target: sh, zone: 'Cylindrical', datums: 'required', modifiers: true,
+    actions.push({ ...base, id: 'axis-parallelism', record: 'Parallelism', title: `Axis parallelism to ${refs[0] ?? 'the face'}`, target: sh, zone: 'Cylindrical', zones: AXIS_ZONES, modifiers: true,
+      datums: 'required', defaultDatums: refs, allowedDatums: [...new Set([...refs, ...all])], newDatum, nameStem: 'AxisParallelism',
+      disabled: !refs.length ? 'Every datum letter is in use.' : r?.perpendicular ? null : 'The face does not run along the axis.' });
+    if (r?.perpendicular) actions.unshift(actions.pop()!);
+    actions.push({ ...base, id: 'position', record: 'Position', title: `Position to ${refs[0] ?? 'the face'}`, target: sh, zone: 'Cylindrical', zones: AXIS_ZONES, datums: 'required', modifiers: true,
       defaultDatums: refs, allowedDatums: [...new Set([...refs, ...all])], newDatum, nameStem: 'Position', disabled: refs.length ? null : 'Every datum letter is in use.' });
     const recognize = actions.findIndex(a => a.id === 'recognize');
     if (recognize >= 0) actions.push(actions.splice(recognize, 1)[0]!);
@@ -270,15 +352,16 @@ export function checkValues(action: LabelAction, values: LabelValues, outline: L
       warnings.push(`The model measures ${action.measured.toFixed(4)} mm, outside ${nominal} +${plus}/−${minus}: the part does not meet its own requirement.`);
   }
   if (action.tolerance === 'zone' && !(values.tolerance! > 0)) errors.push('Enter a positive tolerance zone.');
-  if (action.datums === 'required') {
+  if (action.datums !== 'none') {
     const refs = values.datumRefs ?? [];
-    if (refs.length === 0) errors.push('Choose at least one datum reference.');
+    if (refs.length === 0 && action.datums === 'required') errors.push('Choose at least one datum reference.');
     if (new Set(refs).size !== refs.length) errors.push('A datum can be referenced once.');
     if (refs.length > 3) errors.push('At most three datum references.');
     for (const ref of refs) if (!action.allowedDatums.includes(ref) && ref !== (values.newDatumName ?? action.newDatum?.letter)) errors.push(`${ref} is not a declared datum.`);
     if (action.newDatum && !refs.includes(values.newDatumName ?? action.newDatum.letter)) errors.push('The second face becomes a datum only to be referenced: keep it in the datum references.');
   }
   if (action.record === 'Note' && !values.text?.trim()) errors.push('Enter the note text.');
+  if (values.extraModifiers?.includes('CommonZone') && !(action.quantity! > 1)) errors.push('A common zone joins several features: list them in one requirement.');
   return { errors, warnings };
 }
 
@@ -294,8 +377,11 @@ export function emitDeclarations(action: LabelAction, values: LabelValues): stri
   const newDatum = action.newDatum ? values.newDatumName ?? action.newDatum.letter : null;
   if (action.newDatum) out.push(`Datum ${newDatum} { target: ${action.newDatum.selector} }`);
   const refs = values.datumRefs?.length ? ` datumRefs: [${values.datumRefs.join(', ')}]` : '';
-  const zone = action.zone ? ` zone: ${action.zone}` : '';
-  const modifiers = action.modifiers && values.maximumMaterial ? ' modifiers: [MaximumMaterial]' : '';
+  const chosenZone = values.zone !== undefined ? values.zone : action.zone;
+  const zone = chosenZone ? ` zone: ${chosenZone}` : '';
+  const material = action.modifiers ? values.material ?? (values.maximumMaterial ? 'MaximumMaterial' : null) : null;
+  const listed = [...(material ? [material] : []), ...(values.extraModifiers ?? [])];
+  const modifiers = listed.length ? ` modifiers: [${listed.join(', ')}]` : '';
   switch (action.record) {
     case 'Recognize': {
       const names = recognizeNames(action, values);

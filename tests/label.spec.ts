@@ -17,6 +17,11 @@ async function openPart(page: Page) {
   await page.getByRole('tab', { name: 'Label', exact: true }).click();
 }
 
+/** Records the selection nearly allows are listed, with their reasons, under a closed disclosure. */
+async function showUnavailable(page: Page) {
+  await page.locator('.label-unavailable').evaluate(details => { (details as HTMLDetailsElement).open = true; });
+}
+
 /** Pick the washer's bore, which SolidWorks exported as two half-cylinders, and name it as one hole. */
 async function recognizeBore(page: Page, name = 'Bore') {
   const form = page.getByRole('form', { name: 'Add Recognize', exact: true });
@@ -41,6 +46,7 @@ test('a hole and a datum face offer axis perpendicularity; the datum picker admi
   await expect(page.locator('.status-ready')).toContainText('Ready');
   await expect(page.getByLabel('PMI records', { exact: true })).toContainText('A');
   // A second datum on the same face is refused with the reason.
+  await showUnavailable(page);
   await expect(page.getByRole('radio', { name: /this face is A/ })).toBeDisabled();
 
   // The bore, then Ctrl-click the datum face: one hole, one plane.
@@ -106,6 +112,7 @@ test('the face opposite a datum plane takes its thickness, measured and rounded'
   await expect(page.getByLabel('PMI records', { exact: true })).toContainText('Thickness');
   await expect(page.getByLabel('PMI annotations', { exact: true })).toContainText('Thickness');
   // The same pair now refuses a second distance.
+  await showUnavailable(page);
   await expect(page.getByRole('radio', { name: /^Distance from A/ })).toBeDisabled();
   await page.screenshot({ path: `${output}/label-thickness.png` });
 });
