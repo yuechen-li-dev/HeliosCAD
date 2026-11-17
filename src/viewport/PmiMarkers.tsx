@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type MutableRefObject } from 'react';
 import type { PmiDisplayAnnotation } from '@aetheris/cad';
-import { layoutTags, leaderStart, markerTags, type Placement } from './pmiMarkers';
+import { layoutTags, leaderStart, markerTags, type Placement } from './pmiMarkerLayout';
 
 export type Project = (point: readonly number[]) => readonly [number, number, number] | null;
 

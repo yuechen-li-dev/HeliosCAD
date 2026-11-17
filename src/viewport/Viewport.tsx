@@ -1,6 +1,6 @@
 import { measurementLines, pmiLines, pmiMeshes, pmiBodyMaterial, type MeasurementResult, type PmiStyle } from '@aetheris/three-telos';
 import { PmiMarkers, type Project } from './PmiMarkers';
-import { markerColor } from './pmiMarkers';
+import { markerColor } from './pmiMarkerLayout';
 import {
   lazy,
   Suspense,
