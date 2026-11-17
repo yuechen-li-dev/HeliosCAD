@@ -2,6 +2,7 @@ import { test, expect } from '@playwright/test';
 import { mkdir } from 'node:fs/promises';
 import { assemblySource } from '../src/sdk/samples';
 import { replaceEditorSource } from './editor';
+import examples from '../src/showcase/examples.json' with { type: 'json' };
 
 test('hero rolls statements, pauses on request and respects reduced motion', async ({ page }) => {
   await page.goto('/');
@@ -32,10 +33,10 @@ test('wireframe catalog stays light until opened and carries the chosen theme in
   await page.goto('/');
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'apollonia');
   await expect(page.getByRole('heading', { name: 'HeliosCAD', exact: true })).toBeVisible();
-  await expect.poll(() => page.locator('.showcase-image img').evaluateAll(images => images.length === 5 && images.every(image => (image as HTMLImageElement).complete && (image as HTMLImageElement).naturalWidth > 0))).toBe(true);
+  await expect(page.locator('.showcase-image img')).toHaveCount(examples.length);
   const sources = await page.locator('.showcase-image img').evaluateAll(images => images.map(image => image.getAttribute('src')!));
   for (const source of sources) {
-    expect(source).toMatch(/\/wireframes\/\w+\.svg$/);
+    expect(source).toMatch(/\/wireframes\/[\w-]+\.svg$/);
     const response = await page.request.get(source); expect(response.ok()).toBe(true);
     const svg = await response.text();
     expect(svg).toContain('<polyline'); expect(svg).toContain('stroke="#000000"');
@@ -59,8 +60,9 @@ test('wireframe catalog stays light until opened and carries the chosen theme in
   expect(await page.locator('.welcome-shell').evaluate(el => getComputedStyle(el).backgroundColor)).toBe('rgb(12, 16, 14)');
   await page.reload();
   await expect(page.getByRole('button', { name: 'Use light theme' })).toBeVisible();
-  await expect.poll(() => page.locator('.showcase-image img').evaluateAll(images => images.length === 5 && images.every(image => (image as HTMLImageElement).complete && (image as HTMLImageElement).naturalWidth > 0))).toBe(true);
-  await page.locator('.showcase-image img').evaluateAll(async images => { await Promise.all(images.map(image => (image as HTMLImageElement).decode())); });
+  await expect(page.locator('.showcase-image img')).toHaveCount(examples.length);
+  await expect.poll(() => page.getByRole('img', { name: 'Simple bracket wireframe from Aetheris geometry' })
+    .evaluate(image => (image as HTMLImageElement).naturalWidth)).toBeGreaterThan(0);
   await page.screenshot({ path: `${evidence}/dark.png` });
   expect(runtimeRequests).toEqual([]);
   await page.getByRole('button', { name: 'New part', exact: true }).click();

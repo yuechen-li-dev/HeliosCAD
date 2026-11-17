@@ -243,7 +243,7 @@ for (const kind of ['Chamfer'] as const) test(`a picked bracket edge accepts one
   await page.screenshot({ path: resolve(output, `single-edge-${kind.toLowerCase()}-preview.png`), fullPage: true });
   await panel(page).getByRole('button', { name: 'Apply', exact: true }).click(); await ready(page);
   const edited = await saveSource(page, `bracket-single-edge-${kind.toLowerCase()}`);
-  expect(edited.source).toContain('Target: section.Outer.Vertex2_Vertex3');
+  expect(edited.source).toContain('Target: section.Outer.FootSeat');
   expect(edited.source).toContain('Face: Top'); expect(edited.source).not.toContain('Target: Boundary');
   expect(edited.source.match(/EdgeFinish\s/g)).toHaveLength(1);
   await step(page, `bracket-single-edge-${kind.toLowerCase()}`, { min: [0,-20,0], max: [30,0,40] });
@@ -310,7 +310,7 @@ for (const kind of ['Fillet', 'Chamfer'] as const) test(`the inside L bend takes
   const edited = await saveSource(page, `inside-bend-${kind.toLowerCase()}`);
   await expect(page.getByRole('treeitem', { name: new RegExp(`^Collapse Edge${kind} `) })).toHaveCount(1);
   expect(edited.source).toContain('Face: Longitudinal');
-  expect(edited.source).toContain('Target: section.Outer.Vertex3_Vertex4.Start');
+  expect(edited.source).toContain('Target: section.Outer.UprightSeat.Start');
   const exported = await step(page, `inside-bend-${kind.toLowerCase()}`, { min: [0,-20,0], max: [30,0,40] });
   expect(exported.match(/ADVANCED_FACE\(/g)).toHaveLength(9);
   if(kind === 'Fillet') expect(exported.match(/CYLINDRICAL_SURFACE\(/g)).toHaveLength(1);
@@ -337,7 +337,7 @@ test('an outside longitudinal corner takes a full-width round with size guards',
   await expect(panel(page).getByRole('status')).toContainText('Preview admitted');
   await panel(page).getByRole('button', { name: 'Apply', exact: true }).click(); await ready(page);
   const edited = await saveSource(page, 'outside-corner-fillet');
-  expect(edited.source).toContain('section.Outer.Vertex2_Vertex3.Start');
+  expect(edited.source).toContain('section.Outer.FootSeat.Start');
   await step(page, 'outside-corner-fillet', { min: [0,-20,0], max: [30,0,40] });
 });
 

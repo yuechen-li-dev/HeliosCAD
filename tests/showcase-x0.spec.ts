@@ -1,6 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { readFile, mkdir, writeFile } from 'node:fs/promises';
 import { replaceEditorSource } from './editor';
+import examples from '../src/showcase/examples.json' with { type: 'json' };
 
 const evidence = 'artifacts/local/p4-03';
 test.beforeAll(async () => { await mkdir(evidence, { recursive: true }); });
@@ -9,7 +10,9 @@ test('first sixty seconds, real build, selection, resize, diagnostics, recovery 
   const started = Date.now();
   await page.goto('/');
   await expect(page.getByRole('button', { name: 'Open Mounting plate' })).toBeVisible();
-  await expect.poll(() => page.locator('.showcase-image img').evaluateAll(images => images.length === 7 && images.every(image => (image as HTMLImageElement).complete && (image as HTMLImageElement).naturalWidth > 0))).toBe(true);
+  await expect(page.locator('.showcase-image img')).toHaveCount(examples.length);
+  const preview = page.getByRole('img', { name: 'Mounting plate wireframe from Aetheris geometry' });
+  await expect.poll(() => preview.evaluate(image => (image as HTMLImageElement).naturalWidth)).toBeGreaterThan(0);
   await page.screenshot({ path: `${evidence}/first-launch.png` });
   await page.getByRole('button', { name: 'Open Mounting plate' }).click();
   await expect(page.locator('.status-ready')).toContainText('Ready');

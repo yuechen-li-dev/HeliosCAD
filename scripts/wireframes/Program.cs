@@ -14,14 +14,10 @@ var evidence = Path.Combine(helios, "artifacts/local/showcase-wireframes");
 Directory.CreateDirectory(output); Directory.CreateDirectory(evidence);
 var records = new List<object>();
 var selectedIds = args.Skip(1).ToHashSet(StringComparer.Ordinal);
-foreach (var (id, root, kind) in new[] {
-    ("basic-bracket", "bracket.firmament", "Part"),
-    ("paperclip", "paperclip.firmament", "Part"),
-    ("atlas", "atlas-industrial.firmament", "Assembly"),
-    ("guitar", "guitar.firmasm", "Assembly"),
-    ("house", "house.firmament", "Scene"),
-    ("bracket", "bracket.firmament", "Part"),
-    ("bolt", "hexbolt-showcase.firmament", "Part") })
+var examples = JsonSerializer.Deserialize<Example[]>(
+    File.ReadAllText(Path.Combine(helios, "src/showcase/examples.json")),
+    new JsonSerializerOptions { PropertyNameCaseInsensitive = true })!;
+foreach (var (id, root, kind) in examples)
 {
     if (selectedIds.Count > 0 && !selectedIds.Contains(id)) continue;
     var source = Path.Combine(helios, "fixtures/showcase", id, root);
@@ -87,3 +83,5 @@ if (selectedIds.Count > 0 && File.Exists(receipt)) {
     records.InsertRange(0, previous.Where(item => !selectedIds.Contains(item.GetProperty("id").GetString()!)).Select(item => (object)item));
 }
 await File.WriteAllTextAsync(receipt, JsonSerializer.Serialize(records, new JsonSerializerOptions { WriteIndented = true }) + "\n");
+
+record Example(string Id, string Root, string Kind);

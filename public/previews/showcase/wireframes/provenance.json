@@ -1,36 +1,5 @@
 [
   {
-    "id": "atlas",
-    "source": "fixtures/showcase/atlas/atlas-industrial.firmament",
-    "kind": "Assembly",
-    "projection": "placed-topology-edges",
-    "hiddenBoundaries": [],
-    "occurrences": 60,
-    "edgeCount": 495,
-    "state": {
-      "Shoulder": -65,
-      "Elbow": 100,
-      "GripLeft": 4,
-      "GripRight": 4
-    },
-    "background": "#f4f0e6",
-    "view": "IsometricZUp",
-    "sha256": "b49aecfc89cb22e04aaac28542e36af233439b873633fd742ccfc91d520411b5"
-  },
-  {
-    "id": "guitar",
-    "source": "fixtures/showcase/guitar/guitar.firmasm",
-    "kind": "Assembly",
-    "projection": "placed-topology-edges",
-    "hiddenBoundaries": [],
-    "occurrences": 99,
-    "edgeCount": 2034,
-    "state": {},
-    "background": "#f4f0e6",
-    "view": "IsometricZUp",
-    "sha256": "f25921a8ddc63ff543c759b3ca7497b099cc3232b7077ad5531f6d499ffe1bc6"
-  },
-  {
     "id": "house",
     "source": "fixtures/showcase/house/house.firmament",
     "kind": "Scene",
@@ -48,6 +17,19 @@
     "sha256": "2623cc51469dc9a8483f2d8b0c4c1cdc4fc0f2e223cc90f52a006e002ec894f7"
   },
   {
+    "id": "paperclip",
+    "source": "fixtures/showcase/paperclip/paperclip.firmament",
+    "kind": "Part",
+    "projection": "exact-brep-edges-and-trimmed-isolines",
+    "hiddenBoundaries": [],
+    "occurrences": 1,
+    "edgeCount": 15,
+    "state": {},
+    "background": "#f4f0e6",
+    "view": "IsometricZUp",
+    "sha256": "10b09f1c69fde164754bdcc854691505aabb5ac9c707fd46c0fbed3e98ac9c49"
+  },
+  {
     "id": "bracket",
     "source": "fixtures/showcase/bracket/bracket.firmament",
     "kind": "Part",
@@ -58,7 +40,142 @@
     "state": {},
     "background": "#f4f0e6",
     "view": "IsometricZUp",
-    "sha256": "c513b37357c65e8a5b67b46b37fd3e45a3211bc9064fef0f41f4175a82930324"
+    "sha256": "8fb29ba2f9b873f99759ba03b4f5a4ba9a8f548f82829083afaa181d739c5c1c"
+  },
+  {
+    "id": "rounded-tray",
+    "source": "fixtures/showcase/rounded-tray/rounded-tray.firmament",
+    "kind": "Part",
+    "projection": "exact-brep-edges-and-trimmed-isolines",
+    "hiddenBoundaries": [],
+    "occurrences": 1,
+    "edgeCount": 64,
+    "state": {},
+    "background": "#f4f0e6",
+    "view": "IsometricZUp",
+    "sha256": "3fb9841164fe2b8e0457cec31a8a5d0e42c4371ab043045cede144332045a6df"
+  },
+  {
+    "id": "spur-gear",
+    "source": "fixtures/showcase/spur-gear/spur-basic.firmament",
+    "kind": "Part",
+    "projection": "exact-brep-edges-and-trimmed-isolines",
+    "hiddenBoundaries": [],
+    "occurrences": 1,
+    "edgeCount": 579,
+    "state": {},
+    "background": "#f4f0e6",
+    "view": "IsometricZUp",
+    "sha256": "101c23a764d36c1e8c968219ee7972a12ac41264ddfd68d942d65794adb4d78d"
+  },
+  {
+    "id": "bearing-mount",
+    "source": "fixtures/showcase/bearing-mount/showcase-bearing-mount.firmament",
+    "kind": "Part",
+    "projection": "exact-brep-edges-and-trimmed-isolines",
+    "hiddenBoundaries": [],
+    "occurrences": 1,
+    "edgeCount": 332,
+    "state": {},
+    "background": "#f4f0e6",
+    "view": "IsometricZUp",
+    "sha256": "faa1f48faa10c2182024afa381949bc65f8a0976565b721d615fbed867cf9868"
+  },
+  {
+    "id": "machined-block",
+    "source": "fixtures/showcase/machined-block/03-machined-block.firmament",
+    "kind": "Part",
+    "projection": "exact-brep-edges-and-trimmed-isolines",
+    "hiddenBoundaries": [],
+    "occurrences": 1,
+    "edgeCount": 196,
+    "state": {},
+    "background": "#f4f0e6",
+    "view": "IsometricZUp",
+    "sha256": "ba9159d9cc981721c132f9472eb1faae0e0085cec4272ed2e5ea5923a4d9915a"
+  },
+  {
+    "id": "seated-fastener",
+    "source": "fixtures/showcase/seated-fastener/assembly.firmasm",
+    "kind": "Assembly",
+    "projection": "placed-topology-edges",
+    "hiddenBoundaries": [],
+    "occurrences": 2,
+    "edgeCount": 57,
+    "state": {},
+    "background": "#f4f0e6",
+    "view": "IsometricZUp",
+    "sha256": "2d2b4c585ac1d7994bd497b1c99dfbbf9c483dbf076fbdd2dda3bfb9995a8dc5"
+  },
+  {
+    "id": "perforated-cup",
+    "source": "fixtures/showcase/perforated-cup/cylindrical-staggered-32.firmament",
+    "kind": "Part",
+    "projection": "exact-brep-edges-and-trimmed-isolines",
+    "hiddenBoundaries": [],
+    "occurrences": 1,
+    "edgeCount": 166,
+    "state": {},
+    "background": "#f4f0e6",
+    "view": "IsometricZUp",
+    "sha256": "9387963e0c65cda2c37dccadcf046e216f7d4f047ae2e833c840441d451ce75c"
+  },
+  {
+    "id": "twisted-sleeve",
+    "source": "fixtures/showcase/twisted-sleeve/hollow-loft-twist.firmament",
+    "kind": "Part",
+    "projection": "exact-brep-edges-and-trimmed-isolines",
+    "hiddenBoundaries": [],
+    "occurrences": 1,
+    "edgeCount": 30,
+    "state": {},
+    "background": "#f4f0e6",
+    "view": "IsometricZUp",
+    "sha256": "950faa39840cad41e08e6efbf883f44c9902f28415f532925ec249fbe2ccd095"
+  },
+  {
+    "id": "checked-plate",
+    "source": "fixtures/showcase/checked-plate/05-checked-plate.firmament",
+    "kind": "Part",
+    "projection": "exact-brep-edges-and-trimmed-isolines",
+    "hiddenBoundaries": [],
+    "occurrences": 1,
+    "edgeCount": 15,
+    "state": {},
+    "background": "#f4f0e6",
+    "view": "IsometricZUp",
+    "sha256": "dd4e360fc1e2ec8d539962dc9bcf40bd80bbaa8bbdcf12b49f128852bf76af64"
+  },
+  {
+    "id": "atlas",
+    "source": "fixtures/showcase/atlas/atlas-industrial.firmament",
+    "kind": "Assembly",
+    "projection": "placed-topology-edges",
+    "hiddenBoundaries": [],
+    "occurrences": 60,
+    "edgeCount": 495,
+    "state": {
+      "Shoulder": -65,
+      "Elbow": 100,
+      "GripLeft": 4,
+      "GripRight": 4
+    },
+    "background": "#f4f0e6",
+    "view": "IsometricZUp",
+    "sha256": "ec95d5d5c159fbc9e46adf7bdcdeeb956d0a30ac6a1fd6a6ca4d891835ad5547"
+  },
+  {
+    "id": "guitar",
+    "source": "fixtures/showcase/guitar/guitar.firmasm",
+    "kind": "Assembly",
+    "projection": "placed-topology-edges",
+    "hiddenBoundaries": [],
+    "occurrences": 99,
+    "edgeCount": 2034,
+    "state": {},
+    "background": "#f4f0e6",
+    "view": "IsometricZUp",
+    "sha256": "4f4ced511604abb0b09ea2512bfa0b34cae2a607fa3b6fd7a2c5d2679e2bab5a"
   },
   {
     "id": "bolt",
@@ -67,11 +184,11 @@
     "projection": "exact-brep-edges-and-trimmed-isolines",
     "hiddenBoundaries": [],
     "occurrences": 1,
-    "edgeCount": 689,
+    "edgeCount": 683,
     "state": {},
     "background": "#f4f0e6",
     "view": "IsometricZUp",
-    "sha256": "0799bb21bd9b74a14f0e967140726a831278425e26c157d0dde35f80094e2264"
+    "sha256": "5f03f392405a5e45156cf8db7d1ba196fa25ca41b0249224947b18c3f05b44ce"
   },
   {
     "id": "basic-bracket",
@@ -84,19 +201,19 @@
     "state": {},
     "background": "#f4f0e6",
     "view": "IsometricZUp",
-    "sha256": "2f9e859fa9f2a9edfed79505d4daa99995d33c3f869854d8f6af4004f3fb551e"
+    "sha256": "df6de7e2e2af6fc7b249b4621a16858bc721097402d5bea3f21cf458aa93e782"
   },
   {
-    "id": "paperclip",
-    "source": "fixtures/showcase/paperclip/paperclip.firmament",
+    "id": "turned-shaft",
+    "source": "fixtures/showcase/turned-shaft/stepped-shaft.firmament",
     "kind": "Part",
     "projection": "exact-brep-edges-and-trimmed-isolines",
     "hiddenBoundaries": [],
     "occurrences": 1,
-    "edgeCount": 15,
+    "edgeCount": 12,
     "state": {},
     "background": "#f4f0e6",
     "view": "IsometricZUp",
-    "sha256": "10b09f1c69fde164754bdcc854691505aabb5ac9c707fd46c0fbed3e98ac9c49"
+    "sha256": "ef930f4c38244dbb82246cb9a91f2bcb486228f5871a1ece044d35e64f20d32f"
   }
 ]
