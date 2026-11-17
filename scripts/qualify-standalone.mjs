@@ -132,9 +132,13 @@ try {
   await page.getByRole('button', { name: 'Export ▾', exact: true }).click();
   await page.getByRole('dialog', { name: 'Export formats' }).getByLabel(/GLB|glTF/i).check();
   await page.getByRole('dialog', { name: 'Export formats' }).getByLabel(/PDF/i).check();
-  const packageDownload = page.waitForEvent('download');
+  // A cold drawing export shares the batch with STEP and GLB. On hosted Windows
+  // runners it can outlast Playwright's interactive 30-second default.
+  const packageExportStarted = performance.now();
+  const packageDownload = page.waitForEvent('download', { timeout: 120_000 });
   await page.getByRole('button', { name: /Download ZIP/ }).click();
   const exportArchive = join(working, 'exports.zip'); await (await packageDownload).saveAs(exportArchive);
+  console.log(`Combined STEP/GLB/PDF export downloaded in ${Math.round(performance.now() - packageExportStarted)} ms.`);
   const exports = unzipSync(await readFile(exportArchive));
   const pdf = Object.entries(exports).find(([name]) => name.endsWith('.pdf'));
   const glb = Object.entries(exports).find(([name]) => name.endsWith('.glb'));
