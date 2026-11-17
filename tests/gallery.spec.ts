@@ -79,4 +79,6 @@ for (const [name, id] of [['Simple bracket', 'basic-bracket'], ['Paperclip', 'pa
   const stepPath = `artifacts/local/gallery/${id}.step`; await (await download).saveAs(stepPath);
   const result = JSON.parse(execFileSync('dotnet', [cli, 'analyze', resolve(stepPath), '--json'], { encoding: 'utf8' }));
   expect(result.summary.structuralAssessment).toBe('enclosed-manifold'); expect(result.summary.bodyCount).toBe(1);
+  await page.getByRole('tab', { name: 'Problems', exact: true }).click();
+  await expect(page.locator('.dock-errors')).toHaveText('No problems.');
 });
