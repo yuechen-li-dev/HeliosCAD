@@ -30,6 +30,17 @@ local directory link, so rebuilding it updates the runtime in place. Use the
 fast interpreted SDK for iteration; `sdk:install:production` builds the AOT SDK.
 Keep `package-lock.json` and the SDK directory dependencies intact.
 
+## Package a Claude artifact
+
+After linking the sibling SDK, run `npm run build:artifact`. The command writes
+the static site and `publish.json` under `artifacts/local/helios-artifact/`.
+Use the manifest's arguments in the Claude Artifact publisher. They include
+download support. When updating a published artifact, pass its existing URL.
+
+The artifact uses the interpreted WASM runtime. Saving and exporting ask for
+download confirmation, and formats the publisher cannot deliver directly
+are wrapped in a ZIP.
+
 ## Application boundaries
 
 - **Aetheris owns CAD and language semantics.** Firmament source is the saved

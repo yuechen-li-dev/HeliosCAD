@@ -1,156 +1,50 @@
-# Aetheris Helios
+# Helios
 
-**Free, open-source CAD for making parts and adding manufacturing information to STEP files.**
+Helios is a CAD workbench for making parts and adding manufacturing information
+to STEP files. A Helios model is a Firmament file. You can edit it in the graph
+or change the code and rebuild it with the [Aetheris kernel](https://github.com/yuechen-li-dev/Aetheris).
 
-Draw visually, edit readable Firmament code, or annotate a part from another
-CAD tool. Helios runs locally, powered by the
-[Aetheris geometry kernel](https://github.com/yuechen-li-dev/Aetheris).
+**[Try the browser preview](https://helios-cad-wasm.yuechenli.chatgpt.site/)** · [Download Helios 0.1.0 for Windows x64](https://github.com/yuechen-li-dev/HeliosCAD/releases/download/v0.1.0/Helios-0.1.0-win-x64.zip)
 
-**[Download for Windows](https://github.com/yuechen-li-dev/HeliosCAD/releases/download/v0.1.0/Helios-0.1.0-win-x64.zip)** · [Release notes](docs/release/0.1.0.md) · [Getting started](docs/public/standalone.md)
+The preview runs on your device in Chrome or Edge. Download your work with
+**Save source** or **Save workspace** before closing the tab.
 
-## Download and start
+The interface is still early. If you get stuck, [tell us on GitHub](https://github.com/yuechen-li-dev/HeliosCAD/issues/new)
+what you were trying to do and what happened. A screenshot or a small model
+helps if you can share one.
 
-1. Download the **Windows x64 ZIP** above.
-2. Extract the **entire archive**, then run **Helios.exe**. It opens your browser.
-3. Choose a gallery example, **New part**, or **Learn** for a guided tutorial.
+## Start with the bracket
 
-Modeling needs no account, API key, .NET installation, or AI subscription.
-Use a recent Chrome or Edge browser. The current release is **0.1.0 for Windows x64**.
+1. Open **Simple bracket** in the gallery. In **Graph**, click **Top** and
+   select the broad foot of the bracket.
+2. Choose **Add hole on selected face**. Drag the gold ring or enter the center
+   in millimeters. Click **Apply** when the preview is ready.
+3. Open **Source** to see the hole you just added.
 
-## Turn a STEP part into an annotated 3D drawing
+For a fillet, go back to **Graph**, click **Iso**, and switch to **Edges**.
+Select the inside bend and choose **Fillet selected edge**.
 
-Already happy modeling in SolidWorks or another CAD tool? Keep using it.
-Bring the part into Helios to add manufacturing information and export it with the geometry.
+**Learn** opens the manual and gives you working examples to edit alongside
+the lessons. [Graph guide](https://helios-cad-wasm.yuechenli.chatgpt.site/learn#page=helios%2Fgraph-modeling.md)
 
-PMI means **product and manufacturing information**: dimensions, datums and
-tolerances attached to the part. Helios's current STEP annotation tools let you:
+## Add dimensions to a STEP part
 
-1. **Bring in a part.** Use **Import STEP** for a supported single-part file, or
-   the [SolidWorks handoff](docs/public/solidworks.md) for an AP214 export
-   (separate add-in setup).
-2. **Attach requirements.** In the [Label tab](docs/public/label.md), select faces
-   and choose from the datums, diameters and geometric tolerances that fit them.
-   Measured sizes are rounded to a nominal you confirm; tolerances are always explicit.
-3. **Export the result.** STEP **AP242** carries the geometry and supported
-   machine-readable PMI. Annotated **GLB** carries visible 3D callouts and their metadata.
-4. **Keep it editable.** **Save workspace** retains the original STEP assets
-   and your annotation layer so you can reopen the project later.
+Use **Import STEP** with a supported single-part file. In **Label**, click a
+face to place a datum or a tolerance. Shift-click a second parallel face to
+add a distance. You can also add notes to the part.
 
-These annotations refer to specific faces, so downstream tools can read their
-association with the geometry. The SolidWorks handoff uses its ordinary AP214
-exporter; this workflow does not require SolidWorks MBD.
+Export **STEP AP242** to carry supported PMI (dimensions, datums, and
+tolerances) with the geometry. Export annotated **GLB** for visible 3D
+callouts. **Save workspace** keeps the imported STEP file and the labels
+together so you can reopen them. [Label guide](docs/public/label.md) ·
+[Supported exports](docs/public/exports.md)
 
-![An imported STEP part in Helios with datum A, a diameter tolerance and highlighted face attachments](docs/images/step-pmi-workspace.png)
+![A STEP part in Helios with a datum, a diameter tolerance, and the corresponding faces highlighted](docs/images/step-pmi-workspace.png)
 
-*An imported part with an attached datum and diameter tolerance.*
+## Run the Windows release
 
-See [supported imports, annotations and export formats](docs/public/exports.md).
+Extract the entire ZIP and run **Helios.exe**. It opens the workbench in your
+browser. Use **Quit Helios** to stop the local host when you're done.
+[Setup and file locations](docs/public/standalone.md) · [0.1.0 release notes](docs/release/0.1.0.md)
 
-## Make your own parts
-
-Choose **New part**, set the box dimensions, then **Preview → Apply**. Select the
-body to add holes, pockets, chamfers or fillets. Use **IntelliDraft** for a custom
-outline: draw its guides, trace the boundary, then extrude it.
-[Follow the first-part walkthrough](docs/public/graph-modeling.md).
-
-**Learn**, or **F1**, opens the offline manual and six guided lessons covering
-parts, profiles, manufacturing features, reuse, PMI and assemblies. Edit a working
-example beside its instructions.
-
-## A different way to work on a model
-
-If you're coming from Fusion 360 or SolidWorks, the central idea to try is
-**a design saved as readable code**, with visual tools for editing that same design.
-
-- **Visual tools and code work together.** The graph and IntelliDraft write
-  Firmament. Change a dimension in code, rebuild, and keep working visually.
-- **Designs work with Git.** Compare changes and reuse dimensions and definitions.
-  The editor provides completion, error underlines, navigation and formatting.
-- **AI can work on the same design.** Optional connections edit Firmament with
-  build checks and recovery checkpoints. Your chosen provider may receive project
-  context. [Connect your client or provider](docs/public/ai-connections.md).
-- **Exact geometry, useful exports.** Aetheris's BRep kernel produces STEP solids
-  for continued CAD work, with GLB/USD for viewing and supported mesh exports.
-- **Local and open source.** Build and export on your computer.
-  [AGPL-3.0 licensed](LICENSE).
-
-<details>
-<summary>What does a Firmament model look like?</summary>
-
-This makes an 80 × 50 × 8 mm plate with a through-hole. Change `diameter: 8mm`
-to `diameter: 12mm`, then press **Build**.
-
-```firmament
-Model Plate {
-  units: mm
-  Box stock { size: [80mm, 50mm, 8mm] }
-  Modify stock {
-    Hole<Shaft> mount {
-      on: +Z
-      center: Point2(0mm, 0mm)
-      diameter: 8mm
-      end: ThroughAll
-    }
-  }
-}
-```
-
-The in-app **Learn** section explains the language with complete examples.
-
-</details>
-
-## Save and share
-
-**Save source** keeps your editable design. Use **Save workspace** when the
-project has includes or imported STEP assets. **Export** offers STEP AP242,
-GLB, USD, STL and OBJ where supported. PDF, SVG and PowerPoint drawings are
-available for supported dimensioned part families.
-
-Use **Quit Helios** when you're done; closing the browser tab alone leaves the
-local host running. Download working files and keep backups.
-
-## Run Helios as a Claude artifact
-
-Helios can run inside a [claude.ai](https://claude.ai) artifact: a private web
-page that Claude publishes for you, which you can open from any browser and
-share from its Share menu. The artifact build has the gallery, the editor,
-**Learn**, **Open file** and **Import STEP**. It has no accounts, projects,
-publishing or AI Author, because those need the Helios server. Saving and
-exporting ask you to confirm the download. Files the artifact can't offer
-directly, such as `.step`, `.firmament` or `.stl`, arrive inside a `.zip`.
-
-To publish one, give Claude a session with this repository and
-[Aetheris](https://github.com/yuechen-li-dev/Aetheris) checked out side by
-side (`HeliosCAD/` and `Aetheris/`), then ask:
-
-> Build Helios as a Claude artifact and publish it. Follow "Run Helios as a
-> Claude artifact" in the README.
-
-What Claude does:
-
-1. Installs Node 22 and the .NET 10 SDK, then runs `dotnet workload install wasm-tools`.
-2. Runs `npm ci`, `npm run sdk:link` and `git checkout package-lock.json` in
-   `HeliosCAD/`.
-3. Runs `npm run build:artifact`. This writes
-   `artifacts/local/helios-artifact/publish.json` with the page, the site
-   folder and the list of about 160 files.
-4. Publishes with the Artifact tool, passing `file_path`, `root`, `files`,
-   `capabilities`, `icon` and `description` from `publish.json` unchanged. To
-   update an artifact it published before, it also passes that artifact's
-   `url`. `capabilities: { downloads: true }` is what lets saving and
-   exporting work.
-
-The artifact runs the trimmed WebAssembly runtime, not the ahead-of-time
-compiled one in the Windows release, so large models rebuild more slowly
-than in the release.
-
-## Where 0.1 stands
-
-This is an early release. Start with the examples and
-[check supported geometry, imports, annotations and drawings](docs/public/exports.md).
-The Windows package is unsigned and has no installer or automatic updater.
-
-Found something broken? [Open an issue](https://github.com/yuechen-li-dev/HeliosCAD/issues)
-with what you tried, the diagnostic, and a small example you can share.
-
-Want to build from source or contribute? [Developer setup and architecture](CONTRIBUTING.md).
+[Build from source](CONTRIBUTING.md) · [AGPL-3.0 license](LICENSE)
