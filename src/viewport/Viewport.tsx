@@ -94,6 +94,7 @@ function readPmiStyle(): PmiStyle { try { return localStorage.getItem(PMI_STYLE_
 
 export function Viewport(props: Props) {
   const [pmiStyle, setPmiStyle] = useState<PmiStyle>(readPmiStyle);
+  const [legendOpen, setLegendOpen] = useState(true);
   const projectRef = useRef<Project | null>(null);
   const composeRef = useRef<((context: CanvasRenderingContext2D, scale: number) => void) | null>(null);
   const rendererCapture = useRef<(() => string) | null>(null);
@@ -127,10 +128,12 @@ export function Viewport(props: Props) {
         <span role="radiogroup" aria-label="PMI style">{(['markers', 'drawing'] as const).map(style =>
           <button key={style} type="button" role="radio" aria-checked={pmiStyle === style} className={pmiStyle === style ? 'active' : ''}
             title={style === 'markers' ? 'Numbered tags on coloured targets: for checking and screenshots' : 'ASME drawing presentation, as exported to annotated GLB'}
-            onClick={() => choose(style)}>{style === 'markers' ? 'Markers' : 'Drawing'}</button>)}</span></div>
-      {annotations.map((item, i) => <div key={item.id} className="pmi-legend-row">
+            onClick={() => choose(style)}>{style === 'markers' ? 'Markers' : 'Drawing'}</button>)}</span>
+        <button type="button" className="pmi-legend-toggle" aria-expanded={legendOpen}
+          onClick={() => setLegendOpen(open => !open)}>{legendOpen ? 'Hide list' : 'Show list'}</button></div>
+      {legendOpen && annotations.map((item, i) => <div key={item.id} className="pmi-legend-row">
         {pmiStyle === 'markers' && <b style={{ background: markerColor(i) }}>{i + 1}</b>}<span>{item.name}</span> {item.text}</div>)}
-      {pmiStyle === 'markers' && <small>Numbers follow the Pmi block; each colour marks its referenced surface.</small>}
+      {legendOpen && pmiStyle === 'markers' && <small>Numbers follow the Pmi block; each colour marks its referenced surface.</small>}
     </aside>}
   </div>;
 }

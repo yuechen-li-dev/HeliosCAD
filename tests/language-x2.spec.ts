@@ -1,6 +1,22 @@
 import { expect, test } from '@playwright/test';
 import { replaceEditorSource } from './editor';
 
+test('the first gallery document provides parameter hints as soon as a call is typed', async ({ page }) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Open Simple bracket', exact: true }).click();
+  await page.getByRole('tab', { name: 'Source', exact: true }).click();
+  const editor = page.getByRole('textbox', { name: 'Editor content' });
+  await editor.press('ControlOrMeta+End');
+  await editor.press('Enter');
+  await page.keyboard.insertText('Static trial: Point2 = Point2');
+  await page.keyboard.type('(');
+  const hints = page.locator('.parameter-hints-widget.visible');
+  await expect(hints).toContainText('Point2(x: Length, y: Length)');
+  await expect(hints.locator('.parameter.active')).toHaveText('x: Length');
+  await page.keyboard.type('4mm,');
+  await expect(hints.locator('.parameter.active')).toHaveText('y: Length');
+});
+
 test('Aetheris language intelligence drives Monaco at 1440p', async ({ page }) => {
   await page.setViewportSize({ width: 2560, height: 1440 });
   await page.goto('/local');

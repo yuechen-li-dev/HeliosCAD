@@ -202,6 +202,7 @@ button, a { transition: background-color 100ms, border-color 100ms, color 100ms;
 /* Viewport toolbar: tools, views, display — one row when it fits, two when shellLayout stacks it. */
 .viewport-toolbar { justify-content: flex-start; align-items: center; column-gap: 14px; }
 .viewport-toolbar > .toolbar-display { margin-left: auto; }
+.viewport-toolbar .toolbar-display { align-items: center; }
 .viewport-toolbar.stacked > .toolbar-display { margin-left: 0; }
 .viewport-toolbar > div:first-child, .viewport-toolbar > div:last-child { flex: none; justify-content: flex-start; }
 .viewport-toolbar .viewport-pick-mode { flex-wrap: nowrap; align-items: center; }

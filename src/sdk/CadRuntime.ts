@@ -158,8 +158,15 @@ export class WebSdkCadRuntime implements CadRuntime {
   }
 
   private async initializeLanguage() {
+    if (this.languageCad) return this.languageCad;
     const generation = this.generation;
-    const cad = this.languageCad ?? await (this.languageInitializing ??= Aetheris.create({ worker: true }));
+    const initializing = this.languageInitializing ??= Aetheris.create({ worker: true });
+    let cad: Aetheris;
+    try { cad = await initializing; }
+    catch (error) {
+      if (this.languageInitializing === initializing) this.languageInitializing = null;
+      throw error;
+    }
     if (this.disposed || generation !== this.generation) { cad.terminate(); throw new Error('This workspace has closed.'); }
     this.languageCad = cad;
     return this.languageCad;

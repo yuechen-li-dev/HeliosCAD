@@ -2,6 +2,39 @@ import { test, expect } from '@playwright/test';
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { zipSync } from 'fflate';
 const out = 'artifacts/local/pmi-styles';
+
+test('Bearing mount keeps its dimension callouts and readable backing panels in GLB', async ({ page }, info) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Open Bearing mount', exact: true }).click();
+  await expect(page.locator('.status-ready')).toHaveText('Ready');
+  const legend = page.getByLabel('PMI annotations');
+  await legend.getByRole('radio', { name: 'Drawing', exact: true }).click();
+  await expect(legend).toContainText('BoreSize');
+  await legend.getByRole('button', { name: 'Hide list' }).click();
+  await expect(legend.getByRole('button', { name: 'Show list' })).toHaveAttribute('aria-expanded', 'false');
+  await expect(legend).not.toContainText('BoreSize');
+  for (const view of ['Top', 'Iso']) {
+    await page.getByRole('button', { name: view, exact: true }).click();
+    await page.screenshot({ path: info.outputPath(`bearing-mount-${view}.png`) });
+  }
+  await page.getByRole('button', { name: 'Export ▾', exact: true }).click();
+  await page.getByRole('checkbox', { name: /^STEP AP242/ }).uncheck();
+  await page.getByRole('checkbox', { name: /^glTF \/ GLB/ }).check();
+  const download = page.waitForEvent('download', { timeout: 90_000 });
+  await page.getByRole('button', { name: 'Download selected format' }).click();
+  const path = info.outputPath('bearing-mount.glb');
+  await (await download).saveAs(path);
+  const glb = await readFile(path);
+  expect(glb.subarray(0, 4).toString()).toBe('glTF');
+  const json = JSON.parse(glb.subarray(20, 20 + glb.readUInt32LE(12)).toString());
+  const records = json.asset.extras.pmi as { name: string; stepFaceEntities: number[] }[];
+  expect(records.find(r => r.name === 'BoreSize')?.stepFaceEntities.length).toBeGreaterThan(0);
+  expect(records.find(r => r.name === 'BlockLength')?.stepFaceEntities.length).toBeGreaterThan(0);
+  const backing = json.materials.filter((m: { name: string }) => m.name.startsWith('PMI panel '));
+  expect(backing.length).toBeGreaterThan(10);
+  expect(backing.every((m: { pbrMetallicRoughness: { baseColorFactor: number[] } }) => m.pbrMetallicRoughness.baseColorFactor[3] === 1)).toBe(true);
+});
+
 test('Markers number and colour each record over the view; Drawing shows the ASME presentation instead', async ({ page }) => {
   await mkdir(out, { recursive: true });
   let source = await readFile('fixtures/solidworks/part.firmament', 'utf8');

@@ -7,6 +7,31 @@ const records = (page: Page) => page.getByLabel('PMI records', { exact: true });
 const canvas = (page: Page) => page.locator('.viewport-canvas canvas');
 const ready = (page: Page) => expect(page.locator('.status-ready')).toHaveText('Ready');
 
+test('an applied note exports from a Box with a localized fillet', async ({ page }) => {
+  await page.goto('/local');
+  await ready(page);
+  await page.getByRole('banner').locator('input[type=file]').setInputFiles({
+    name: 'filleted-box.firmament', mimeType: 'text/plain', buffer: Buffer.from(`Model Sample {
+      units: mm
+      Box stock { Size: [30mm, 20mm, 10mm] }
+      Modify stock { EdgeFinish Round { Face: +X Target: SharedEdgePlusZ Kind: Fillet Radius: 1mm } }
+    }`),
+  });
+  await ready(page);
+  await page.getByRole('tab', { name: 'Label', exact: true }).click();
+  const note = page.getByRole('form', { name: 'Add Note', exact: true });
+  await note.getByLabel('Note text', { exact: true }).fill("Deburr the operator's side.");
+  await note.getByRole('button', { name: 'Apply', exact: true }).click();
+  await expect(records(page)).toContainText("Deburr the operator's side.");
+  await ready(page);
+  await page.getByRole('button', { name: 'Export ▾', exact: true }).click();
+  const download = page.waitForEvent('download');
+  await page.getByRole('button', { name: 'Download selected format', exact: true }).click();
+  const step = await readFile((await (await download).path())!, 'utf8');
+  expect(step).toMatch(/PROPERTY_DEFINITION\('note:[^']+',\s*'Deburr the operator''s side\.'/);
+  expect(step).toContain('CYLINDRICAL_SURFACE');
+});
+
 async function openPlate(page: Page) {
   await page.goto('/');
   await page.getByRole('button', { name: 'Open Mounting plate', exact: true }).click();

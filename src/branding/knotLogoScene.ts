@@ -37,7 +37,8 @@ export function mountKnotLogo(host: HTMLElement, ready: () => void, failed: () =
     if (disposed || !model || !visible || document.hidden || reduced.matches) { previous = 0; return; }
     if (previous && now - previous >= 1000 / 30) {
       elapsed += Math.min((now - previous) / 1000, .1);
-      spin.rotation.y = elapsed * Math.PI * 2 / 100;
+      const angle = elapsed * Math.PI * 2 / 36;
+      spin.rotation.set(.18 * Math.sin(angle), angle, 0);
       render(); previous = now;
     } else if (!previous) previous = now;
     frame = requestAnimationFrame(tick);
