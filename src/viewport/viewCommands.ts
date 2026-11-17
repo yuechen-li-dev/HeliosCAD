@@ -7,10 +7,11 @@ import type { TelosCamera } from '@aetheris/three-telos';
 /** World up for every model view. */
 export const WORLD_UP: readonly [number, number, number] = [0, 0, 1];
 
-/** Named views look from these directions; Front, Top and Right switch to orthographic. */
+/** Named views look from these directions. Only Iso uses perspective. */
 export const VIEW_DIRECTIONS: Readonly<Record<string, readonly [number, number, number]>> = {
   front: [0, -1, 0],
   top: [0, 0, 1],
+  bottom: [0, 0, -1],
   right: [1, 0, 0],
   iso: [1, 1, 1],
 };
@@ -23,8 +24,8 @@ export function applyNamedView(camera: TelosCamera, command: string): boolean {
   if (command !== 'iso') camera.mode = 'orthographic';
   const distance = Math.max(camera.position.distanceTo(camera.target), camera.near * 10);
   camera.position.set(...direction).normalize().multiplyScalar(distance).add(camera.target);
-  // Looking straight down Z, screen up is +Y; every other view keeps Z up.
-  if (command === 'top') camera.up.set(0, 1, 0);
+  // Looking along Z, use Y as screen up to keep the camera basis well defined.
+  if (command === 'top' || command === 'bottom') camera.up.set(0, 1, 0);
   else camera.up.set(...WORLD_UP);
   return true;
 }

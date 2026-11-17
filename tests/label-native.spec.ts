@@ -63,7 +63,7 @@ test('two faces of a native extrusion take a distance and a parallelism from the
   await expect(parallel.getByLabel('Source to write', { exact: true })).toHaveText(
     `Datum A { target: ${side(3)} }\nParallelism Parallelism { target: ${side(1)} tolerance: 0.05mm datumRefs: [A] modifiers: [FreeState] }`);
   await parallel.getByRole('button', { name: 'Preview', exact: true }).click();
-  await expect(parallel.getByRole('button', { name: 'Preview', exact: true })).toBeEnabled();
+  await expect(page.locator('.authoring-preview-banner')).toBeVisible();
   await expect(parallel.locator('.label-error')).toHaveCount(0);
   await parallel.getByRole('button', { name: 'Apply', exact: true }).click();
   await ready(page);
@@ -75,7 +75,7 @@ test('two faces of a native extrusion take a distance and a parallelism from the
   // Edit the parallelism in place: tighter zone.
   await records(page).getByRole('button', { name: 'Edit Parallelism', exact: true }).click();
   const edit = page.getByRole('form', { name: 'Edit Parallelism', exact: true });
-  await edit.getByLabel('tolerance', { exact: true }).fill('0.02mm');
+  await edit.getByLabel('Tolerance (mm)', { exact: true }).fill('0.02');
   await edit.getByRole('button', { name: 'Save', exact: true }).click();
   await ready(page);
   await expect(records(page)).toContainText('0.02mm');

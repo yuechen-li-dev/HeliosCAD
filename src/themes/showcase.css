@@ -166,8 +166,16 @@ button, a { transition: background-color 100ms, border-color 100ms, color 100ms;
 }
 
 .status-ready.has-diagnostics i { background: var(--error); }
-.authoring-panel { display: flex; flex-direction: column; gap: 10px; padding: 12px; height: 100%; overflow: auto; font-size: var(--type-ui); }
-.authoring-panel header { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.authoring-panel { display: flex; flex-direction: column; min-height: 0; height: 100%; overflow: hidden; font-size: var(--type-ui); }
+.authoring-panel > header { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 12px; border-bottom: 1px solid var(--border); }
+.authoring-panel > header h2 { margin: 0; font-size: inherit; font-weight: 600; }
+.authoring-fields { display: flex; flex: 1; flex-direction: column; gap: 10px; min-height: 0; overflow: auto; padding: 12px; }
+.authoring-fields > * { flex: none; }
+.authoring-footer { display: grid; gap: 8px; padding: 10px 12px; border-top: 1px solid var(--border); background: var(--panel-bg); }
+.authoring-footer [role="alert"] { max-height: 24vh; overflow: auto; }
+.authoring-footer details p + p { margin-top: 6px; }
+.authoring-footer details summary { color: var(--text-secondary); cursor: pointer; }
+.authoring-footer p, .authoring-footer details { overflow-wrap: anywhere; }
 .authoring-panel label { display: grid; grid-template-columns: minmax(90px, 1fr) minmax(90px, 1.3fr); align-items: center; gap: 8px; }
 .authoring-panel input, .authoring-panel select { width: 100%; min-width: 0; padding: 6px; border: 1px solid var(--border); background: var(--control-bg); color: var(--text-primary); }
 .authoring-panel p { margin: 0; line-height: 1.5; color: var(--text-secondary); }
@@ -182,10 +190,12 @@ button, a { transition: background-color 100ms, border-color 100ms, color 100ms;
 .edge-feature-actions button { padding: 8px 12px; border: 1px solid var(--gold); background: var(--panel-bg); color: var(--text-primary); cursor: pointer; }
 .edge-feature-actions button:disabled { opacity: .55; cursor: default; }
 .edge-feature-actions small { max-width: 400px; padding: 6px 9px; background: var(--panel-bg); }
+.edge-feature-actions .selected-edge-kind { flex-basis: 100%; max-width: max-content; font-weight: 600; }
 .authoring-panel .placement-hint { border-left: 2px solid var(--gold); padding: 8px; }
 .authoring-panel [aria-label="Face placement"] { display: grid; gap: 8px; padding: 10px; border: 1px solid var(--gold); }
-.authoring-actions { display: flex; gap: 8px; position: sticky; bottom: -12px; background: var(--panel-bg); padding-block: 8px; }
-.authoring-preview-banner { position: absolute; top: 76px; left: 8px; right: 8px; z-index: 4; background: var(--panel-bg); border: 1px solid var(--gold); color: var(--text-primary); padding: 8px; text-align: center; pointer-events: none; }
+.placement-heading { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
+.authoring-actions { display: flex; gap: 8px; }
+.authoring-preview-banner { position: absolute; bottom: 10px; left: 12px; z-index: 4; max-width: calc(100% - 24px); background: var(--panel-bg); border: 1px solid var(--gold); color: var(--text-primary); padding: 6px 8px; font-size: var(--type-caption); pointer-events: none; }
 .node-construction-actions { display: flex; gap: 6px; padding: 8px 12px; flex-wrap: wrap; }
 
 .graph-body.authoring-open .graph-side { grid-template-rows: minmax(0, 1fr); border: 0; }
@@ -194,6 +204,10 @@ button, a { transition: background-color 100ms, border-color 100ms, color 100ms;
 .viewport-toolbar > .toolbar-display { margin-left: auto; }
 .viewport-toolbar.stacked > .toolbar-display { margin-left: 0; }
 .viewport-toolbar > div:first-child, .viewport-toolbar > div:last-child { flex: none; justify-content: flex-start; }
+.viewport-toolbar .viewport-pick-mode { flex-wrap: nowrap; align-items: center; }
+.viewport-pick-mode > span, .viewport-pick-label { padding-inline: 5px; white-space: nowrap; color: var(--text-secondary); font-size: var(--type-caption); }
+.viewport-pick-mode button[aria-pressed="true"] { border-color: var(--gold); background: var(--gold-wash); color: var(--text-primary); }
+.pick-edge-hint { position: absolute; top: 10px; left: 12px; z-index: 4; max-width: calc(100% - 130px); padding: 7px 10px; border: 1px solid var(--border); background: var(--panel-bg); color: var(--text-primary); font-size: var(--type-ui); pointer-events: none; }
 .workflow-hint { right: auto; max-width: min(560px, calc(100% - 160px)); }
 .workspace-identity small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .workspace-identity strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

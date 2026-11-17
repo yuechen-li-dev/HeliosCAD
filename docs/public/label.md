@@ -10,13 +10,14 @@ Inspector names it (`face(bracket.Side("profile:section.Outer.Vertex1_Vertex2"))
 
 ## Selecting
 
-- Click selects a face, or an edge when the pointer is within a few pixels of one.
-  Alt-click always selects the face.
+- In Label, click the face itself. Picks near an edge still select the face.
 - Ctrl-click or Shift-click adds to the selection, or removes an entry already in it.
   Order matters: in a two-face selection, the first face is the one controlled and the
   second is the datum.
 - Esc clears the selection. The chips in the selection card list it in order; × removes
   one entry.
+- For a thickness, select one plane, then Shift-click the opposite one. Use
+  **Bottom view** in the Command palette to see the underside of the part.
 
 The selection card also shows what the selection measures, from the exact geometry: a
 hole's diameter, the distance and angle between two planes, the distance and angle
@@ -26,8 +27,8 @@ same selection.
 ## What a selection offers
 
 The Label tab lists the records the selection can carry, best match first. Records the
-measured geometry rules out are listed under **Not available for this selection**, each
-with what it would take, for example "No datum plane is perpendicular to this face."
+measured geometry rules out are listed under **Unavailable for this selection**,
+along with the next step. **Note** is always available and applies to the whole part.
 
 | Selection | Records |
 | --- | --- |
@@ -84,18 +85,19 @@ refused and the existing record is named.
   Apply needs a second click. The compiler repeats the check as the warning
   `pmi-nominal-outside-geometry`.
 
-The card shows the exact source it will write. **Preview** builds the model with the
-record and shows it in the viewport; **Apply** writes it. Undo, checkpoints and
-downloads work as for any other edit.
+**Preview** checks the draft record and shows the annotation in the viewport.
+**Cancel preview** returns to the current part and keeps your inputs. **Apply**
+checks the record and writes it in one undoable edit. Expand **Firmament preview**
+to see the exact declaration.
 
 ## Changing a record
 
-**Edit** beside a record in the list opens its fields: rename it, change its value,
-tolerance, datum references, zone or modifiers as written in the source, or delete it.
-**Save** writes the change and rebuilds; a value the compiler refuses shows as a
-problem like any other edit, and Undo reverts it. A datum that
-other records reference cannot be deleted until they no longer do. To move a
-requirement to other faces, delete it and label the new faces.
+Use **Edit** beside a record to rename, change or delete it. Enter note text
+directly and type lengths in millimetres. Expand **Firmament fields** for
+authored references, modifiers and expressions. **Save** checks the change and
+keeps the current part when a value needs correction. Before deleting a datum,
+update the records that refer to it. To move a requirement, delete it and label
+the new faces.
 
 ## Viewing what is labeled
 

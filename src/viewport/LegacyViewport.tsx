@@ -3,7 +3,7 @@ import { useEffect, useRef, type MutableRefObject } from 'react';
 import type { MotionPose } from '@aetheris/cad';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
-import type { DisplayEdgePolyline, ModelSession, SelectionDescription } from '@aetheris/cad';
+import type { DisplayEdgePolyline, DisplayMesh, ModelSession, SelectionDescription } from '@aetheris/cad';
 import { TelosCamera, conceptWireframeGroup, operationPreviewWireframeGroup, disposeConceptWireframe, pmiGroup, disposePmiGroup, pmiBodyMaterial } from '@aetheris/three-telos';
 import type { DisplayMode, ThemeName, ViewMode } from '../app/types';
 import { applyNamedView, WORLD_UP } from './viewCommands';
@@ -21,7 +21,7 @@ interface Props extends FeaturePlacementProps {
   busyMessage?: string | null;
   errorMessage?: string | null;
   model: ModelSession | null;
-  wireframePreview?: ModelSession | null;
+  wireframePreview?: DisplayMesh | null;
   selectedEntityId: string | null;
   selectedTopologyId: string | null;
   selectedOccurrenceId?: string | null;
@@ -93,11 +93,11 @@ export function LegacyViewport(props: Props) {
     const current = state.current; if (!current) return;
     current.renderer.domElement.setAttribute('data-operation-preview-wires', '0');
     if (!props.wireframePreview) return;
-    const guides = operationPreviewWireframeGroup(props.wireframePreview.mesh);
+    const guides = operationPreviewWireframeGroup(props.wireframePreview);
     current.renderer.domElement.setAttribute('data-operation-preview-wires', String(guides.children.length));
     current.scene.add(guides); current.invalidate();
     return () => { disposeConceptWireframe(guides); current.invalidate(); };
-  }, [props.wireframePreview, props.wireframePreview?.revision]);
+  }, [props.wireframePreview]);
   useEffect(() => {
     const current = state.current; if (!current) return;
     const group = pmiGroup(props.model?.mesh.annotations, props.pmiStyle); current.scene.add(group); current.invalidate();

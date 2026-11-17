@@ -18,11 +18,12 @@ function textWidth(text: string) {
  * Markers: numbered tags over the viewport, one per PMI record, coloured like its target, with a leader to the
  * target's centre. Tags are laid out in screen space so none overlap, and are re-laid out when the view changes.
  */
-export function PmiMarkers({ annotations, projectRef, composeRef }: {
+export function PmiMarkers({ annotations, projectRef, composeRef, legendRef }: {
   annotations: readonly PmiDisplayAnnotation[];
   projectRef: MutableRefObject<Project | null>;
   /** Set to a function drawing the current tags onto a 2D context, for screenshots. */
   composeRef: MutableRefObject<((context: CanvasRenderingContext2D, scale: number) => void) | null>;
+  legendRef: MutableRefObject<HTMLElement | null>;
 }) {
   const host = useRef<HTMLDivElement>(null);
   const tags = useMemo(() => markerTags(annotations), [annotations]);
@@ -39,14 +40,16 @@ export function PmiMarkers({ annotations, projectRef, composeRef }: {
         const p = project(tag.anchor);
         return p && Number.isFinite(p[0]) && Number.isFinite(p[1]) ? [{ id: tag.id, ax: p[0], ay: p[1], width: BADGE + 22 + textWidth(tag.label), height: TAG_HEIGHT }] : [];
       });
-      const key = `${width}x${height}:` + visible.map(v => `${v.ax.toFixed(1)},${v.ay.toFixed(1)}`).join(';');
+      const legend = legendRef.current;
+      const reserved = legend ? { x: legend.offsetLeft, y: legend.offsetTop, width: legend.offsetWidth, height: legend.offsetHeight } : undefined;
+      const key = JSON.stringify([width, height, reserved, visible.map(v => [v.id, v.width, v.ax.toFixed(1), v.ay.toFixed(1)])]);
       if (key === signature.current) return;
       signature.current = key;
-      setPlacements(layoutTags(visible, width, height));
+      setPlacements(layoutTags(visible, width, height, reserved));
     };
     frame = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(frame);
-  }, [tags, projectRef]);
+  }, [tags, projectRef, legendRef]);
 
   const byId = new Map(tags.map(t => [t.id, t]));
   composeRef.current = (context, scale) => {

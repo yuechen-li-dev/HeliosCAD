@@ -195,7 +195,7 @@ describe('holes', () => {
 describe('label values', () => {
   const hole = labelActions([pick(9, { diameterMm: 6.6002 })], [face(9, 'Cylinder', z, 6.6002)], [datumA], withA).actions;
   it('requires explicit allowances and warns when the model is outside its own band', () => {
-    expect(checkValues(hole[0]!, { name: 'Bore', nominal: 6.6 }, withA).errors.join()).toMatch(/never inferred/);
+    expect(checkValues(hole[0]!, { name: 'Bore', nominal: 6.6 }, withA).errors).toContain('Enter an upper and lower allowance of zero or more.');
     expect(checkValues(hole[0]!, { name: 'Bore', nominal: 6.6, plus: 0.1, minus: 0.1 }, withA)).toEqual({ errors: [], warnings: [] });
     expect(checkValues(hole[0]!, { name: 'Bore', nominal: 6.5, plus: 0.05, minus: 0 }, withA).warnings[0]).toMatch(/does not meet its own requirement/);
     expect(emitDeclarations(hole[0]!, { name: 'Bore', nominal: 6.6, plus: 0.015, minus: 0 })).toEqual(['HoleDiameter Bore { target: part.face("#9") value: 6.6mm tolerance: PlusMinus(0.015mm, 0mm) }']);

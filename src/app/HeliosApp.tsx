@@ -14,6 +14,7 @@ import { useShellLayout } from './shellLayout';
 import { matchKind } from 'machinalayout/match';
 import { editorSource, SourcePanel, type SourcePanelHandle } from '../source/SourcePanel';
 import { Viewport } from '../viewport/Viewport';
+import { edgeOperationPreview } from '../viewport/edgeOperationPreview';
 import type { BusyState, DisplayMode, ThemeName, ViewMode } from './types';
 import type { Project } from '../cloud/api';
 import { ModelTree } from '../model-tree/ModelTree';
@@ -43,10 +44,13 @@ import { ExportPicker } from './ExportPicker';
 import { importedProject, isStep, packProject, sourceFiles, unpackProject } from './localProject';
 import { registerRecoverableSource } from './crashRecovery';
 import { LabelPanel } from '../label/LabelPanel';
+import { labelRefusal } from '../label/feedback';
 import { SelectionCard, useSelectionMeasurement } from '../label/SelectionCard';
 import { allFaces, findFace } from '../label/geometry';
 import { holeFaceSelectors, recognizedHoles } from '../label/holes';
 import { AuthoringPanel, type AuthoringAction, type PendingAuthoring } from '../graph/AuthoringPanel';
+import { edgeSelectionHelp } from '../graph/edgePreviewAdvice';
+import { isHoleTool } from '../graph/holeAuthoring';
 import { TutorialPanel } from '../learn/TutorialPanel';
 import type { PlacementActions, PlacementGuide } from '../viewport/featurePlacement';
 import { navigate } from '../navigation';
@@ -61,7 +65,8 @@ export function HeliosApp({ project, initialWorkspace, chooseBase = false, onSho
   const [learnPage, setLearnPage] = useState<string | null>(null);
   const [runtime] = useState(() => new WebSdkCadRuntime());
   const [buildClient] = useState(() => new AetherisWorkerClient(runtime));
-  const [editorMode, setEditorMode] = useState<'graph' | 'source' | 'label'>(() => chooseBase ? 'graph' : initialWorkspace?.lessonId ? 'source' : readEditorMode());
+  const [editorMode, setEditorMode] = useState<'graph' | 'source' | 'label'>(() =>
+    chooseBase ? 'graph' : initialWorkspace?.lessonId ? 'source' : readEditorMode(initialWorkspace?.exampleId ? 'graph' : 'source'));
   const [intelliDraft, setIntelliDraft] = useState<{ revision: number; source?: string; node?: string | null } | null>(null);
   const openIntelliDraftRef = useRef<(node?: string | null) => void>(() => {});
   const shellLayout = useShellLayout(editorMode === 'graph' ? 'graph' : 'source');
@@ -136,9 +141,12 @@ export function HeliosApp({ project, initialWorkspace, chooseBase = false, onSho
   const [previewModel, setPreviewModel] = useState<ModelSession | null>(null);
   const [placementGuide, setPlacementGuide] = useState<PlacementGuide | null>(null);
   const placementActions = useRef<PlacementActions | null>(null);
-  const placingHole = pendingAuthoring?.action.kind === 'feature' && ['hole', 'counterbore', 'countersink'].includes(pendingAuthoring.action.item.id);
-  const wireframePreview = previewModel && pendingAuthoring?.action.kind === 'feature'
-    && (placingHole || ['fillet', 'chamfer'].includes(pendingAuthoring.action.item.id)) ? previewModel : null;
+  const placingHole = pendingAuthoring?.action.kind === 'feature' && isHoleTool(pendingAuthoring.action.item.id);
+  const wireframePreview = useMemo(() => {
+    const action = pendingAuthoring?.action;
+    if (!previewModel || action?.kind !== 'feature' || !placingHole && !['fillet', 'chamfer'].includes(action.item.id)) return null;
+    return action.edge && model ? edgeOperationPreview(previewModel.mesh, model.mesh, action.edge) : previewModel.mesh;
+  }, [model, pendingAuthoring?.action, placingHole, previewModel]);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [publishOpen, setPublishOpen] = useState(false);
   const [publishState, setPublishState] = useState('');
@@ -162,7 +170,7 @@ export function HeliosApp({ project, initialWorkspace, chooseBase = false, onSho
     // A refusal is something the person must read: show the Output dock rather than log it unseen.
     if (/\brefused\b/i.test(message)) shellLayout.setBottomOpen(true);
   };
-  const namedView = (view: 'front' | 'top' | 'right' | 'iso') => {
+  const namedView = (view: 'front' | 'top' | 'bottom' | 'right' | 'iso') => {
     setViewMode(view === 'iso' ? 'perspective' : 'orthographic');
     setViewCommand(`${view}-${Date.now()}`);
   };
@@ -182,7 +190,7 @@ export function HeliosApp({ project, initialWorkspace, chooseBase = false, onSho
   };
   useEffect(() => { if (pendingAuthoring && pendingAuthoring.revision !== sourceRevision) setPendingAuthoring(null); }, [sourceRevision, pendingAuthoring]);
   function beginAuthoring(action: AuthoringAction, mate?: PendingAuthoring['mate']) {
-    if (!canLeaveGraphFields()) return;
+    if (pendingAuthoring || !canLeaveGraphFields()) return;
     if (busy || buildStarted !== null) { pushOutput('Wait for the current operation to finish.'); return; }
     if (outline?.document !== sourceName || outline.revision !== String(sourceRevisionRef.current)) { pushOutput('Updating graph controls; try again when they are ready.'); return; }
     setEditorMode('graph'); setSideTab('selection');
@@ -275,7 +283,7 @@ export function HeliosApp({ project, initialWorkspace, chooseBase = false, onSho
       if (learnPage !== null) { if (event.key === 'F1') event.preventDefault(); return; }
       if (event.key === 'F1') { event.preventDefault(); setLearnPage('helios/learning.md'); return; }
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's') { event.preventDefault(); if (onSave) void save(); else downloadSource(); }
-      if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.key.toLowerCase() === 'p') { event.preventDefault(); if (canLeaveGraphFields()) setPaletteOpen(true); }
+      if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.key.toLowerCase() === 'p') { event.preventDefault(); if (!pendingAuthoring && canLeaveGraphFields()) setPaletteOpen(true); }
       if (event.key.toLowerCase() === 'f' && !isTyping(event.target)) setViewCommand(`fit-${Date.now()}`);
       if (event.key === 'Escape' && !isTyping(event.target) && !paletteOpen && keptPicks.current.length) clearPicks();
       if ((event.ctrlKey || event.metaKey) && !isTyping(event.target) && ['z', 'y'].includes(event.key.toLowerCase())) {
@@ -336,6 +344,12 @@ export function HeliosApp({ project, initialWorkspace, chooseBase = false, onSho
   const removePick = (index: number) => { const next = picks.filter((_, i) => i !== index), first = next[0] ?? null;
     setPicks(next); setSelectedEntityId(first?.semanticEntityId ?? null); setSelectedFaceId(first?.faceId ?? null); setSelectedSelection(first); };
   const clearPicks = () => select(null);
+  const chooseSelectionMode = (mode: 'face' | 'edge') => {
+    if (pendingAuthoring || previewModel || selectionMode === mode || !canLeaveGraphFields()) return;
+    clearPicks();
+    setSelectionMode(mode);
+    if (mode === 'edge' && displayMode === 'shaded') setDisplayMode('edges');
+  };
   /** Selects the faces a PMI record targets, in order. */
   const selectBySelectors = (selectors: readonly string[]) => {
     if (!model || !canLeaveGraphFields()) return;
@@ -409,8 +423,6 @@ export function HeliosApp({ project, initialWorkspace, chooseBase = false, onSho
     openedForErrors.current = errorCount;
   }, [errorCount]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { try { localStorage.setItem('helios-editor-mode', editorMode); } catch { /* per-viewer convenience only */ } }, [editorMode]);
-  // Label picks edges as well as faces: show them.
-  useEffect(() => { if (editorMode === 'label') setDisplayMode(mode => mode === 'shaded' ? 'edges' : mode); }, [editorMode]);
   // Geometry or tree selection highlights the unit, and row, that declares it. A selection the
   // graph itself made is not echoed back: the entity found for a container is often a child.
   const graphPickedEntity = useRef<string | null>(null);
@@ -506,12 +518,34 @@ export function HeliosApp({ project, initialWorkspace, chooseBase = false, onSho
     pendingGraphSelection.current = null;
     setGraphSelection({ unitId, rowId: id === unitId ? null : id });
   }, [partGraph, sourceRevision, outline]);
-  const structuralEdit = async (operations: readonly LanguageEditOperation[], meta: { nodeId: string; label: string; select?: string | null }): Promise<string | null> => {
-    if (busy === 'Exporting' || busy === 'Worker failed') return 'Wait for the current operation to finish.';
+  const structuralEdit = async (operations: readonly LanguageEditOperation[],
+    meta: { nodeId: string; label: string; select?: string | null; checkLabel?: boolean }): Promise<string | null> => {
+    if (busy === 'Exporting' || busy === 'Worker failed' || busy === 'Checking label') return 'Wait for the current operation to finish.';
     const original = source, revision = sourceRevisionRef.current;
+    if (meta.checkLabel) {
+      if (busy || buildStarted !== null || displayRevision !== revision) return 'Build the current source before labeling.';
+      if (outline?.document !== sourceName || outline.revision !== String(revision)) return 'Wait for the labels to finish updating and try again.';
+      setBusy('Checking label');
+    }
     let result;
-    try { result = await runtime.edit(original, operations, sourceName, String(revision)); }
-    catch (error) { return error instanceof Error ? error.message : String(error); }
+    try {
+      result = await runtime.edit(original, operations, sourceName, String(revision));
+      if (meta.checkLabel && result.changed && sourceRevisionRef.current === revision) {
+        const root = projectRoot.current ?? sourceName;
+        const documents = { ...projectDocuments.current, [sourceName]: result.text };
+        const candidate = await runtime.preview(documents[root]!, root, revision, documents);
+        try {
+          if (!candidate.model || candidate.diagnostics.some(item => item.severity === 'error'))
+            return labelRefusal(candidate.diagnostics);
+        } finally {
+          await candidate.model?.dispose();
+        }
+      }
+    } catch (error) {
+      return error instanceof Error ? error.message : String(error);
+    } finally {
+      if (meta.checkLabel) setBusy(value => value === 'Checking label' ? null : value);
+    }
     if (sourceRevisionRef.current !== revision) return 'The source changed while the edit was prepared. Try again.';
     if (!result.changed) return null;
     const { start, length, replacement } = result.edit;
@@ -672,13 +706,41 @@ export function HeliosApp({ project, initialWorkspace, chooseBase = false, onSho
       : node?.kind === 'Profile' ? ['extrude', 'pocket'] : node?.kind === 'Hole' ? ['pattern']
       : node && ['Box', 'Cylinder', 'Extrude', 'Compose'].includes(node.kind) ? ['base', 'pocket'] : [];
     const updating = outline?.document !== sourceName || outline.revision !== String(sourceRevision);
+    const canPickFinish = 'body' in target && model?.mesh.definitions.some(definition =>
+      definition.edges?.some(edge => edge.edgeFinish?.body === target.body.name));
     return <div className="node-construction-actions">{updating && <small role="status">Updating graph controls…</small>}{'body' in target && <div className="node-feature-actions" aria-label={`Features on ${target.body.name}`}>
       <small>On {target.body.name}</small>
-      {palette.filter(item => ['hole', 'hole-blind', 'counterbore', 'countersink', 'chamfer', 'fillet'].includes(item.id)).map(item =>
+      {palette.filter(item => ['hole', 'hole-blind', 'counterbore', 'countersink'].includes(item.id)).map(item =>
         <button key={item.id} disabled={!!busy || buildStarted !== null || updating} title={item.description} onClick={() => beginAuthoring({ kind: 'feature', item })}>
-          {item.id === 'hole' ? 'Add hole…' : item.id === 'chamfer' ? 'Chamfer…' : item.id === 'fillet' ? 'Fillet…' : `${item.label}…`}</button>)}
+          {item.id === 'hole' ? 'Add hole…' : `${item.label}…`}</button>)}
+      {canPickFinish && <button disabled={!!busy || buildStarted !== null || updating || pendingGraphFields || displayRevision !== sourceRevision}
+        title="Pick a single edge in the viewport, then choose Fillet or Chamfer." onClick={() => chooseSelectionMode('edge')}>Finish an edge…</button>}
+      {palette.filter(item => item.id === 'chamfer' || item.id === 'fillet').map(item =>
+        <button key={item.id} disabled={!!busy || buildStarted !== null || updating} title={item.description} onClick={() => beginAuthoring({ kind: 'feature', item })}>
+          {item.id === 'chamfer' ? 'Chamfer face rim…' : 'Fillet face rim…'}</button>)}
     </div>}{constructionActions().filter(a => ids.includes(a.id)).map(a =>
       <button key={a.id} disabled={!!a.reason || !!busy || buildStarted !== null || updating} title={a.reason ?? a.description} onClick={a.run}>{a.label}</button>)}</div>;
+  };
+  const selectedEdgeActions = () => {
+    if (editorMode === 'label' || pendingAuthoring || selectedSelection?.topologyKind !== 'Edge') return null;
+    const edge = selectedSelection.edgeFinish;
+    const unavailable = picks.length !== 1 ? 'Click one edge without Ctrl or Shift to replace the selection.'
+      : displayRevision !== sourceRevision ? 'Build the current source before finishing an edge.'
+      : pendingGraphFields ? 'Apply or discard the current graph edits first.'
+      : busy || buildStarted !== null || outline?.document !== sourceName || outline.revision !== String(sourceRevision) ? 'Wait for the current build to finish.'
+      : '';
+    const definition = model?.mesh.definitions.find(item => item.id === selectedSelection.definitionId);
+    const nextStep = unavailable || edgeSelectionHelp(selectedSelection, definition?.edges);
+    return <div className="edge-feature-actions" role="group" aria-label="Selected edge actions">
+      {edge && picks.length === 1 && <small className="selected-edge-kind">{edge.label}</small>}
+      {(['fillet', 'chamfer'] as const).map(kind => {
+        const item = palette.find(p => p.id === kind);
+        return <button key={kind} disabled={!!unavailable || !edge || !item || kind === 'fillet' && edge.filletSupported === false}
+          onClick={() => { if (item) beginAuthoring({ kind: 'feature', item: { ...item, nameStem: kind === 'fillet' ? 'EdgeFillet' : 'EdgeChamfer' }, edge: selectedSelection }); }}>
+          {kind === 'fillet' ? 'Fillet selected edge' : 'Chamfer selected edge'}</button>;
+      })}
+      {nextStep && <small>{nextStep}</small>}
+    </div>;
   };
   const revertGraphEdit = () => {
     if (!graphEdit) return;
@@ -713,7 +775,7 @@ export function HeliosApp({ project, initialWorkspace, chooseBase = false, onSho
   };
   const rebuildSource = async () => {
     if (!canLeaveGraphFields()) return;
-    if (buildStarted !== null || busy === 'Exporting' || busy === 'Rewriting source') return;
+    if (buildStarted !== null || busy === 'Exporting' || busy === 'Rewriting source' || busy === 'Checking label') return;
     await submitBuild(source, sourceName);
   };
   const applyProperty = async (property: EditableProperty, value: UnitValue) => {
@@ -784,6 +846,7 @@ export function HeliosApp({ project, initialWorkspace, chooseBase = false, onSho
   };
   const switchFile = (name: string) => {
     if (!canLeaveGraphFields()) return;
+    if (busy === 'Checking label') return;
     if (name === sourceName) { sourcePanel.current?.focusAt(); return; }
     setSource(projectDocuments.current[name]); setSourceName(name);
     setLiveDiagnostics([]);
@@ -859,17 +922,30 @@ export function HeliosApp({ project, initialWorkspace, chooseBase = false, onSho
     { id: 'new', label: 'New Firmament file', detail: 'Start a new single-file model', run: () => loadSample('new') },
     { id: 'assembly', label: 'Open assembly example', run: () => loadSample('assembly') },
     { id: 'source', label: 'Go to source', run: goToSource },
-    ...(['front', 'top', 'right', 'iso', 'fit', 'fitselection'] as const).map(view => ({ id: view, label: `${view === 'iso' ? 'Isometric' : view === 'fitselection' ? 'Fit selection' : view[0].toUpperCase() + view.slice(1)} view`, run: () => view === 'fit' || view === 'fitselection' ? setViewCommand(`${view}-${Date.now()}`) : namedView(view) }))
+    ...(['front', 'top', 'bottom', 'right', 'iso', 'fit', 'fitselection'] as const).map(view => ({ id: view, label: `${view === 'iso' ? 'Isometric' : view === 'fitselection' ? 'Fit selection' : view[0].toUpperCase() + view.slice(1)} view`, run: () => view === 'fit' || view === 'fitselection' ? setViewCommand(`${view}-${Date.now()}`) : namedView(view) }))
   ];
+
+  const documentControlsBlocked = pendingGraphFields || !!pendingAuthoring;
+  const documentControlsHint = pendingAuthoring ? 'Apply or cancel the current preview first.'
+    : pendingGraphFields ? 'Apply or discard the graph field edits first.' : undefined;
 
   return <div className={`helios-app${project ? ' cloud-mode' : ''}`}>
     <header className="topbar">
-      <button className="brand" disabled={pendingGraphFields} onClick={() => project ? navigate('/') : onShowcase ? onShowcase() : setExamplesOpen(true)} aria-label="Aetheris Helios home"><KnotLogo /><div><small>AETHERIS</small><strong>HELIOS</strong></div></button>
+      <button className="brand" disabled={documentControlsBlocked} title={documentControlsHint} onClick={() => project ? navigate('/') : onShowcase ? onShowcase() : setExamplesOpen(true)} aria-label="Aetheris Helios home"><KnotLogo /><div><small>AETHERIS</small><strong>HELIOS</strong></div></button>
       <div className="workspace-identity"><strong title={partName}>{partName}</strong><small>{sourceName} · {project ? 'Saved project' : 'Local workspace'}</small></div>
-      <nav className="workspace-tabs" aria-label="Workspace"><button aria-label="Undo" title="Undo · Ctrl+Z" disabled={!historyState.undo || !!busy || !!pendingAuthoring || pendingGraphFields} onClick={() => void runHistory('undo')}>↶</button><button aria-label="Redo" title="Redo · Ctrl+Shift+Z" disabled={!historyState.redo || !!busy || !!pendingAuthoring || pendingGraphFields} onClick={() => void runHistory('redo')}>↷</button><button disabled={pendingGraphFields} onClick={() => setExamplesOpen(true)}>Examples</button><button disabled={pendingGraphFields} onClick={() => fileInput.current?.click()}>Open file</button><button disabled={pendingGraphFields} onClick={() => fileInput.current?.click()} title="Import a supported canonical STEP part as immutable geometry">Import STEP</button><button disabled={pendingGraphFields} title="Download source, or a portable workspace with all imported assets · Ctrl+S" onClick={() => onSave ? void save() : downloadSource()}>{!onSave && Object.keys(projectDocuments.current).length > 1 ? 'Save workspace' : 'Save source'}</button><button className="build-action" disabled={buildStarted !== null || !!busy || !!pendingAuthoring || pendingGraphFields} title="Build project · Ctrl+Enter" onClick={() => void rebuildSource()}>{buildStarted !== null ? `Building · ${elapsedSeconds.toFixed(1)} s` : 'Build'}</button><ExportPicker formats={model?.exportFormats ?? []} disabled={!model || !!busy || buildStarted !== null || !!pendingAuthoring} open={exportOpen} onOpen={setExportOpen} onExport={exportSelected} /></nav>
+      <nav className="workspace-tabs" aria-label="Workspace">
+        <button aria-label="Undo" title="Undo · Ctrl+Z" disabled={!historyState.undo || !!busy || documentControlsBlocked} onClick={() => void runHistory('undo')}>↶</button>
+        <button aria-label="Redo" title="Redo · Ctrl+Shift+Z" disabled={!historyState.redo || !!busy || documentControlsBlocked} onClick={() => void runHistory('redo')}>↷</button>
+        <button disabled={documentControlsBlocked} title={documentControlsHint} onClick={() => setExamplesOpen(true)}>Examples</button>
+        <button disabled={documentControlsBlocked} title={documentControlsHint} onClick={() => fileInput.current?.click()}>Open file</button>
+        <button disabled={documentControlsBlocked} title={documentControlsHint ?? 'Import a supported canonical STEP part'} onClick={() => fileInput.current?.click()}>Import STEP</button>
+        <button disabled={pendingGraphFields} title="Download source, or a portable workspace with all imported assets · Ctrl+S" onClick={() => onSave ? void save() : downloadSource()}>{!onSave && Object.keys(projectDocuments.current).length > 1 ? 'Save workspace' : 'Save source'}</button>
+        <button className="build-action" disabled={buildStarted !== null || !!busy || documentControlsBlocked} title={documentControlsHint ?? 'Build project · Ctrl+Enter'} onClick={() => void rebuildSource()}>{buildStarted !== null ? `Building · ${elapsedSeconds.toFixed(1)} s` : 'Build'}</button>
+        <ExportPicker formats={model?.exportFormats ?? []} disabled={!model || !!busy || buildStarted !== null || !!pendingAuthoring} open={exportOpen} onOpen={setExportOpen} onExport={exportSelected} />
+      </nav>
       <div className="toolbar">
         <LocalHostControl />
-        <button className="palette-trigger" disabled={pendingGraphFields} onClick={() => setPaletteOpen(true)}>⌕ <span>Command palette</span><kbd>Ctrl+Shift+P</kbd></button>
+        <button className="palette-trigger" disabled={documentControlsBlocked} title={documentControlsHint} onClick={() => setPaletteOpen(true)}>⌕ <span>Command palette</span><kbd>Ctrl+Shift+P</kbd></button>
       </div>
       <div className="top-actions"><button title="Tutorials and Firmament reference · F1" onClick={() => setLearnPage('helios/learning.md')}>Learn</button><button title="Toggle utility dock" aria-label="Toggle utility dock" aria-pressed={shellLayout.utilityOpen} onClick={() => shellLayout.setUtilityOpen(value => !value)}>▥</button><select aria-label="Theme" value={theme} onChange={event => setTheme(event.target.value as ThemeName)}><option value="bronze-age">Bronze Age</option><option value="apollonia">Apollonia</option></select></div>
       <input ref={fileInput} hidden type="file" multiple accept=".firmament,.firmasm,.step,.stp,.zip" onChange={async event => {
@@ -934,9 +1010,9 @@ export function HeliosApp({ project, initialWorkspace, chooseBase = false, onSho
           </div>} />}
         {editorMode === 'label' && <LabelPanel picks={picks} model={model} outline={outline?.document === sourceName && outline.revision === String(sourceRevision) ? outline : null}
           runtime={runtime} source={source} sourceName={sourceName} sourceRevision={sourceRevision} documents={projectDocuments.current} root={projectRoot.current ?? sourceName}
-          disabled={busy ? 'Wait for the build to finish.' : sourceRevision !== displayRevision ? 'Build the current source before labeling.' : !model ? 'Open or build a part to label.' : null}
+          disabled={busy === 'Checking label' ? 'Checking the label against the part…' : busy || buildStarted !== null ? 'Wait for the build to finish.' : sourceRevision !== displayRevision ? 'Build the current source before labeling.' : !model ? 'Open or build a part to label.' : null}
           onPreview={setPreviewModel}
-          onApply={(operations, label) => structuralEdit(operations, { nodeId: '', label, select: null })}
+          onApply={(operations, label) => structuralEdit(operations, { nodeId: '', label, select: null, checkLabel: true })}
           onSelectTargets={selectors => selectBySelectors(selectors)} />}
         <div className="source-host" hidden={editorMode !== 'source'}>
         <SourcePanel ref={sourcePanel} sourceRevision={sourceRevision} onNavigateSource={navigateSource} onHistoryState={setHistoryState} onHistoryApplied={value => { setGraphEdit(null); void submitBuild(value, sourceName, sourceRevisionRef.current); }} disabled={!!busy} fileName={sourceName} dirty={dirtyFiles.has(sourceName)} source={source} diagnostics={shownDiagnostics.filter(item => !item.source || item.source.source === sourceName)} runtime={runtime} model={model} selectedSelector={selectedSelection?.selector} theme={theme} onSourceChange={value => editSource(value)} onCursorChange={onSourceCursor} onRebuild={() => void rebuildSource()} onLiveDiagnostics={setLiveDiagnostics} onLanguageError={error => { setDiagnostics([toDiagnostic(error, 'FIRMAMENT-FORMAT')]); pushOutput(`Format refused · ${error instanceof Error ? error.message : String(error)}`); }} onDiagnosticClick={diagnostic => { if (diagnostic.source) setSelectedEntityId(null); }} />
@@ -949,25 +1025,26 @@ export function HeliosApp({ project, initialWorkspace, chooseBase = false, onSho
           <button title="Show retained geometric Concept Structs as gold wireframes; disabled when none are available" aria-pressed={showConcepts}
             disabled={!model?.mesh.definitions.some(d => d.concepts?.length) && !model?.mesh.occurrences.some(o => o.concepts?.length)} onClick={() => setShowConcepts(value => !value)}>Concepts</button></div>
           <div className="toolbar-views"><button title="Front view" onClick={() => namedView('front')}>Front</button><button title="Top view" onClick={() => namedView('top')}>Top</button><button title="Right view" onClick={() => namedView('right')}>Right</button><button title="Isometric view" onClick={() => namedView('iso')}>Iso</button><button title="Fit model · F" onClick={() => setViewCommand(`fit-${Date.now()}`)}>Fit</button><button title="Fit selection" disabled={!selectedEntityId} onClick={() => setViewCommand(`fitselection-${Date.now()}`)}>Fit selection</button></div>
-          <div className="toolbar-display"><select aria-label="Display mode" value={displayMode} onChange={event => setDisplayMode(event.target.value as DisplayMode)}><option value="shaded">Shaded</option><option value="edges">Shaded with edges</option><option value="wireframe">Wireframe</option></select>{editorMode === 'label' ? <button aria-label="Selection mode" disabled title="Label picks the edge under the pointer and the face otherwise; Alt-click picks the face. Ctrl- or Shift-click adds to the selection.">Faces + edges</button>
-            : <button aria-label="Selection mode" title="Switch face or edge selection" onClick={() => { setSelectionMode(value => value === 'face' ? 'edge' : 'face'); setDisplayMode('edges'); }}>{selectionMode === 'face' ? 'Faces' : 'Edges'}</button>}<button title="Toggle camera projection" onClick={() => setViewMode(value => value === 'perspective' ? 'orthographic' : 'perspective')}>{viewMode === 'perspective' ? 'Perspective' : 'Orthographic'}</button></div>
+          <div className="toolbar-display">
+            <select aria-label="Display mode" value={displayMode} onChange={event => setDisplayMode(event.target.value as DisplayMode)}><option value="shaded">Shaded</option><option value="edges">Shaded with edges</option><option value="wireframe">Wireframe</option></select>
+            {editorMode === 'label' ? <span className="viewport-pick-label">Pick faces</span>
+              : <div className="viewport-pick-mode" role="group" aria-label="Pick geometry">
+                <span aria-hidden="true">Pick</span>
+                <button aria-pressed={selectionMode === 'face'} disabled={!!pendingAuthoring} onClick={() => chooseSelectionMode('face')}>Faces</button>
+                <button aria-pressed={selectionMode === 'edge'} disabled={!!pendingAuthoring} onClick={() => chooseSelectionMode('edge')}>Edges</button>
+              </div>}
+            <button title="Toggle camera projection" onClick={() => setViewMode(value => value === 'perspective' ? 'orthographic' : 'perspective')}>{viewMode === 'perspective' ? 'Perspective' : 'Orthographic'}</button>
+          </div>
         </div>
         <div className="viewport-stage" style={shellLayout.place('stage')}>
-        {!pendingAuthoring && selectedSelection?.topologyKind === 'Edge' && <div className="edge-feature-actions" aria-label="Selected edge actions">
-          {(['fillet', 'chamfer'] as const).map(kind => <button key={kind}
-            disabled={!selectedSelection.edgeFinish || kind === 'fillet' && selectedSelection.edgeFinish.filletSupported === false || !palette.some(p => p.id === kind) || pendingGraphFields || !!busy || buildStarted !== null || outline?.document !== sourceName || outline?.revision !== String(sourceRevision)}
-            onClick={() => { const item = palette.find(p => p.id === kind); if (item) beginAuthoring({ kind: 'feature', item: { ...item, nameStem: kind === 'fillet' ? 'EdgeFillet' : 'EdgeChamfer' }, edge: selectedSelection }); }}>
-            {kind === 'fillet' ? 'Fillet selected edge' : 'Chamfer selected edge'}</button>)}
-          {!selectedSelection.edgeFinish && <small>{selectedSelection.edgeFinishReason ?? 'Single-edge finishing is unavailable for this edge. Select a straight corner along the extrusion for a full-length fillet.'}</small>}
-          {selectedSelection.edgeFinish?.filletSupported === false && <small>Full-edge fillets are not supported on this end-face edge yet. Select the inside bend or an outside corner running across the extrusion.</small>}
-        </div>}
-        {!pendingAuthoring && selectedSelection?.support && <button className="face-feature-action"
-          disabled={!palette.some(p => p.id === 'hole') || pendingGraphFields || !!busy || buildStarted !== null || outline?.document !== sourceName || outline?.revision !== String(sourceRevision)} onClick={() => {
+        {selectedEdgeActions()}
+        {editorMode !== 'label' && !pendingAuthoring && picks.length === 1 && selectedSelection?.support && <button className="face-feature-action"
+          disabled={!palette.some(p => p.id === 'hole') || displayRevision !== sourceRevision || pendingGraphFields || !!busy || buildStarted !== null || outline?.document !== sourceName || outline?.revision !== String(sourceRevision)} onClick={() => {
           const item = palette.find(p => p.id === 'hole'); if (item) beginAuthoring({ kind: 'feature', item });
         }}>Add hole on selected face</button>}
         {previewModel && <div className="authoring-preview-banner" role="status">Preview · {wireframePreview ? 'gold boundaries · ' : ''}source unchanged · Apply or Cancel</div>}
         <Viewport placingFeature={placingHole} placementGuide={placementGuide} placementActions={placementActions} measurement={previewModel ? null : selectionMeasurement.result}
-          extraSelections={previewModel ? undefined : extraSelections} showConcepts={showConcepts} pose={previewModel ? null : pose} busyMessage={busy === 'Worker failed' ? null : busy} errorMessage={shownDiagnostics.some(item => item.severity === 'error') ? (model ? 'Build failed. The last valid model remains visible; see Problems for details.' : 'Build needs attention. See Problems for the compiler diagnostic.') : null} model={wireframePreview ? model : previewModel ?? model} wireframePreview={wireframePreview} selectedEntityId={previewModel ? null : selectedEntityId} selectedTopologyId={previewModel ? null : selectedFaceId} selectedOccurrenceId={previewModel ? null : selectedSelection?.occurrenceId} theme={theme} displayMode={displayMode} viewMode={viewMode} viewCommand={previewModel && !wireframePreview ? `fit-preview-${previewModel.id}` : viewCommand} selectionMode={editorMode === 'label' ? 'auto' : selectionMode} onSelect={previewModel ? () => {} : select} captureRef={capturePreview}>
+          extraSelections={previewModel ? undefined : extraSelections} showConcepts={showConcepts} pose={previewModel ? null : pose} busyMessage={busy === 'Worker failed' ? null : busy} errorMessage={shownDiagnostics.some(item => item.severity === 'error') ? (model ? 'Build failed. The last valid model remains visible; see Problems for details.' : 'Build needs attention. See Problems for the compiler diagnostic.') : null} model={wireframePreview ? model : previewModel ?? model} wireframePreview={wireframePreview} selectedEntityId={previewModel ? null : selectedEntityId} selectedTopologyId={previewModel ? null : selectedFaceId} selectedOccurrenceId={previewModel ? null : selectedSelection?.occurrenceId} theme={theme} displayMode={displayMode} viewMode={viewMode} viewCommand={previewModel && !wireframePreview ? `fit-preview-${previewModel.id}` : viewCommand} selectionMode={editorMode === 'label' ? 'face' : selectionMode} onSelect={previewModel || busy === 'Checking label' ? () => {} : select} captureRef={capturePreview}>
           {!previewModel && !pendingAuthoring && <SelectionCard picks={picks} measurement={selectionMeasurement} inches={measureInches} onToggleUnits={() => setMeasureInches(v => !v)}
             onRemove={removePick} onClear={clearPicks} onLabel={editorMode === 'label' ? undefined : () => { if (canLeaveGraphFields()) setEditorMode('label'); }} />}
         </Viewport>
@@ -994,7 +1071,12 @@ export function HeliosApp({ project, initialWorkspace, chooseBase = false, onSho
         }} />}
         {model?.motions?.length ? <MotionStrip clips={model.motions} revision={model.revision} onPose={setPose}
           sample={(motion, t) => runtime.sampleMotion(motion, t)} coverage={next => poseCoverage(model.mesh, next)} /> : null}
-        {welcomeHint && !pendingAuthoring && !selectedSelection && <div className="workflow-hint"><span><b>{editorMode === 'graph' ? 'Select → Edit → Apply' : 'Source → Build → Geometry'}</b> {editorMode === 'graph' ? 'Select the body to add holes or finish edges. Preview new features, then Apply.' : 'Edit on the left. Ctrl+Enter builds.'} Drag to orbit; scroll to zoom.</span><button aria-label="Dismiss workflow hint" onClick={() => { setWelcomeHint(false); localStorage.setItem('helios-workflow-understood', '1'); }}>×</button></div>}
+        {editorMode === 'graph' && selectionMode === 'edge' && !pendingAuthoring && !selectedSelection && model &&
+          <div className="pick-edge-hint" role="status">Click an edge in the viewport to see its finish options.</div>}
+        {welcomeHint && !pendingAuthoring && !selectedSelection && editorMode !== 'label' && (editorMode !== 'graph' || selectionMode === 'face') &&
+          <div className="workflow-hint"><span>{editorMode === 'graph'
+            ? 'Click a face to add a hole. Switch to Edges to fillet or chamfer. Use Label for notes and dimensions.'
+            : 'Use Graph to add holes and finish edges. Use Label for notes and dimensions.'}</span><button aria-label="Dismiss workflow hint" onClick={() => { setWelcomeHint(false); localStorage.setItem('helios-workflow-understood', '1'); }}>×</button></div>}
         </div>
         <div className="viewport-caption" style={shellLayout.place('caption')}><span>{partName}</span><span>{previewModel ? 'Preview · source unchanged' : ghosted ? 'Last good model · the current draft does not build' : displayRevision !== sourceRevision && model ? 'Last valid model · source changed' : model ? 'Compiled geometry' : 'Waiting for geometry'}</span></div>
         </div>
@@ -1045,8 +1127,11 @@ export function HeliosApp({ project, initialWorkspace, chooseBase = false, onSho
   </div>;
 }
 
-function readEditorMode(): 'graph' | 'source' | 'label' {
-  try { const mode = localStorage.getItem('helios-editor-mode'); return mode === 'graph' || mode === 'label' ? mode : 'source'; } catch { return 'source'; }
+function readEditorMode(fallback: 'graph' | 'source'): 'graph' | 'source' | 'label' {
+  try {
+    const mode = localStorage.getItem('helios-editor-mode');
+    return mode === 'graph' || mode === 'source' || mode === 'label' ? mode : fallback;
+  } catch { return fallback; }
 }
 function stripExtension(name: string) { return name.replace(/\.[^.]+$/, ''); }
 function snapshotSession(session: ModelSession | null) { return session ? Object.assign(Object.create(Object.getPrototypeOf(session)), session) as ModelSession : null; }

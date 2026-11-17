@@ -24,7 +24,7 @@ import {
   type TelosScene,
   type TelosMesh,
 } from "@aetheris/three-telos";
-import type { ModelSession, MotionPose, SelectionDescription } from "@aetheris/cad";
+import type { DisplayMesh, ModelSession, MotionPose, SelectionDescription } from "@aetheris/cad";
 import { posedMesh } from "./pose";
 import { applyNamedView, WORLD_UP } from "./viewCommands";
 import type { DisplayMode, ThemeName, ViewMode } from "../app/types";
@@ -48,7 +48,7 @@ interface Props extends FeaturePlacementProps {
   aaDebug?: import("@aetheris/three-telos").TelosAADebug;
   model: ModelSession | null;
   /** Retained candidate edges over the accepted solid; no candidate faces. */
-  wireframePreview?: ModelSession | null;
+  wireframePreview?: DisplayMesh | null;
   /** A sampled motion pose; the viewport shows the built model moved to it. */
   pose?: MotionPose | null;
   selectedEntityId: string | null;
@@ -98,6 +98,7 @@ export function Viewport(props: Props) {
   const composeRef = useRef<((context: CanvasRenderingContext2D, scale: number) => void) | null>(null);
   const rendererCapture = useRef<(() => string) | null>(null);
   const shell = useRef<HTMLDivElement>(null);
+  const legendRef = useRef<HTMLElement>(null);
   const annotations = props.model?.mesh.annotations ?? [];
   const markers = pmiStyle === 'markers' && annotations.length > 0;
   const { captureRef } = props;
@@ -119,9 +120,9 @@ export function Viewport(props: Props) {
   const choose = (style: PmiStyle) => { setPmiStyle(style); try { localStorage.setItem(PMI_STYLE_KEY, style); } catch { /* per-viewer preference */ } };
   return <div ref={shell} tabIndex={0} style={{position:'relative',width:'100%',height:'100%'}} aria-label="Model workspace">
     <ViewportRenderer {...props} pmiStyle={pmiStyle} projectRef={projectRef} captureRef={rendererCapture} />
-    {markers && <PmiMarkers annotations={annotations} projectRef={projectRef} composeRef={composeRef} />}
+    {markers && <PmiMarkers annotations={annotations} projectRef={projectRef} composeRef={composeRef} legendRef={legendRef} />}
     {props.children}
-    {annotations.length > 0 && <aside className="pmi-legend" aria-label="PMI annotations">
+    {annotations.length > 0 && <aside ref={legendRef} className="pmi-legend" aria-label="PMI annotations">
       <div className="pmi-legend-head"><strong>PMI · mm</strong>
         <span role="radiogroup" aria-label="PMI style">{(['markers', 'drawing'] as const).map(style =>
           <button key={style} type="button" role="radio" aria-checked={pmiStyle === style} className={pmiStyle === style ? 'active' : ''}
@@ -260,7 +261,7 @@ function TelosViewport(props: Props & { onRetry(): void; onUnavailable(reason: s
     canvas.current?.setAttribute('data-topology-highlight', JSON.stringify({ edge: value.selectedTopologyId, targets: targets.length, edges: selectedEdges.length,
       bodies: meshes.filter(mesh => mesh.selected && !mesh.overlay).length, occurrence: value.selectedOccurrenceId ?? null }));
     const concepts = value.showConcepts && value.model ? conceptWireframe(posedMesh(value.model.mesh, value.pose)) : [];
-    const preview = value.wireframePreview ? operationPreviewWireframe(value.wireframePreview.mesh) : [];
+    const preview = value.wireframePreview ? operationPreviewWireframe(value.wireframePreview) : [];
     canvas.current?.setAttribute("data-operation-preview-wires", String(preview.length / 2));
     canvas.current?.setAttribute("data-concept-wires", String(concepts.length / 2));
     const displayScene = { ...scene, meshes, lines, fields: scene.fields.map(f=>({...f, selected:!topology && selectedIds.has(f.identity.occurrenceId), visible:value.displayMode !== "wireframe"})) };
@@ -425,7 +426,7 @@ function TelosViewport(props: Props & { onRetry(): void; onUnavailable(reason: s
   }, []);
   useEffect(() => {
     apply();
-  }, [props.measurement, props.extraSelections, props.pmiStyle, props.showConcepts, props.model, props.model?.revision, props.wireframePreview, props.wireframePreview?.revision, props.pose, props.selectedEntityId, props.selectedTopologyId, props.selectedOccurrenceId,
+  }, [props.measurement, props.extraSelections, props.pmiStyle, props.showConcepts, props.model, props.model?.revision, props.wireframePreview, props.pose, props.selectedEntityId, props.selectedTopologyId, props.selectedOccurrenceId,
     props.theme, props.displayMode, props.viewMode, props.viewCommand, props.aaMode, props.aaDebug,
     inspectionMode, isolatedFaceKey, props.placementGuide]);
   useEffect(() => { setIsolatedFaceKey(""); }, [props.model?.id, props.model?.revision]);

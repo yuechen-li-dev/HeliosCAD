@@ -43,7 +43,20 @@ export function Inspector({ model, schema, projection, projectionCurrent = true,
       {entity ? <>
         <div className="entity-hero"><span className="entity-glyph">{entity.kind === 'Hole' ? '⊙' : '◆'}</span><div><strong>{entity.name}</strong><small>{displayKind(entity.kind)}</small></div></div>
         <Section id="identity" label="Identity">
-          <dl className="identity-list"><dt>Semantic ID</dt><dd className="identifier"><Identifier value={entity.id} /></dd>{faceId && <><dt>{selection?.topologyKind === 'Edge' ? 'Edge ID' : 'Face ID'}</dt><dd className="identifier"><Identifier value={faceId} /></dd></>}{selection && <><dt>Topology</dt><dd className="identifier"><Identifier value={selection.semanticTopologyId ?? selection.sourceAddressability} /></dd><dt>Selector</dt><dd className={selection.selector ? 'identifier' : 'note'}>{selection.selector ? <Identifier value={selection.selector} /> : selection.selectorReason ?? 'No source selector'}</dd></>}{source ? <><dt>Source</dt><dd><button className="source-link" onClick={() => onGoToSource?.(source)}>{source.source}:{source.line}</button></dd></> : <><dt>Source</dt><dd>No Firmament source</dd></>}</dl>
+          {selection?.edgeFinish && <p className="section-note">
+            {selection.edgeFinish.filletSupported === false ? 'Chamfer is available on this edge in Graph.' : 'Fillet and chamfer are available on this edge in Graph.'}
+          </p>}
+          <dl className="identity-list">
+            <dt>Semantic ID</dt><dd className="identifier"><Identifier value={entity.id} /></dd>
+            {faceId && <><dt>{selection?.topologyKind === 'Edge' ? 'Edge ID' : 'Face ID'}</dt><dd className="identifier"><Identifier value={faceId} /></dd></>}
+            {selection && <><dt>Topology</dt><dd className="identifier"><Identifier value={selection.semanticTopologyId ?? selection.sourceAddressability} /></dd>
+              <dt>Selector</dt><dd className={selection.selector ? 'identifier' : 'note'}>{
+                selection.selector ? <Identifier value={selection.selector} />
+                  : selection.edgeFinish && selection.selectorReason ? <details><summary>Source selector details</summary>{selection.selectorReason}</details>
+                  : selection.selectorReason ?? 'No source selector'
+              }</dd></>}
+            <dt>Source</dt><dd>{source ? <button className="source-link" onClick={() => onGoToSource?.(source)}>{source.source}:{source.line}</button> : 'No Firmament source'}</dd>
+          </dl>
           <div className="inspector-actions"><button onClick={() => source && onGoToSource?.(source)} disabled={!source}>Go to source</button>{selection?.selector && <><button onClick={() => void navigator.clipboard?.writeText(selection.selector!)}>Copy selector</button>{selection.outputRole === 'BoxFace' && <button onClick={onReferenceFace}>Reference face in source</button>}{selection.outputRole === 'HoleWallFace' && entity.kind === 'Hole' && entity.holeDiameterMm != null && <button onClick={onReferenceHoleWall}>Reference hole wall in source</button>}</>}<button onClick={() => void navigator.clipboard?.writeText(selection?.semanticTopologyId ?? faceId ?? entity.id)}>Copy semantic ID</button></div>
         </Section>
         {occurrence && <Section id="occurrence" label="Occurrence">
