@@ -19,11 +19,11 @@ export function edgePreviewAdvice(
     ...diagnostics.filter(d => d.severity === 'error').map(d => `${d.code}: ${d.message} ${d.details ?? ''}`),
   ].join('\n');
   const size = kind === 'fillet' ? 'Radius' : 'Distance';
-  const hole = /compose-face-hole:([\w.]+):(?:entry-or-existing-hole-clearance|exit-|no-contained-parallel-exit-support)/.exec(evidence)?.[1];
+  const hole = /compose-face-hole:([\w.]+):(?:entry-or-existing-hole-clearance|exit-|no-contained-parallel-exit-support|tool-corridor-interaction)/.exec(evidence)?.[1];
   if (hole) {
     return `This ${kind} leaves too little clearance around the hole “${hole}”. Reduce the ${size}, or move the hole farther from this edge.`;
   }
-  if (/ProfileBoundary(?:Chamfer|Fillet).*?Cavity|Finish.*(?:HoleClearance|CavityClearance)|crosses the edge of its entry face/i.test(evidence)) {
+  if (/ProfileBoundary(?:Chamfer|Fillet).*?Cavity|Finish.*(?:HoleClearance|CavityClearance)|crosses the edge of its entry face|clearance from the outer boundary or finish band/i.test(evidence)) {
     return `This ${kind} reaches an opening in the part. Reduce the ${size}, or move the opening farther from the finished edge.`;
   }
 
@@ -32,7 +32,7 @@ export function edgePreviewAdvice(
   if (/ProfileBoundary(?:ChamferDistance|FilletRadius)MustBePositive/.test(evidence)) {
     return `Set ${size} above 0 mm.`;
   }
-  if (/radius is too large|adjacent edge|another boundary or finish|(?:Radius|Distance|Finish)(?:TooLarge|ExceedsHost)|InsetCollapse/i.test(evidence)) {
+  if (/radius is too large|adjacent edge|another boundary or finish|(?:Radius|Distance|Finish)(?:TooLarge|ExceedsHost)|InsetCollapse|bounded top-boundary finish size/i.test(evidence)) {
     return `This ${size.toLowerCase()} is too large for the available material at the ${singleEdge ? 'selected edge' : 'face rim'}. Reduce the ${size} until the preview succeeds.`;
   }
   if (/compose-oriented-feature-not-admitted|Other Compose operations are not supported|CornerFinishHost/.test(evidence)) {

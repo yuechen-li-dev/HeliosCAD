@@ -26,9 +26,9 @@ export function holePlacementProblem(frame: PlanarFaceSupport, center: readonly 
   return 'Move Center X or Y farther inside the face, or reduce the diameter to keep positive edge clearance.';
 }
 
-const bracketBlind = 'This face supports through holes only. Choose Through all to keep this location, or use the top of a block for a blind hole.';
+const sideBlind = 'This face supports through holes only. Choose Through all to keep this location, or use the top of a block for a blind hole.';
 export function holeEndProblem(selector: string, end: string): string {
-  return selector.includes('.Side(') && /^Blind\s*\(/i.test(end) ? bracketBlind : '';
+  return selector.includes('.Side(') && /^Blind\s*\(/i.test(end) ? sideBlind : '';
 }
 
 const perforationAdvice = [
@@ -64,7 +64,7 @@ export function holePreviewAdvice(issues: readonly Diagnostic[], error: string, 
   }
   if (has('BlindHoleBreakthrough')) return 'The blind hole reaches the far side. Reduce Blind depth to leave room for the drill tip, or choose Through all.';
   if (has('composite materialization is limited to circular shaft holes'))
-    return 'This block supports several plain holes or one recessed hole. Choose a plain hole here, or use a bracket face for multiple separated recesses.';
+    return 'To combine recessed and plain holes on this block, set their Face to +Z and End to Through all.';
   if (has('firmament-v2-hole-diameter-invalid')) return 'Enter a positive Diameter in millimeters.';
   if (has('firmament-v2-hole-depth-invalid')) return 'Enter a positive Blind depth in millimeters.';
   if (has('firmament-v2-hole-counterbore-invalid')) return 'Set Counterbore diameter larger than Diameter and use a positive Counterbore depth.';
@@ -78,7 +78,9 @@ export function holePreviewAdvice(issues: readonly Diagnostic[], error: string, 
   if (has('compose-face-hole-contract'))
     return 'Use a positive Diameter and choose Through all for this face. For a blind hole, click the top of a block.';
   if (has('compose-hole-unsupported-variant-or-end'))
-    return 'For a recessed through hole, click a flat bracket face to place it. Use the top of a block for a blind hole.';
+    return 'Place a recessed through hole on a flat face with material behind it. Use the top of a block for a blind hole.';
+  if (has('between openings.')) return 'Move the hole away from the other opening or reduce the larger diameter. Leave at least 0.01 mm between openings.';
+  if (has('clearance from the outer boundary or finish band')) return 'Move the hole inward or reduce the larger diameter to leave clearance from the rim.';
   if (has('existing-hole-envelope-clearance')) return 'The cut runs into an existing hole. Move the center away or reduce the diameter.';
   if (has('entry-or-existing-hole-clearance') || has('no-contained-parallel-exit-support'))
     return 'The opening needs room on both sides. Move the center farther from edges or other holes, or reduce the diameter.';

@@ -317,7 +317,7 @@ export function AuthoringPanel(props: Props) {
         {interactiveHole && <p className="placement-hint">{support
           ? 'Drag the gold ring or adjust Center X and Center Y. Shift-drag or right-drag moves the camera.'
           : featureKind === 'hole-blind' ? 'Click the top of a block to place the blind hole, or enter the face and center below.'
-          : 'Click the top of a block or a flat bracket face to place the hole. You can also enter the face and center below.'}</p>}
+          : 'Click a flat face to place the hole, or enter the face and center below.'}</p>}
         {support ? <section aria-label="Face placement">
           <div className="placement-heading"><strong>Selected face · local coordinates</strong>
             <button onClick={() => { invalidate(); setSupport(null); }}>Clear face</button></div>

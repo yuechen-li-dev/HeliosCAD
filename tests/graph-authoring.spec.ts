@@ -581,6 +581,36 @@ for (const [action, finish, type] of [
   expect((exported.match(/ADVANCED_FACE\(/g) ?? []).length).toBeGreaterThan(7);
 });
 
+test('a Box accepts a plain hole, two recesses and a picked side rim with clearance', async ({ page }) => {
+  await newBlock(page);
+  for (const [action, x, y] of [['Add hole…', '-12', '0'], ['Countersunk hole…', '24', '0'], ['Counterbored hole…', '0', '-10']]) {
+    await inspector(page).getByRole('button', { name: action, exact: true }).click();
+    await panel(page).getByLabel('X', { exact: true }).fill(x);
+    await panel(page).getByLabel('Y', { exact: true }).fill(y);
+    await applyPreview(page);
+  }
+  const accepted = (await saveSource(page, 'box-mixed-holes')).source;
+  expect(accepted).toContain('Hole<Countersink>');
+  expect(accepted).toContain('Hole<Counterbore>');
+  await page.getByRole('button', { name: 'Right', exact: true }).click();
+  await clickWorld(page, [30, 0, 6]);
+  await inspector(page).getByRole('button', { name: 'Fillet face rim…', exact: true }).click();
+  await panel(page).getByRole('button', { name: 'Use picked face · +X', exact: true }).click();
+  await expect(panel(page).getByLabel('Face', { exact: true })).toHaveValue('+X');
+  await panel(page).getByLabel('Radius', { exact: true }).fill('3');
+  await panel(page).getByRole('button', { name: 'Preview', exact: true }).click();
+  await expect(panel(page).getByRole('alert')).toContainText('Reduce the Radius');
+  await expect(panel(page).getByRole('button', { name: 'Apply', exact: true })).toBeDisabled();
+  expect((await saveSource(page, 'side-rim-refused')).source).toBe(accepted);
+  await panel(page).getByLabel('Radius', { exact: true }).fill('1');
+  await applyPreview(page);
+  expect((await saveSource(page, 'box-mixed-side-rim')).source).toContain('Face: +X');
+  const exported = await step(page, 'box-mixed-side-rim');
+  expect((exported.match(/ADVANCED_FACE\(/g) ?? []).length).toBe(16);
+  expect((exported.match(/ELLIPSE\(/g) ?? []).length).toBe(4);
+  expect(exported).toContain('CONICAL_SURFACE');
+});
+
 test('bad previews and bad applied drafts retain geometry and recover without the code editor', async ({ page }) => {
   await newBlock(page); await inspector(page).getByRole('button', { name: 'Add hole…', exact: true }).click();
   await panel(page).getByLabel('Diameter', { exact: true }).fill('1000');

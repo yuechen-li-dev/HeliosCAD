@@ -104,8 +104,8 @@ export function bindFeaturePlacement(element: HTMLCanvasElement, current: () => 
     const selection = pick(pixel(event));
     if (!selection?.support || !selection.selector) {
       const reason = !selection ? 'Click the surface of the part to place the hole.'
-        : selection.surfaceKind && selection.surfaceKind !== 'Plane' ? 'This surface is curved. Click a flat face, such as the top of a block or a flat bracket face.'
-        : 'This face does not support click placement. Click the top of a block or a flat bracket face, or enter the face and center in the panel.';
+        : selection.surfaceKind && selection.surfaceKind !== 'Plane' ? 'This surface is curved. Click a flat face to place the hole.'
+        : 'This face does not support click placement. Try another flat face, or enter the face and center in the panel.';
       value.placementActions.current.reject(reason);
       return;
     }
