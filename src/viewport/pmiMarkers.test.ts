@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { PmiDisplayAnnotation } from '@aetheris/cad';
-import { layoutTags, leaderStart, markerColor, markerTags } from './pmiMarkers';
+import { layoutTags, leaderStart, markerColor, markerTags } from './pmiMarkerLayout';
 
 const annotation = (id: string, name: string, text: string, positions?: number[]) => ({
   id, kind: 'Diameter', name, text, value: null, tolerancePlus: null, toleranceMinus: null, stepFaceEntities: [], anchor: [9, 9, 9], labelPosition: [0, 0, 0],

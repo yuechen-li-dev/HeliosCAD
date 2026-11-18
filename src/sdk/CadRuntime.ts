@@ -12,7 +12,7 @@ export interface CadRuntime {
   setProperty(id: string, value: UnitValue): ReturnType<ModelSession['setProperty']>;
   rebuild(): ReturnType<ModelSession['rebuild']>;
   exportSTEP(): Promise<Uint8Array>;
-  exportArtifacts(formats: Parameters<ModelSession['exportArtifacts']>[0]): ReturnType<ModelSession['exportArtifacts']>;
+  exportArtifacts(...args: Parameters<ModelSession['exportArtifacts']>): ReturnType<ModelSession['exportArtifacts']>;
   dispose(): Promise<void>;
   restart(): Promise<RuntimeInfo>;
   session(): ModelSession | null;
@@ -76,7 +76,7 @@ export class WebSdkCadRuntime implements CadRuntime {
   setProperty(id: string, value: UnitValue) { return this.requireModel().setProperty(id, value); }
   rebuild() { return this.requireModel().rebuild(); }
   exportSTEP() { return this.requireModel().exportSTEP(); }
-  exportArtifacts(formats: Parameters<ModelSession['exportArtifacts']>[0]) { return this.requireModel().exportArtifacts(formats); }
+  exportArtifacts(...args: Parameters<ModelSession['exportArtifacts']>) { return this.requireModel().exportArtifacts(...args); }
   session() { return this.model; }
   async complete(source: string, offset: number, sourceName: string, revision: string) {
     const cad = await this.initializeLanguage();
@@ -158,8 +158,15 @@ export class WebSdkCadRuntime implements CadRuntime {
   }
 
   private async initializeLanguage() {
+    if (this.languageCad) return this.languageCad;
     const generation = this.generation;
-    const cad = this.languageCad ?? await (this.languageInitializing ??= Aetheris.create({ worker: true }));
+    const initializing = this.languageInitializing ??= Aetheris.create({ worker: true });
+    let cad: Aetheris;
+    try { cad = await initializing; }
+    catch (error) {
+      if (this.languageInitializing === initializing) this.languageInitializing = null;
+      throw error;
+    }
     if (this.disposed || generation !== this.generation) { cad.terminate(); throw new Error('This workspace has closed.'); }
     this.languageCad = cad;
     return this.languageCad;

@@ -165,6 +165,10 @@ jobs:
           New-Item -ItemType Directory -Force ../Aetheris/artifacts/local/helios-sdk | Out-Null
           Copy-Item artifacts/local/qualified-frontend/aetheris-cad-2.0.0.tgz ../Aetheris/artifacts/local/helios-sdk/
           npm ci
+          # Release browser suites import TelosCamera while collecting graph tests.
+          # The frontend artifact supplies browser assets, not this Node test helper.
+          npm ci --prefix ../Aetheris/Aetheris.Web.Runtime/telos --ignore-scripts
+          npm run build --prefix ../Aetheris/Aetheris.Web.Runtime/telos
           Copy-Item artifacts/local/qualified-frontend/dist dist -Recurse
           $env:HELIOS_FRONTEND_NOTICES = Join-Path $PWD 'artifacts/local/qualified-frontend/notices'
           node scripts/package-standalone.mjs '${{ matrix.rid }}'

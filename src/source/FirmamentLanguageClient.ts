@@ -48,7 +48,11 @@ export class FirmamentLanguageClient {
         return revision === this.revision && result.document === this.sourceName && result.revision === String(revision) ? result : null;
       } catch (error) { console.warn('Firmament analysis unavailable', error); return null; }
     })();
-    this.analysisCache = { revision, request }; return request;
+    this.analysisCache = { revision, request };
+    void request.then(result => {
+      if (!result && this.analysisCache?.request === request) this.analysisCache = null;
+    });
+    return request;
   }
 
   async hover(source: string, offset: number): Promise<LanguageHover | null> {
@@ -133,6 +137,19 @@ export class FirmamentLanguageClient {
         return { suggestions };
       }
     });
+    const signature = monaco.languages.registerSignatureHelpProvider(languageId, {
+      signatureHelpTriggerCharacters: ['(', ',', ':'],
+      signatureHelpRetriggerCharacters: [')'],
+      provideSignatureHelp: async (document, position, cancellation) => {
+        if (!owns(document) || cancellation.isCancellationRequested) return null;
+        const version = document.getVersionId();
+        const result = (await this.complete(document.getValue(), document.getOffsetAt(position)))?.signature;
+        if (!result || !current(document, version, cancellation)) return null;
+        const parameters = result.parameters.map(p => ({ label: `${p.name}: ${p.type}` }));
+        const label = `${result.name}(${parameters.map(p => p.label).join(', ')})${result.result ? ` → ${result.result}` : ''}`;
+        return { value: { signatures: [{ label, parameters }], activeSignature: 0, activeParameter: result.activeParameter }, dispose() {} };
+      },
+    });
     const semantic = monaco.languages.registerDocumentSemanticTokensProvider(languageId, {
       getLegend: () => ({ tokenTypes, tokenModifiers: [] }),
       provideDocumentSemanticTokens: async (document, _lastResultId, cancellation) => {
@@ -199,7 +216,7 @@ export class FirmamentLanguageClient {
         return result?.changed && current(document, version, cancellation) ? [{ range: document.getFullModelRange(), text: result.text }] : [];
       } catch (error) { if (current(document, version, cancellation)) callbacks.onFormatError?.(error); return []; }
     } });
-    return { dispose: () => { completion.dispose(); semantic.dispose(); hover.dispose(); definition.dispose(); opener?.dispose(); formatting.dispose(); } };
+    return { dispose: () => { completion.dispose(); signature.dispose(); semantic.dispose(); hover.dispose(); definition.dispose(); opener?.dispose(); formatting.dispose(); } };
   }
 }
 

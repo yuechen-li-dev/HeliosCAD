@@ -1,0 +1,21 @@
+Struct CylindricalStaggered32 {
+  Cylinder<Hollow> Body {
+    Radius: 30mm
+    Height: 90mm
+    WallThickness: 0.8mm
+    Openings: [Top]
+  }
+  Modify Body {
+    Perforation Vents {
+      on: OuterWall
+      diameter: 6mm
+      layout: CylindricalStaggered
+      pitch: 17mm
+      circumferentialPitch: 23.25mm
+      marginTop: 12mm
+      marginBottom: 12mm
+      minimumLigament: 2mm
+      startAngle: 0deg
+    }
+  }
+}

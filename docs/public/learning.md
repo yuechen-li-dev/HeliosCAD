@@ -38,3 +38,6 @@ Start with the [language reference](../../docs/public/reference/language/README.
 | Go to definition | F12 |
 
 Source is the model's authority. The graph is a structured editing view of that source, with explicit ports and Mates. See [graph modeling](graph-modeling.md), [IntelliDraft](intellidraft.md), [STEP and SolidWorks import](solidworks.md), and [export formats](exports.md) for the other Helios workflows.
+In **Source**, typing an opening parenthesis or comma shows parameter names and
+types for local functions, features, and common constructors such as `Point2`.
+Press **Ctrl+Shift+Space** to reopen the hint at the cursor.

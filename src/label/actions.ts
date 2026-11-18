@@ -69,6 +69,8 @@ export interface LabelValues {
 }
 
 const LETTERS = 'ABCDEFGHJKLMNPRSTUVWXYZ'.split('');
+const LABEL_DEFAULTS = { measured: null, tolerance: 'zone', zone: null, datums: 'none', defaultDatums: [], allowedDatums: [], modifiers: false, newDatum: null, fits: false } as const;
+export const PART_NOTE: LabelAction = { ...LABEL_DEFAULTS, id: 'note', record: 'Note', title: 'Note', disabled: null, target: null, tolerance: 'none', nameStem: 'Note' };
 /** The next datum letter not used by any declaration (I, O and Q are never datum letters). */
 export function nextDatumLetter(outline: LanguageOutline | null, also: readonly string[] = []) {
   const taken = new Set([...(outline?.nodes ?? []).map(n => n.name), ...also]);
@@ -138,9 +140,9 @@ function sameFaces(written: string | undefined, faces: readonly [string, string]
 
 function offeredActions(picks: readonly SelectionDescription[], faces: readonly (LabelFace | null)[], datums: readonly LabelDatum[],
   outline: LanguageOutline | null, holes: readonly RecognizedHole[], siblings: readonly LabelFace[]): { actions: LabelAction[]; notice: string | null } {
-  const base = { measured: null, tolerance: 'zone', zone: null, datums: 'none', defaultDatums: [], allowedDatums: [], modifiers: false, newDatum: null, fits: false } as const;
+  const base = LABEL_DEFAULTS;
   if (picks.length === 0)
-    return { actions: [{ ...base, id: 'note', record: 'Note', title: 'Note', disabled: null, target: null, tolerance: 'none', nameStem: 'Note' }], notice: null };
+    return { actions: [PART_NOTE], notice: null };
   if (new Set(picks.map(p => p.occurrenceId)).size > 1) return { actions: [], notice: 'The selection spans parts. Labels apply to one part: select faces of one part.' };
   if (picks.some(p => p.topologyKind === 'Edge')) return { actions: [], notice: 'Edges cannot be labeled yet: select the faces the edge separates.' };
   const notImported = picks.find(p => !usable(p));
@@ -292,7 +294,8 @@ function offeredActions(picks: readonly SelectionDescription[], faces: readonly 
     const measured = planeDistance(a!, b!);
     actions.push({ ...base, id: 'distance', record: 'Distance', title: measured != null ? `Distance ${measured.toFixed(3)}` : 'Distance', target: sa, between: [sa, sb],
       measured, tolerance: 'band', nameStem: 'Distance',
-      disabled: measured == null ? `The faces are ${angle} apart: a distance needs parallel faces.` : measured < 1e-6 ? 'The faces are coplanar.' : null });
+      disabled: measured == null ? `The faces are ${angle} apart: a distance needs parallel faces. Pick an opposite face or choose the matching orientation tolerance.`
+        : measured < 1e-6 ? 'The faces are on the same plane. Pick an opposite face to measure a thickness.' : null });
     actions.push({ ...base, id: 'parallelism', record: 'Parallelism', title: `Parallelism to ${refs[0] ?? 'the second face'}`, target: sa, datums: 'required',
       defaultDatums: refs, allowedDatums: [...new Set([...refs, ...all])], newDatum, nameStem: 'Parallelism',
       disabled: noLetter ?? (r?.parallel ? null : `The faces are ${angle} apart, not parallel.`) });
@@ -325,13 +328,20 @@ function offeredActions(picks: readonly SelectionDescription[], faces: readonly 
     const recognize = actions.findIndex(a => a.id === 'recognize');
     if (recognize >= 0) actions.push(actions.splice(recognize, 1)[0]!);
   } else {
-    return { actions: [], notice: picks.length > 2 ? 'Select one or two faces to label.' : 'No label applies to this combination yet.' };
+    return { actions: [], notice: picks.length > 2 ? 'Select one or two faces to label.' : 'Choose a planar face or a hole wall to add a geometric label.' };
   }
   return { actions, notice: null };
 }
 
 const NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
 const mm = (value: number) => `${Number(value.toFixed(6))}mm`;
+
+export function checkNoteText(text: string): string | null {
+  const trimmed = text.trim();
+  if (!trimmed) return 'Enter the note text.';
+  if (/[\u0000-\u001f\u007f-\u009f]/.test(trimmed)) return 'Keep the note on one line. Use a separate note for each line.';
+  return null;
+}
 
 /** What is wrong with the values (blocks Apply) and what is suspicious (needs confirmation). */
 export function checkValues(action: LabelAction, values: LabelValues, outline: LanguageOutline | null): { errors: string[]; warnings: string[] } {
@@ -345,13 +355,13 @@ export function checkValues(action: LabelAction, values: LabelValues, outline: L
   if (names.length === 2 && names[0] === names[1]) errors.push('The record and the new datum need different names.');
   if (action.tolerance === 'band') {
     const { nominal, plus, minus } = values;
-    if (!(nominal! > 0)) errors.push('Enter a positive nominal.');
-    if (!(plus! >= 0) || !(minus! >= 0)) errors.push('Enter both allowances as nonnegative numbers: tolerances are never inferred.');
-    else if (plus === 0 && minus === 0) errors.push('A zero band cannot be made or inspected.');
+    if (!Number.isFinite(nominal) || !(nominal! > 0)) errors.push('Enter a positive nominal in millimetres.');
+    if (!Number.isFinite(plus) || !Number.isFinite(minus) || !(plus! >= 0) || !(minus! >= 0)) errors.push('Enter an upper and lower allowance of zero or more.');
+    else if (plus === 0 && minus === 0) errors.push('Make at least one allowance greater than zero.');
     if (errors.length === 0 && action.measured != null && (action.measured > nominal! + plus! + 1e-9 || action.measured < nominal! - minus! - 1e-9))
       warnings.push(`The model measures ${action.measured.toFixed(4)} mm, outside ${nominal} +${plus}/−${minus}: the part does not meet its own requirement.`);
   }
-  if (action.tolerance === 'zone' && !(values.tolerance! > 0)) errors.push('Enter a positive tolerance zone.');
+  if (action.tolerance === 'zone' && (!Number.isFinite(values.tolerance) || !(values.tolerance! > 0))) errors.push('Enter a positive tolerance in millimetres.');
   if (action.datums !== 'none') {
     const refs = values.datumRefs ?? [];
     if (refs.length === 0 && action.datums === 'required') errors.push('Choose at least one datum reference.');
@@ -360,7 +370,10 @@ export function checkValues(action: LabelAction, values: LabelValues, outline: L
     for (const ref of refs) if (!action.allowedDatums.includes(ref) && ref !== (values.newDatumName ?? action.newDatum?.letter)) errors.push(`${ref} is not a declared datum.`);
     if (action.newDatum && !refs.includes(values.newDatumName ?? action.newDatum.letter)) errors.push('The second face becomes a datum only to be referenced: keep it in the datum references.');
   }
-  if (action.record === 'Note' && !values.text?.trim()) errors.push('Enter the note text.');
+  if (action.record === 'Note') {
+    const problem = checkNoteText(values.text ?? '');
+    if (problem) errors.push(problem);
+  }
   if (values.extraModifiers?.includes('CommonZone') && !(action.quantity! > 1)) errors.push('A common zone joins several features: list them in one requirement.');
   return { errors, warnings };
 }

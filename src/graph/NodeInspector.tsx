@@ -251,12 +251,13 @@ function AddField({ suggestions, onAdd }: { suggestions: readonly FieldSuggestio
 export interface FieldDraft { read(): string | null }
 
 /** Collect all controls before compiling. No blur-time builds or asynchronous outline races. */
-export function FieldSet({ fields, schema, disabled, focusField, draftRef, onApply, onDirty, onPending, rowActions }: {
+export function FieldSet({ fields, schema, disabled, focusField, draftRef, onApply, onDirty, onPending, rowActions, fieldLabel }: {
   fields: readonly OutlineField[]; schema?: SemanticConstructSchema | null; disabled: boolean; focusField?: string | null;
   draftRef?: React.Ref<{ read(): { field: string; value: string }[] | null }>;
   onApply?(values: readonly { field: string; value: string }[]): Structural; onDirty?(): void;
   onPending?(pending: boolean): void;
   rowActions?(field: OutlineField): Pick<Parameters<typeof FieldRow>[0], 'onRemove' | 'onPromote' | 'defaultParameter' | 'onParameter'>;
+  fieldLabel?(name: string): string | undefined;
 }) {
   const handles = useRef(new Map<string, FieldDraft>());
   const [dirty, setDirty] = useState(false), [epoch, setEpoch] = useState(0);
@@ -284,7 +285,7 @@ export function FieldSet({ fields, schema, disabled, focusField, draftRef, onApp
   };
   return <div className="field-set" onChange={event => { if ((event.target as HTMLElement).closest('.node-promote')) return; setDirty(true); setError(null); onDirty?.(); }}>
     {fields.map(field => { const metadata = schema?.fields.find(f => f.name.toLowerCase() === field.name.toLowerCase()); return <FieldRow
-      key={`${epoch}:${field.name}`} field={field} description={metadata?.description ?? null} choices={metadata?.choices}
+      key={`${epoch}:${field.name}`} field={field} label={fieldLabel?.(field.name)} description={metadata?.description ?? null} choices={metadata?.choices}
       focus={focusField?.toLowerCase() === field.name.toLowerCase()} disabled={disabled || applying} status={null}
       {...(!dirty ? rowActions?.(field) : {})}
       draftRef={handle => { if (handle) handles.current.set(field.name, handle); else handles.current.delete(field.name); }} onCommit={() => null} />; })}
@@ -292,7 +293,7 @@ export function FieldSet({ fields, schema, disabled, focusField, draftRef, onApp
       <button disabled={!dirty || disabled || applying} onClick={() => { setEpoch(e => e + 1); setDirty(false); setError(null); }}>Discard edits</button>
       <small>{dirty ? 'Unapplied edits · apply or discard before changing selection or view' : 'Enter values, then Apply changes'}</small></div>}
     {schema?.fields.some(f => f.description && fields.some(value => value.name.toLowerCase() === f.name.toLowerCase())) && <details className="field-help"><summary>Field help</summary>
-      {schema.fields.filter(f => f.description && fields.some(value => value.name.toLowerCase() === f.name.toLowerCase())).map(f => <p key={f.id}><b>{f.name}</b> · {f.description}</p>)}
+      {schema.fields.filter(f => f.description && fields.some(value => value.name.toLowerCase() === f.name.toLowerCase())).map(f => <p key={f.id}><b>{fieldLabel?.(f.name) ?? f.name}</b> · {f.description}</p>)}
     </details>}
     {error && <p role="alert" className="node-error">{error}</p>}
   </div>;
@@ -330,7 +331,7 @@ export function FieldRow({ field, label: shown, description, choices, focus, dis
       let index = 0;
       const quantity = (original: Quantity) => {
         const raw = inputs[index++]?.value ?? ''; const parsed = parseQuantity(raw);
-        if (!parsed) throw new Error(`${field.name} needs a finite number, with an optional unit.`);
+        if (!parsed) throw new Error(`${shown ?? field.name} needs a finite number, with an optional unit.`);
         return { number: parsed.number, unit: parsed.unit || original.unit };
       };
       try { value = editor.kind === 'quantity' ? (editor.wrapper ? `${editor.wrapper}(${formatQuantity(quantity(editor.value))})` : formatQuantity(quantity(editor.value)))

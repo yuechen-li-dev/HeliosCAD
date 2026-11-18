@@ -20,7 +20,7 @@ function providers(client: FirmamentLanguageClient, model: Monaco.editor.ITextMo
   const disposable = () => ({ dispose: vi.fn() });
   const api = { ...monaco, languages: { ...monaco.languages,
     registerCompletionItemProvider: (_id: string, value: Monaco.languages.CompletionItemProvider) => { completion = value; return disposable(); },
-    registerDocumentSemanticTokensProvider: disposable, registerHoverProvider: disposable,
+    registerDocumentSemanticTokensProvider: disposable, registerHoverProvider: disposable, registerSignatureHelpProvider: disposable,
     registerDefinitionProvider: (_id: string, value: Monaco.languages.DefinitionProvider) => { definition = value; return disposable(); },
     registerDocumentFormattingEditProvider: (_id: string, value: Monaco.languages.DocumentFormattingEditProvider) => { formatting = value; return disposable(); },
   }, editor: { ...monaco.editor, registerEditorOpener: (value: Monaco.editor.ICodeEditorOpener) => { opener = value; return disposable(); } } } as unknown as typeof Monaco;

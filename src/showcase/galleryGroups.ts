@@ -3,8 +3,8 @@ import { showcaseExamples } from './catalog';
 
 export type GalleryGroup = { id: string; name: string; models: string[] };
 export const defaultGroups: readonly GalleryGroup[] = [
-  { id: 'basic', name: 'Basic', models: ['basic-bracket', 'paperclip'] },
-  { id: 'advanced', name: 'Advanced', models: ['atlas', 'guitar', 'house', 'bracket', 'bolt'] },
+  { id: 'basic', name: 'Basic', models: showcaseExamples.filter(example => example.tier === 'basic').map(example => example.id) },
+  { id: 'advanced', name: 'Advanced', models: showcaseExamples.filter(example => example.tier === 'advanced').map(example => example.id) },
 ];
 const KEY = 'helios-example-groups-v1', CHANGED = 'helios-example-groups-changed';
 const knownModels = new Set(showcaseExamples.map(example => example.id));

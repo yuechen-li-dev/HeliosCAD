@@ -28,13 +28,19 @@ test('the Aetheris GLB renders, rotates, and survives opening the CAD workspace'
   expect(errors).toEqual([]);
 });
 
-test('reduced motion keeps the actual model still', async ({ page }) => {
+test('reduced motion starts paused and the knot can be played and paused', async ({ page }) => {
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.goto('/');
   await expect(page.locator(`${hero}[data-state=ready]`)).toHaveCount(1);
   const canvas = page.locator(`${hero} canvas`), first = await canvas.screenshot();
   await page.waitForTimeout(1600);
   expect((await canvas.screenshot()).equals(first)).toBe(true);
+  await page.getByRole('button', { name: 'Play knot animation' }).click();
+  await expect.poll(async () => (await canvas.screenshot()).equals(first)).toBe(false);
+  await page.getByRole('button', { name: 'Pause knot animation' }).click();
+  const paused = await canvas.screenshot();
+  await page.waitForTimeout(700);
+  expect((await canvas.screenshot()).equals(paused)).toBe(true);
 });
 
 test('a failed asset falls back to the boxed H without blocking the app', async ({ page }) => {

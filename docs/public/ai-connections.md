@@ -2,6 +2,12 @@
 
 AI Author can use your installed Codex client, connect Claude Code or Antigravity native chat through MCP tools, or use an OpenAI, Anthropic or Google API key. Every path works on a separate candidate project, uses the Aetheris compiler to build it, and keeps recovery checkpoints in **Version Control**.
 
+## Use AI Author in the browser preview
+
+Open a part in the [browser preview](https://helios-cad-wasm.yuechenli.chatgpt.site/). In **AI Author**, select OpenAI, Anthropic or Google, enter your API key, and choose **Connect**. Pick a model under **Connection**. The password field supports browser and password-manager autofill.
+
+Your browser sends the key, chat and relevant project context directly to that provider. API usage is billed by the provider on your account. Helios keeps the key in this tab until you disconnect or reload. Use **Apply candidate** to commit a built change after reviewing its source diff.
+
 ## Use your Codex subscription
 
 1. Install the native Codex CLI and sign in with ChatGPT using `codex login`.

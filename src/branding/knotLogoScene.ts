@@ -9,7 +9,7 @@ const disposeModel = (model: THREE.Object3D) => model.traverse(object => {
   }
 });
 
-export function mountKnotLogo(host: HTMLElement, ready: () => void, failed: () => void) {
+export function mountKnotLogo(host: HTMLElement, playing: boolean, ready: () => void, failed: () => void) {
   if (!('WebGL2RenderingContext' in window)) throw new Error('WebGL unavailable');
   const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true, powerPreference: 'low-power' });
   renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
@@ -18,6 +18,7 @@ export function mountKnotLogo(host: HTMLElement, ready: () => void, failed: () =
   renderer.toneMappingExposure = 1;
   renderer.setClearColor(0, 0);
   const canvas = renderer.domElement;
+  canvas.setAttribute('aria-hidden', 'true');
   host.appendChild(canvas);
   const scene = new THREE.Scene(), spin = new THREE.Group(), pose = new THREE.Group();
   let reflections: THREE.WebGLRenderTarget | undefined;
@@ -29,23 +30,31 @@ export function mountKnotLogo(host: HTMLElement, ready: () => void, failed: () =
   for (const [color, strength, position] of [[0xfff5df, 2.8, [2, 3, 4]], [0xe5f1ff, .3, [-3, 0, 2]], [0xffd161, 2, [1, -2, -3]]] as const) {
     const light = new THREE.DirectionalLight(color, strength); light.position.set(position[0], position[1], position[2]); scene.add(light);
   }
-  const reduced = matchMedia('(prefers-reduced-motion: reduce)');
   let disposed = false, model: THREE.Object3D | undefined, frame = 0, previous = 0, visible = true, elapsed = 0;
+  let started: number | null = null;
   const render = () => { if (!disposed && model) renderer.render(scene, camera); };
   const tick = (now: number) => {
     frame = 0;
-    if (disposed || !model || !visible || document.hidden || reduced.matches) { previous = 0; return; }
-    if (previous && now - previous >= 1000 / 30) {
-      elapsed += Math.min((now - previous) / 1000, .1);
-      spin.rotation.y = elapsed * Math.PI * 2 / 100;
+    if (started === null || disposed) return;
+    if (now - previous >= 1000 / 30) {
+      const angle = (elapsed + (now - started) / 1000) * Math.PI * 2 / 24;
+      spin.rotation.set(.4 * Math.sin(angle), angle, .12 * Math.sin(angle * 2));
       render(); previous = now;
-    } else if (!previous) previous = now;
+    }
     frame = requestAnimationFrame(tick);
   };
   const update = () => {
-    cancelAnimationFrame(frame); frame = 0; previous = 0;
+    if (disposed) return;
+    const animate = !!model && visible && !document.hidden && playing;
+    if (animate && started === null) {
+      started = performance.now(); previous = started;
+      frame = requestAnimationFrame(tick);
+    } else if (!animate && started !== null) {
+      // Freeze the last drawn pose while the page or logo is hidden.
+      elapsed += (previous - started) / 1000; started = null;
+      cancelAnimationFrame(frame); frame = 0;
+    }
     render();
-    if (!disposed && model && visible && !document.hidden && !reduced.matches) frame = requestAnimationFrame(tick);
   };
   const resize = new ResizeObserver(() => {
     if (disposed) return;
@@ -57,13 +66,12 @@ export function mountKnotLogo(host: HTMLElement, ready: () => void, failed: () =
   const observer = new IntersectionObserver(entries => { visible = entries[0].isIntersecting; update(); });
   observer.observe(host);
   document.addEventListener('visibilitychange', update);
-  reduced.addEventListener('change', update);
   const lost = (event: Event) => { event.preventDefault(); failed(); dispose(); };
   canvas.addEventListener('webglcontextlost', lost);
   const dispose = () => {
     if (disposed) return;
     disposed = true; cancelAnimationFrame(frame); resize.disconnect(); observer.disconnect();
-    document.removeEventListener('visibilitychange', update); reduced.removeEventListener('change', update);
+    document.removeEventListener('visibilitychange', update);
     canvas.removeEventListener('webglcontextlost', lost);
     if (model) disposeModel(model);
     scene.environment = null; reflections?.dispose();
@@ -90,5 +98,5 @@ export function mountKnotLogo(host: HTMLElement, ready: () => void, failed: () =
     });
     pose.add(model); ready(); update();
   }, undefined, () => { if (!disposed) { failed(); dispose(); } });
-  return dispose;
+  return { setPlaying(value: boolean) { playing = value; update(); }, dispose };
 }

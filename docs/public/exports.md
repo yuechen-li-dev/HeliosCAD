@@ -20,6 +20,7 @@ Output. If any selected export fails, no partial ZIP downloads. Uncheck that for
 to download the others.
 
 STEP contains the compiled exact engineering geometry and supported semantic PMI.
+Part-level notes appear as named properties in the AP242 file.
 GLB and USDA contain static presentation geometry at the authored assembly pose,
 with hierarchy and supported materials/cameras. They do not export the animation
 currently playing, the viewport camera, Concept guides, edge overlays, or selection
@@ -47,7 +48,8 @@ one of two styles, chosen in the viewport's PMI legend and remembered per browse
   include the tags.
 - **Drawing**: the ASME presentation exported to annotated GLB: feature control
   frames, datum symbols and dimensions with filled text on white panels, in fixed
-  planes in model space. Orbit to read a callout square-on.
+  planes in model space. Orbit to read a callout square-on. Use **Hide list**
+  in the PMI legend to make room for the drawing.
 
 Neither style intercepts face/edge selection or alters the STEP or body mesh.
 USDA, STL and OBJ do not carry PMI.

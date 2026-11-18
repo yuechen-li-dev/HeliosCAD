@@ -30,7 +30,7 @@ async function ready(page: Page) {
 }
 async function applyPreview(page: Page) {
   await panel(page).getByRole('button', { name: 'Preview', exact: true }).click();
-  await expect(panel(page).getByRole('status')).toContainText('Preview admitted');
+  await expect(panel(page).getByRole('status')).toContainText('Preview ready');
   await panel(page).getByRole('button', { name: 'Apply', exact: true }).click(); await ready(page);
   await expect(panel(page)).toHaveCount(0);
 }
@@ -87,14 +87,14 @@ test('a picked bracket foot supports a draggable gold hole, exact coordinates, c
   }
   const start = await footPoint(16, -10); await page.mouse.click(start.x, start.y);
   await page.getByRole('button', { name: 'Add hole on selected face', exact: true }).click();
-  await expect(panel(page).getByRole('status')).toContainText('Preview admitted');
+  await expect(panel(page).getByRole('status')).toContainText('Preview ready');
   await expect(canvas).toHaveAttribute('data-feature-placement', /"diameter":6/);
   await expect(canvas).toHaveAttribute('data-operation-preview-wires', /^[1-9]/);
   const beforeDrag = await panel(page).getByLabel('Center X', { exact: true }).inputValue();
   const edge = await footPoint(29, -19);
   await page.mouse.move(start.x, start.y); await page.mouse.down(); await page.mouse.move(edge.x, edge.y, { steps: 15 }); await page.mouse.up();
   await expect(panel(page).getByLabel('Center X', { exact: true })).not.toHaveValue(beforeDrag);
-  await expect(panel(page).getByRole('status')).toContainText('Preview admitted');
+  await expect(panel(page).getByRole('status')).toContainText('Preview ready');
   await panel(page).getByLabel('Center X', { exact: true }).fill('0');
   await expect(panel(page).getByRole('alert')).toContainText('positive edge clearance');
   await expect(panel(page).getByRole('button', { name: 'Apply', exact: true })).toBeDisabled();
@@ -103,7 +103,7 @@ test('a picked bracket foot supports a draggable gold hole, exact coordinates, c
   await page.getByRole('button', { name: 'Add hole on selected face', exact: true }).click();
   await panel(page).getByLabel('Center X', { exact: true }).fill('13');
   await panel(page).getByLabel('Center Y', { exact: true }).fill('10');
-  await expect(panel(page).getByRole('status')).toContainText('Preview admitted');
+  await expect(panel(page).getByRole('status')).toContainText('Preview ready');
   await page.screenshot({ path: resolve(output, 'face-hole-gold-preview.png'), fullPage: true });
   await panel(page).getByRole('button', { name: 'Apply', exact: true }).click(); await ready(page);
   const edited = await saveSource(page, 'bracket-foot-hole');
@@ -136,7 +136,7 @@ test('one bracket face accepts separated holes, counterbore and countersink with
     await expect(panel(page).getByLabel('Center X', { exact: true })).toBeVisible();
     await panel(page).getByLabel('Center X', { exact: true }).fill(String(x));
     await panel(page).getByLabel('Center Y', { exact: true }).fill(String(y));
-    await expect(panel(page).getByRole('status')).toContainText('Preview admitted');
+    await expect(panel(page).getByRole('status')).toContainText('Preview ready');
   }
   async function commit() { await panel(page).getByRole('button', { name: 'Apply', exact: true }).click(); await ready(page); }
   await start('Add hole…', 5, 5); await commit();
@@ -151,13 +151,13 @@ test('one bracket face accepts separated holes, counterbore and countersink with
   await panel(page).getByRole('button', { name: 'Cancel', exact: true }).click();
   expect(((await saveSource(page, 'multiple-hole-collision-cancel')).source.match(/Hole</g) ?? []).length).toBe(1);
   await start('Add hole…', 21, 5); await commit();
-  await start('Counterbored hole…', 13, 14, { CounterboreDiameter: '7', CounterboreDepth: '1' });
-  await panel(page).getByLabel('CounterboreDiameter', { exact: true }).fill('16');
+  await start('Counterbored hole…', 13, 14, { 'Counterbore diameter': '7', 'Counterbore depth': '1' });
+  await panel(page).getByLabel('Counterbore diameter', { exact: true }).fill('16');
   await expect(panel(page).getByRole('button', { name: 'Apply', exact: true })).toBeDisabled();
   await expect(panel(page).getByRole('alert')).toContainText('positive edge clearance');
-  await panel(page).getByLabel('CounterboreDiameter', { exact: true }).fill('7');
-  await expect(panel(page).getByRole('status')).toContainText('Preview admitted'); await commit();
-  await start('Countersunk hole…', 21, 14, { CountersinkDiameter: '6' });
+  await panel(page).getByLabel('Counterbore diameter', { exact: true }).fill('7');
+  await expect(panel(page).getByRole('status')).toContainText('Preview ready'); await commit();
+  await start('Countersunk hole…', 21, 14, { 'Countersink diameter': '6' });
   await expect(canvas).toHaveAttribute('data-feature-placement', /"diameter":6/);
   await page.screenshot({ path: resolve(output, 'multiple-face-holes-gold.png'), fullPage: true }); await commit();
   const source = await saveSource(page, 'bracket-multiple-face-holes');
@@ -185,22 +185,22 @@ test('recess defaults cut inward from the upright and a full-thickness recess ha
     await page.mouse.click(rect.x + rect.width / 2, rect.y + rect.height / 2 - (height - camera.target[2]) * rect.height / camera.span);
   }
   await inspector(page).getByRole('button', { name: 'Counterbored hole…', exact: true }).click();
-  await expect(panel(page).getByLabel('CounterboreDepth', { exact: true })).toHaveValue('1');
+  await expect(panel(page).getByLabel('Counterbore depth', { exact: true })).toHaveValue('1');
   await clickUpright(24);
   await expect(panel(page).getByText('Gold arrow points into the material. The recess opens on the selected face.', { exact: true })).toBeVisible();
-  await expect(panel(page).getByRole('status')).toContainText('Preview admitted');
-  await panel(page).getByLabel('CounterboreDepth', { exact: true }).fill('3');
+  await expect(panel(page).getByRole('status')).toContainText('Preview ready');
+  await panel(page).getByLabel('Counterbore depth', { exact: true }).fill('3');
   await expect(panel(page).getByRole('alert')).toContainText('depth is 3 mm');
   await expect(panel(page).getByRole('alert')).toContainText('face has 3 mm');
   await expect(panel(page).getByRole('alert')).toContainText('2.99 mm');
-  await expect(panel(page).getByRole('alert')).not.toContainText('compose-authoritative-section-stack');
+  await expect(panel(page).getByRole('alert').locator(':scope > p')).not.toContainText('compose-authoritative-section-stack');
   await expect(panel(page).getByRole('button', { name: 'Apply', exact: true })).toBeDisabled();
-  await panel(page).getByLabel('CounterboreDepth', { exact: true }).fill('1');
-  await expect(panel(page).getByRole('status')).toContainText('Preview admitted');
+  await panel(page).getByLabel('Counterbore depth', { exact: true }).fill('1');
+  await expect(panel(page).getByRole('status')).toContainText('Preview ready');
   await panel(page).getByRole('button', { name: 'Apply', exact: true }).click(); await ready(page);
   await inspector(page).getByRole('button', { name: 'Countersunk hole…', exact: true }).click();
-  await expect(panel(page).getByLabel('CountersinkDiameter', { exact: true })).toHaveValue('8');
-  await clickUpright(12); await expect(panel(page).getByRole('status')).toContainText('Preview admitted');
+  await expect(panel(page).getByLabel('Countersink diameter', { exact: true })).toHaveValue('8');
+  await clickUpright(12); await expect(panel(page).getByRole('status')).toContainText('Preview ready');
   await page.getByRole('button', { name: 'Iso', exact: true }).click();
   await page.screenshot({ path: resolve(output, 'upright-recess-inward-preview.png'), fullPage: true });
   await panel(page).getByRole('button', { name: 'Apply', exact: true }).click(); await ready(page);
@@ -218,7 +218,9 @@ for (const kind of ['Chamfer'] as const) test(`a picked bracket edge accepts one
   await page.getByRole('tab', { name: 'Graph', exact: true }).click();
   const before = (await saveSource(page, `single-edge-${kind}-before`)).source;
   await page.getByRole('button', { name: 'Front', exact: true }).click();
-  await page.getByRole('button', { name: 'Selection mode', exact: true }).click();
+  await inspector(page).getByRole('button', { name: 'Finish an edge…', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Edges', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByText(/Click an edge in the viewport/)).toBeVisible();
   const canvas = page.locator('[data-testid="viewport"] canvas');
   const camera = JSON.parse((await canvas.getAttribute('data-surface-inspection'))!).camera, rect = (await canvas.boundingBox())!;
   await page.mouse.click(rect.x + rect.width / 2 + (18 - camera.target[0]) * rect.height / camera.span,
@@ -230,20 +232,20 @@ for (const kind of ['Chamfer'] as const) test(`a picked bracket edge accepts one
   await expect(panel(page).getByLabel('Target', { exact: true })).toHaveCount(0);
   const size = 'Distance';
   await panel(page).getByLabel(size, { exact: true }).fill('0.5');
-  await expect(panel(page).getByRole('status')).toContainText('Preview admitted');
+  await expect(panel(page).getByRole('status')).toContainText('Preview ready');
   expect((await saveSource(page, `single-edge-${kind}-preview`)).source).toBe(before);
   await panel(page).getByLabel(size, { exact: true }).fill('0');
-  await expect(panel(page).getByRole('alert')).toContainText('Preview refused');
+  await expect(panel(page).getByRole('alert')).toContainText('Set Distance above 0 mm.');
   await expect(panel(page).getByRole('button', { name: 'Apply', exact: true })).toBeDisabled();
   await panel(page).getByRole('button', { name: 'Cancel', exact: true }).click();
   expect((await saveSource(page, `single-edge-${kind}-cancelled`)).source).toBe(before);
   await action.click(); await panel(page).getByLabel(size, { exact: true }).fill('0.5');
-  await expect(panel(page).getByRole('status')).toContainText('Preview admitted');
+  await expect(panel(page).getByRole('status')).toContainText('Preview ready');
   await page.getByRole('button', { name: 'Iso', exact: true }).click();
   await page.screenshot({ path: resolve(output, `single-edge-${kind.toLowerCase()}-preview.png`), fullPage: true });
   await panel(page).getByRole('button', { name: 'Apply', exact: true }).click(); await ready(page);
   const edited = await saveSource(page, `bracket-single-edge-${kind.toLowerCase()}`);
-  expect(edited.source).toContain('Target: section.Outer.Vertex2_Vertex3');
+  expect(edited.source).toContain('Target: section.Outer.FootSeat');
   expect(edited.source).toContain('Face: Top'); expect(edited.source).not.toContain('Target: Boundary');
   expect(edited.source.match(/EdgeFinish\s/g)).toHaveLength(1);
   await step(page, `bracket-single-edge-${kind.toLowerCase()}`, { min: [0,-20,0], max: [30,0,40] });
@@ -261,15 +263,21 @@ for (const kind of ['Fillet', 'Chamfer'] as const) test(`a picked Box face-pair 
   const bounds = { min: [-30,-20,0], max: [30,20,12] };
   await step(page, `box-single-edge-${kind.toLowerCase()}-before`, bounds);
   await page.getByRole('button', { name: 'Top', exact: true }).click();
-  await page.getByRole('button', { name: 'Selection mode', exact: true }).click();
+  await page.getByRole('group', { name: 'Pick geometry' }).getByRole('button', { name: 'Edges', exact: true }).click();
   const canvas = page.locator('[data-testid="viewport"] canvas');
   const camera = JSON.parse((await canvas.getAttribute('data-surface-inspection'))!).camera, rect = (await canvas.boundingBox())!;
+  if (kind === 'Fillet') {
+    await clickWorld(page, [-30, 0, 12]);
+    const actions = page.getByRole('group', { name: 'Selected edge actions' });
+    await expect(actions.getByRole('button', { name: 'Fillet selected edge', exact: true })).toBeEnabled();
+    await expect(actions).toContainText('-X / +Z');
+  }
   await page.mouse.click(rect.x + rect.width / 2 + (30 - camera.target[0]) * rect.height / camera.span,
     rect.y + rect.height / 2 + camera.target[1] * rect.height / camera.span);
   await page.getByRole('button', { name: `${kind} selected edge`, exact: true }).click();
   await expect(panel(page).getByRole('region', { name: 'Selected edge' })).toContainText('+X / +Z');
   await panel(page).getByLabel(kind === 'Fillet' ? 'Radius' : 'Distance', { exact: true }).fill('0.5');
-  await expect(panel(page).getByRole('status')).toContainText('Preview admitted');
+  await expect(panel(page).getByRole('status')).toContainText('Preview ready');
   await panel(page).getByRole('button', { name: 'Apply', exact: true }).click(); await ready(page);
   const edited = await saveSource(page, `box-single-edge-${kind.toLowerCase()}`);
   expect(edited.source).toContain('Face: +X'); expect(edited.source).toContain('Target: SharedEdgePlusZ');
@@ -277,16 +285,52 @@ for (const kind of ['Fillet', 'Chamfer'] as const) test(`a picked Box face-pair 
   expect(exported.match(/ADVANCED_FACE\(/g)).toHaveLength(7);
 });
 
+for (const kind of ['Fillet', 'Chamfer'] as const) test(`a drilled Box can ${kind.toLowerCase()} its picked front edge without reaching the countersink`, async ({ page }) => {
+  await newBlock(page);
+  await inspector(page).getByRole('button', { name: 'Add hole…', exact: true }).click();
+  await applyPreview(page);
+  await inspector(page).getByRole('button', { name: 'Countersunk hole…', exact: true }).click();
+  await panel(page).getByLabel('X', { exact: true }).fill('-10');
+  await panel(page).getByLabel('Y', { exact: true }).fill('-14');
+  await applyPreview(page);
+  const original = (await saveSource(page, `box-drilled-before-${kind}`)).source;
+  await page.getByRole('button', { name: 'Top', exact: true }).click();
+  await page.getByRole('group', { name: 'Pick geometry' }).getByRole('button', { name: 'Edges', exact: true }).click();
+  await clickWorld(page, [0, -20, 12]);
+  const actions = page.getByRole('group', { name: 'Selected edge actions' });
+  await expect(actions).toContainText('-Y / +Z');
+  await expect(actions.getByRole('button', { name: 'Fillet selected edge', exact: true })).toBeEnabled();
+  await expect(actions.getByRole('button', { name: 'Chamfer selected edge', exact: true })).toBeEnabled();
+  await actions.getByRole('button', { name: `${kind} selected edge`, exact: true }).click();
+  const size = panel(page).getByLabel(kind === 'Fillet' ? 'Radius' : 'Distance', { exact: true });
+  await size.fill('3');
+  await expect(panel(page).getByRole('alert')).toContainText('clearance around the hole');
+  await expect(panel(page).getByRole('button', { name: 'Apply', exact: true })).toBeDisabled();
+  expect((await saveSource(page, `box-drilled-refused-${kind}`)).source).toBe(original);
+  await size.fill('1');
+  await expect(panel(page).getByRole('status')).toContainText('Preview ready');
+  await panel(page).getByRole('button', { name: 'Apply', exact: true }).click();
+  await ready(page);
+  const edited = (await saveSource(page, `box-drilled-edge-${kind}`)).source;
+  expect(edited).toContain('Face: -Y');
+  expect(edited).toContain('Target: SharedEdgePlusZ');
+  expect(edited).toContain('Hole<Countersink>');
+  const exported = await step(page, `box-drilled-edge-${kind}`, { min: [-30,-20,0], max: [30,20,12] });
+  expect(exported.match(/ADVANCED_FACE\(/g)).toHaveLength(10);
+  expect(exported.match(/CONICAL_SURFACE\(/g)).toHaveLength(1);
+  expect(exported.match(/CYLINDRICAL_SURFACE\(/g)).toHaveLength(kind === 'Fillet' ? 3 : 2);
+});
+
 test('an end-face edge does not offer the inset partial fillet', async ({ page }) => {
   await page.goto('/'); await page.getByRole('button', { name: 'Open Simple bracket', exact: true }).click();
   await expect(page.locator('.status-ready')).toContainText('Ready', { timeout: 120_000 });
   await page.getByRole('tab', { name: 'Graph', exact: true }).click();
   await page.getByRole('button', { name: 'Front', exact: true }).click();
-  await page.getByRole('button', { name: 'Selection mode', exact: true }).click();
+  await page.getByRole('group', { name: 'Pick geometry' }).getByRole('button', { name: 'Edges', exact: true }).click();
   await clickWorld(page, [18,-20,3]);
   await expect(page.getByRole('button', { name: 'Fillet selected edge', exact: true })).toBeDisabled();
   await expect(page.getByRole('button', { name: 'Chamfer selected edge', exact: true })).toBeEnabled();
-  await expect(page.getByText('Full-edge fillets are not supported on this end-face edge yet.', { exact: false })).toBeVisible();
+  await expect(page.getByRole('group', { name: 'Selected edge actions' })).toContainText('Choose Chamfer here, or click Iso and pick a corner that runs along the extrusion.');
   expect((await saveSource(page, 'unsupported-single-edge')).source).not.toContain('EdgeFinish');
 });
 
@@ -295,22 +339,26 @@ for (const kind of ['Fillet', 'Chamfer'] as const) test(`the inside L bend takes
   await expect(page.locator('.status-ready')).toContainText('Ready', { timeout: 120_000 });
   await page.getByRole('tab', { name: 'Graph', exact: true }).click();
   await page.getByRole('button', { name: 'Iso', exact: true }).click();
-  await page.getByRole('button', { name: 'Selection mode', exact: true }).click();
+  await page.getByRole('group', { name: 'Pick geometry' }).getByRole('button', { name: 'Edges', exact: true }).click();
   await clickWorld(page, [3,-10,3]);
   const canvas = page.locator('[data-testid="viewport"] canvas');
   await expect.poll(async () => JSON.parse((await canvas.getAttribute('data-topology-highlight'))!)).toMatchObject({ edges: 1, bodies: 0 });
+  await expect(page.getByRole('region', { name: 'Inspector', exact: true })).toContainText('Fillet and chamfer are available on this edge in Graph.');
   await page.screenshot({ path: resolve(output, 'inside-bend-edge-selected.png'), fullPage: true });
   await page.getByRole('button', { name: `${kind} selected edge`, exact: true }).click();
   await expect(panel(page).getByRole('region', { name: 'Selected edge' })).toContainText('Inside bend · full length');
   const field = kind === 'Fillet' ? 'Radius' : 'Distance';
   await panel(page).getByLabel(field, { exact: true }).fill('2');
-  await expect(panel(page).getByRole('status')).toContainText('Preview admitted');
+  await expect(panel(page).getByRole('status')).toContainText('Preview ready');
+  await expect(canvas).toHaveAttribute('data-operation-preview-wires', /^[1-9]\d*$/);
+  // The plain six-segment bracket has 18 edges. Preview should focus on the changed corner.
+  expect(Number(await canvas.getAttribute('data-operation-preview-wires'))).toBeLessThan(18);
   await page.screenshot({ path: resolve(output, `inside-bend-${kind.toLowerCase()}-preview.png`), fullPage: true });
   await panel(page).getByRole('button', { name: 'Apply', exact: true }).click(); await ready(page);
   const edited = await saveSource(page, `inside-bend-${kind.toLowerCase()}`);
   await expect(page.getByRole('treeitem', { name: new RegExp(`^Collapse Edge${kind} `) })).toHaveCount(1);
   expect(edited.source).toContain('Face: Longitudinal');
-  expect(edited.source).toContain('Target: section.Outer.Vertex3_Vertex4.Start');
+  expect(edited.source).toContain('Target: section.Outer.UprightSeat.Start');
   const exported = await step(page, `inside-bend-${kind.toLowerCase()}`, { min: [0,-20,0], max: [30,0,40] });
   expect(exported.match(/ADVANCED_FACE\(/g)).toHaveLength(9);
   if(kind === 'Fillet') expect(exported.match(/CYLINDRICAL_SURFACE\(/g)).toHaveLength(1);
@@ -326,18 +374,18 @@ test('an outside longitudinal corner takes a full-width round with size guards',
   await expect(page.locator('.status-ready')).toContainText('Ready', { timeout: 120_000 });
   await page.getByRole('tab', { name: 'Graph', exact: true }).click();
   await page.getByRole('button', { name: 'Iso', exact: true }).click();
-  await page.getByRole('button', { name: 'Selection mode', exact: true }).click();
+  await page.getByRole('group', { name: 'Pick geometry' }).getByRole('button', { name: 'Edges', exact: true }).click();
   await clickWorld(page, [30,-10,3]);
   await page.getByRole('button', { name: 'Fillet selected edge', exact: true }).click();
   await expect(panel(page).getByRole('region', { name: 'Selected edge' })).toContainText('Outside corner · full length');
   await panel(page).getByLabel('Radius', { exact: true }).fill('3');
-  await expect(panel(page).getByRole('alert')).toContainText('Preview refused');
+  await expect(panel(page).getByRole('alert')).toContainText('Reduce the Radius until the preview succeeds.');
   await expect(panel(page).getByRole('button', { name: 'Apply', exact: true })).toBeDisabled();
   await panel(page).getByLabel('Radius', { exact: true }).fill('0.5');
-  await expect(panel(page).getByRole('status')).toContainText('Preview admitted');
+  await expect(panel(page).getByRole('status')).toContainText('Preview ready');
   await panel(page).getByRole('button', { name: 'Apply', exact: true }).click(); await ready(page);
   const edited = await saveSource(page, 'outside-corner-fillet');
-  expect(edited.source).toContain('section.Outer.Vertex2_Vertex3.Start');
+  expect(edited.source).toContain('section.Outer.FootSeat.Start');
   await step(page, 'outside-corner-fillet', { min: [0,-20,0], max: [30,0,40] });
 });
 
@@ -351,15 +399,15 @@ test('a mounting hole accepts multiple corner finishes and collision refusals re
   let camera = JSON.parse((await canvas.getAttribute('data-surface-inspection'))!).camera, rect = (await canvas.boundingBox())!;
   await page.mouse.click(rect.x + rect.width / 2 + (16 - camera.target[0]) * rect.height / camera.span,
     rect.y + rect.height / 2 - (-10 - camera.target[1]) * rect.height / camera.span);
-  await expect(panel(page).getByRole('status')).toContainText('Preview admitted');
+  await expect(panel(page).getByRole('status')).toContainText('Preview ready');
   await panel(page).getByRole('button', { name: 'Apply', exact: true }).click(); await ready(page);
   const before = (await saveSource(page, 'single-edge-holed-before')).source;
   await page.getByRole('button', { name: 'Iso', exact: true }).click();
-  await page.getByRole('button', { name: 'Selection mode', exact: true }).click();
+  await page.getByRole('group', { name: 'Pick geometry' }).getByRole('button', { name: 'Edges', exact: true }).click();
   await clickWorld(page,[3,-10,3]);
   await page.getByRole('button', { name: 'Fillet selected edge', exact: true }).click();
   await panel(page).getByLabel('Radius', { exact: true }).fill('12');
-  await expect(panel(page).getByRole('alert')).toContainText('clearance');
+  await expect(panel(page).getByRole('alert')).toContainText('Reduce the Radius, or move the hole farther from this edge.');
   await expect(panel(page).getByRole('button', { name: 'Apply', exact: true })).toBeDisabled();
   await page.screenshot({ path: resolve(output, 'bracket-finish-hole-collision-refused.png'), fullPage: true });
   await panel(page).getByRole('button', { name: 'Cancel', exact: true }).click();
@@ -367,12 +415,12 @@ test('a mounting hole accepts multiple corner finishes and collision refusals re
   await clickWorld(page,[3,-10,3]);
   await page.getByRole('button', { name: 'Fillet selected edge', exact: true }).click();
   await panel(page).getByLabel('Radius', { exact: true }).fill('2');
-  await expect(panel(page).getByRole('status')).toContainText('Preview admitted');
+  await expect(panel(page).getByRole('status')).toContainText('Preview ready');
   await panel(page).getByRole('button', { name: 'Apply', exact: true }).click(); await ready(page);
   await clickWorld(page,[30,-10,3]);
   await page.getByRole('button', { name: 'Chamfer selected edge', exact: true }).click();
   await panel(page).getByLabel('Distance', { exact: true }).fill('0.5');
-  await expect(panel(page).getByRole('status')).toContainText('Preview admitted');
+  await expect(panel(page).getByRole('status')).toContainText('Preview ready');
   await panel(page).getByRole('button', { name: 'Apply', exact: true }).click(); await ready(page);
   await clickWorld(page,[30,-10,0]);
   await page.getByRole('button', { name: 'Fillet selected edge', exact: true }).click();
@@ -380,7 +428,7 @@ test('a mounting hole accepts multiple corner finishes and collision refusals re
   await expect(panel(page).getByRole('alert')).toContainText(/radius is too large|consumes an adjacent edge/);
   await expect(panel(page).getByRole('button', { name: 'Apply', exact: true })).toBeDisabled();
   await panel(page).getByLabel('Radius', { exact: true }).fill('0.5');
-  await expect(panel(page).getByRole('status')).toContainText('Preview admitted');
+  await expect(panel(page).getByRole('status')).toContainText('Preview ready');
   await panel(page).getByRole('button', { name: 'Apply', exact: true }).click(); await ready(page);
   const finished = (await saveSource(page, 'bracket-finished-mount')).source;
   expect(finished.match(/EdgeFinish /g)).toHaveLength(3);
@@ -391,13 +439,13 @@ test('a mounting hole accepts multiple corner finishes and collision refusals re
   await page.getByRole('button', { name: 'Top', exact: true }).click();
   await inspector(page).getByRole('button', { name: 'Add hole…', exact: true }).click();
   await clickWorld(page,[23,-6,3]);
-  await expect(panel(page).getByRole('status')).toContainText('Preview admitted');
+  await expect(panel(page).getByRole('status')).toContainText('Preview ready');
   const centerX = panel(page).getByRole('spinbutton', { name: 'Center X', exact: true });
   const centerY = panel(page).getByRole('spinbutton', { name: 'Center Y', exact: true });
   expect(Number(await centerX.inputValue())).toBeCloseTo(20, 1);
   expect(Number(await centerY.inputValue())).toBeCloseTo(14, 1);
   await centerX.fill('20'); await centerY.fill('14');
-  await expect(panel(page).getByRole('status')).toContainText('Preview admitted');
+  await expect(panel(page).getByRole('status')).toContainText('Preview ready');
   await panel(page).getByRole('button', { name: 'Apply', exact: true }).click(); await ready(page);
   const secondHole = (await saveSource(page, 'bracket-finished-two-mounts')).source;
   expect(secondHole).toContain('Point2(20mm, 14mm)');
@@ -414,21 +462,21 @@ test('a finished bracket accepts counterbore and countersink mounts on its two l
   await expect(page.locator('.status-ready')).toContainText('Ready', { timeout: 120_000 });
   await page.getByRole('tab', { name: 'Graph', exact: true }).click();
   await page.getByRole('button', { name: 'Iso', exact: true }).click();
-  await page.getByRole('button', { name: 'Selection mode', exact: true }).click();
+  await page.getByRole('group', { name: 'Pick geometry' }).getByRole('button', { name: 'Edges', exact: true }).click();
   await clickWorld(page,[3,-10,3]);
   await page.getByRole('button', { name: 'Fillet selected edge', exact: true }).click();
   await panel(page).getByLabel('Radius', { exact: true }).fill('2');
-  await expect(panel(page).getByRole('status')).toContainText('Preview admitted');
+  await expect(panel(page).getByRole('status')).toContainText('Preview ready');
   await panel(page).getByRole('button', { name: 'Apply', exact: true }).click(); await ready(page);
   await page.getByRole('button', { name: 'Top', exact: true }).click();
   await inspector(page).getByRole('button', { name: 'Counterbored hole…', exact: true }).click();
   await clickWorld(page,[16,-10,3]);
-  await expect(panel(page).getByRole('status')).toContainText('Preview admitted');
+  await expect(panel(page).getByRole('status')).toContainText('Preview ready');
   await panel(page).getByRole('button', { name: 'Apply', exact: true }).click(); await ready(page);
   await page.getByRole('button', { name: 'Iso', exact: true }).click();
   await inspector(page).getByRole('button', { name: 'Countersunk hole…', exact: true }).click();
   await clickWorld(page,[3,-10,25]);
-  await expect(panel(page).getByRole('status')).toContainText('Preview admitted');
+  await expect(panel(page).getByRole('status')).toContainText('Preview ready');
   await panel(page).getByRole('button', { name: 'Apply', exact: true }).click(); await ready(page);
   const source = (await saveSource(page, 'bracket-finished-recess-mounts')).source;
   expect(source).toContain('Hole<Counterbore>'); expect(source).toContain('Hole<Countersink>');
@@ -504,7 +552,7 @@ test('a block, offset through hole, atomic edits, chamfer and STEP all work with
   await expect(inspector(page).getByLabel('Diameter', { exact: true })).toHaveValue('10');
   const edited = await saveSource(page, 'through-hole-edited');
   expect(edited.source).toContain('Point2(-8mm, -4mm)'); expect(edited.source).toContain('Diameter: 10mm');
-  await inspector(page).getByRole('button', { name: 'Chamfer…', exact: true }).click();
+  await inspector(page).getByRole('button', { name: 'Chamfer face rim…', exact: true }).click();
   await panel(page).getByLabel('Distance', { exact: true }).fill('0.5'); await applyPreview(page);
   const finished = await step(page, 'through-hole-chamfer');
   expect((finished.match(/ADVANCED_FACE\(/g) ?? []).length).toBeGreaterThan(7);
@@ -514,10 +562,10 @@ test('a block, offset through hole, atomic edits, chamfer and STEP all work with
 test('rim previews keep the accepted solid and show gold candidate boundaries until Apply', async ({ page }) => {
   await newBlock(page);
   const before = (await saveSource(page, 'rim-before')).source;
-  await inspector(page).getByRole('button', { name: 'Fillet…', exact: true }).click();
+  await inspector(page).getByRole('button', { name: 'Fillet face rim…', exact: true }).click();
   await panel(page).getByLabel('Face', { exact: true }).selectOption('-Z');
   await panel(page).getByRole('button', { name: 'Preview', exact: true }).click();
-  await expect(panel(page).getByRole('status')).toContainText('Preview admitted');
+  await expect(panel(page).getByRole('status')).toContainText('Preview ready');
   await expect(page.locator('.authoring-preview-banner')).toContainText('gold boundaries');
   await expect.poll(async () => page.locator('[data-operation-preview-wires]').evaluateAll(nodes =>
     Math.max(0, ...nodes.map(n => Number(n.getAttribute('data-operation-preview-wires')))))).toBeGreaterThan(0);
@@ -528,17 +576,38 @@ test('rim previews keep the accepted solid and show gold candidate boundaries un
   await expect.poll(async () => page.locator('[data-operation-preview-wires]').evaluateAll(nodes =>
     Math.max(0, ...nodes.map(n => Number(n.getAttribute('data-operation-preview-wires')))))).toBe(0);
   expect((await saveSource(page, 'rim-cancelled')).source).toBe(before);
-  await inspector(page).getByRole('button', { name: 'Fillet…', exact: true }).click();
-  await panel(page).getByLabel('Face', { exact: true }).selectOption('+X');
+  await page.getByRole('button', { name: 'Right', exact: true }).click();
+  await clickWorld(page, [30, 0, 6]);
+  await inspector(page).getByRole('button', { name: 'Fillet face rim…', exact: true }).click();
+  await panel(page).getByRole('button', { name: 'Use picked face · +X', exact: true }).click();
+  await expect(panel(page).getByLabel('Face', { exact: true })).toHaveValue('+X');
   await applyPreview(page);
   expect((await saveSource(page, 'right-rim')).source).toContain('Face: +X');
   const exported = await step(page, 'right-rim');
   expect((exported.match(/ADVANCED_FACE\(/g) ?? []).length).toBe(10);
 });
 
+test('the bracket rim defaults to an extrusion cap and uses a picked cap after a manual change', async ({ page }) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Open Simple bracket', exact: true }).click();
+  await page.getByRole('tab', { name: 'Graph', exact: true }).click();
+  await ready(page);
+  await page.getByRole('button', { name: 'Front', exact: true }).click();
+  await clickWorld(page, [18, -20, 1.5]);
+  await inspector(page).getByRole('button', { name: 'Chamfer face rim…', exact: true }).click();
+  const face = panel(page).getByLabel('Face', { exact: true });
+  await expect(face).toHaveValue('Top');
+  await expect(face.locator('option')).toHaveText(['Top', 'Bottom', 'Other expression…']);
+  await face.selectOption('Bottom');
+  await panel(page).getByRole('button', { name: 'Use picked face · Top', exact: true }).click();
+  await expect(face).toHaveValue('Top');
+  await applyPreview(page);
+  expect((await saveSource(page, 'bracket-cap-rim')).source).toContain('Face: Top');
+});
+
 for (const [action, finish, type] of [
-  ['Counterbored hole…', 'Fillet…', 'CYLINDRICAL_SURFACE'],
-  ['Countersunk hole…', 'Chamfer…', 'CONICAL_SURFACE'],
+  ['Counterbored hole…', 'Fillet face rim…', 'CYLINDRICAL_SURFACE'],
+  ['Countersunk hole…', 'Chamfer face rim…', 'CONICAL_SURFACE'],
 ] as const) test(`${action} and ${finish} compile and export through graph controls`, async ({ page }) => {
   await newBlock(page); await inspector(page).getByRole('button', { name: action, exact: true }).click();
   await panel(page).getByLabel('X', { exact: true }).fill('8'); await applyPreview(page);
@@ -546,6 +615,36 @@ for (const [action, finish, type] of [
   const exported = await step(page, action.startsWith('Counterbored') ? 'counterbore-fillet' : 'countersink-chamfer');
   expect(exported).toContain(type);
   expect((exported.match(/ADVANCED_FACE\(/g) ?? []).length).toBeGreaterThan(7);
+});
+
+test('a Box accepts a plain hole, two recesses and a picked side rim with clearance', async ({ page }) => {
+  await newBlock(page);
+  for (const [action, x, y] of [['Add hole…', '-12', '0'], ['Countersunk hole…', '24', '0'], ['Counterbored hole…', '0', '-10']]) {
+    await inspector(page).getByRole('button', { name: action, exact: true }).click();
+    await panel(page).getByLabel('X', { exact: true }).fill(x);
+    await panel(page).getByLabel('Y', { exact: true }).fill(y);
+    await applyPreview(page);
+  }
+  const accepted = (await saveSource(page, 'box-mixed-holes')).source;
+  expect(accepted).toContain('Hole<Countersink>');
+  expect(accepted).toContain('Hole<Counterbore>');
+  await page.getByRole('button', { name: 'Right', exact: true }).click();
+  await clickWorld(page, [30, 0, 6]);
+  await inspector(page).getByRole('button', { name: 'Fillet face rim…', exact: true }).click();
+  await panel(page).getByRole('button', { name: 'Use picked face · +X', exact: true }).click();
+  await expect(panel(page).getByLabel('Face', { exact: true })).toHaveValue('+X');
+  await panel(page).getByLabel('Radius', { exact: true }).fill('3');
+  await panel(page).getByRole('button', { name: 'Preview', exact: true }).click();
+  await expect(panel(page).getByRole('alert')).toContainText('Reduce the Radius');
+  await expect(panel(page).getByRole('button', { name: 'Apply', exact: true })).toBeDisabled();
+  expect((await saveSource(page, 'side-rim-refused')).source).toBe(accepted);
+  await panel(page).getByLabel('Radius', { exact: true }).fill('1');
+  await applyPreview(page);
+  expect((await saveSource(page, 'box-mixed-side-rim')).source).toContain('Face: +X');
+  const exported = await step(page, 'box-mixed-side-rim');
+  expect((exported.match(/ADVANCED_FACE\(/g) ?? []).length).toBe(16);
+  expect((exported.match(/ELLIPSE\(/g) ?? []).length).toBe(4);
+  expect(exported).toContain('CONICAL_SURFACE');
 });
 
 test('bad previews and bad applied drafts retain geometry and recover without the code editor', async ({ page }) => {
