@@ -47,7 +47,8 @@ for (const provider of providers) test(provider.id + ' key form and tool replay 
     return respond({ candidates: [{ finishReason: 'STOP', content: { role: 'model', parts: call
       ? [{ functionCall: { id: 'edit', name: 'edit_file', args }, thoughtSignature: 'fixture-signature' }] : [{ text: summary }] } }] });
   });
-  await page.goto('/local');
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Open Simple bracket', exact: true }).click();
   await expect(page.locator('.status-ready')).toContainText('Ready', { timeout: 120_000 });
   await page.getByRole('banner').locator('input[type=file]').setInputFiles('fixtures/author-local/part.firmament');
   await expect(page.getByRole('banner')).toContainText('part.firmament');
