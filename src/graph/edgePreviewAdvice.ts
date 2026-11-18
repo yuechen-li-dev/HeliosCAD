@@ -1,4 +1,4 @@
-import type { Diagnostic, DisplayEdgePolyline, OutlineNode, SelectionDescription } from '@aetheris/cad';
+import type { Diagnostic, OutlineNode, SelectionDescription } from '@aetheris/cad';
 
 /** Translate a compiler-owned face selector to EdgeFinish's face vocabulary. */
 export function pickedRimFace(selection: SelectionDescription | null, body: OutlineNode | undefined): string | null {
@@ -32,7 +32,7 @@ export function edgePreviewAdvice(
   if (/ProfileBoundary(?:ChamferDistance|FilletRadius)MustBePositive/.test(evidence)) {
     return `Set ${size} above 0 mm.`;
   }
-  if (/radius is too large|adjacent edge|another boundary or finish|(?:Radius|Distance|Finish)(?:TooLarge|ExceedsHost)|InsetCollapse|bounded top-boundary finish size/i.test(evidence)) {
+  if (/radius is too large|adjacent edge|another boundary or finish|(?:Radius|Distance|Finish)(?:TooLarge|ExceedsHost)|InsetCollapse|bounded top-boundary finish size|BoxSingleEdgeSizeRejected/i.test(evidence)) {
     return `This ${size.toLowerCase()} is too large for the available material at the ${singleEdge ? 'selected edge' : 'face rim'}. Reduce the ${size} until the preview succeeds.`;
   }
   if (/compose-oriented-feature-not-admitted|Other Compose operations are not supported|CornerFinishHost/.test(evidence)) {
@@ -56,7 +56,7 @@ export function edgePreviewAdvice(
 }
 
 /** A pick can be useful for inspection even when it has no authored finish selector. */
-export function edgeSelectionHelp(selection: SelectionDescription, edges?: readonly DisplayEdgePolyline[]): string {
+export function edgeSelectionHelp(selection: SelectionDescription): string {
   if (selection.edgeFinish?.filletSupported === false) {
     return 'Full-edge fillets are not supported on this end-face edge. Choose Chamfer here, or click Iso and pick a corner that runs along the extrusion.';
   }
@@ -64,11 +64,8 @@ export function edgeSelectionHelp(selection: SelectionDescription, edges?: reado
   if (selection.sourceAddressability === 'ImportedStable') {
     return 'This edge comes from imported geometry. Open the original editable part to fillet or chamfer it here.';
   }
-  if (edges?.some(edge => edge.edgeFinish?.target === 'SharedEdgePlusZ')) {
-    return 'Click Top, then pick the right-hand edge (+X / +Z) for a single-edge box finish. Use Chamfer face rim or Fillet face rim for the whole rim.';
-  }
   if (selection.edgeFinishReason?.includes('picked-face holes')) {
     return 'The picked-face holes on this part cannot be combined with a corner finish. Try the finish on the original extrusion before placing the holes.';
   }
-  return 'This edge has no available finish. Choose an original straight corner on an extrusion. On a finished corner, edit the finish already listed in Graph.';
+  return selection.edgeFinishReason ?? 'Choose an original straight outer edge on a Box or extrusion. To resize an existing finish, select it in Graph.';
 }

@@ -269,8 +269,8 @@ for (const kind of ['Fillet', 'Chamfer'] as const) test(`a picked Box face-pair 
   if (kind === 'Fillet') {
     await clickWorld(page, [-30, 0, 12]);
     const actions = page.getByRole('group', { name: 'Selected edge actions' });
-    await expect(actions.getByRole('button', { name: 'Fillet selected edge', exact: true })).toBeDisabled();
-    await expect(actions).toContainText('Click Top, then pick the right-hand edge (+X / +Z) for a single-edge box finish.');
+    await expect(actions.getByRole('button', { name: 'Fillet selected edge', exact: true })).toBeEnabled();
+    await expect(actions).toContainText('-X / +Z');
   }
   await page.mouse.click(rect.x + rect.width / 2 + (30 - camera.target[0]) * rect.height / camera.span,
     rect.y + rect.height / 2 + camera.target[1] * rect.height / camera.span);
@@ -283,6 +283,42 @@ for (const kind of ['Fillet', 'Chamfer'] as const) test(`a picked Box face-pair 
   expect(edited.source).toContain('Face: +X'); expect(edited.source).toContain('Target: SharedEdgePlusZ');
   const exported = await step(page, `box-single-edge-${kind.toLowerCase()}`, bounds);
   expect(exported.match(/ADVANCED_FACE\(/g)).toHaveLength(7);
+});
+
+for (const kind of ['Fillet', 'Chamfer'] as const) test(`a drilled Box can ${kind.toLowerCase()} its picked front edge without reaching the countersink`, async ({ page }) => {
+  await newBlock(page);
+  await inspector(page).getByRole('button', { name: 'Add hole…', exact: true }).click();
+  await applyPreview(page);
+  await inspector(page).getByRole('button', { name: 'Countersunk hole…', exact: true }).click();
+  await panel(page).getByLabel('X', { exact: true }).fill('-10');
+  await panel(page).getByLabel('Y', { exact: true }).fill('-14');
+  await applyPreview(page);
+  const original = (await saveSource(page, `box-drilled-before-${kind}`)).source;
+  await page.getByRole('button', { name: 'Top', exact: true }).click();
+  await page.getByRole('group', { name: 'Pick geometry' }).getByRole('button', { name: 'Edges', exact: true }).click();
+  await clickWorld(page, [0, -20, 12]);
+  const actions = page.getByRole('group', { name: 'Selected edge actions' });
+  await expect(actions).toContainText('-Y / +Z');
+  await expect(actions.getByRole('button', { name: 'Fillet selected edge', exact: true })).toBeEnabled();
+  await expect(actions.getByRole('button', { name: 'Chamfer selected edge', exact: true })).toBeEnabled();
+  await actions.getByRole('button', { name: `${kind} selected edge`, exact: true }).click();
+  const size = panel(page).getByLabel(kind === 'Fillet' ? 'Radius' : 'Distance', { exact: true });
+  await size.fill('3');
+  await expect(panel(page).getByRole('alert')).toContainText('clearance around the hole');
+  await expect(panel(page).getByRole('button', { name: 'Apply', exact: true })).toBeDisabled();
+  expect((await saveSource(page, `box-drilled-refused-${kind}`)).source).toBe(original);
+  await size.fill('1');
+  await expect(panel(page).getByRole('status')).toContainText('Preview ready');
+  await panel(page).getByRole('button', { name: 'Apply', exact: true }).click();
+  await ready(page);
+  const edited = (await saveSource(page, `box-drilled-edge-${kind}`)).source;
+  expect(edited).toContain('Face: -Y');
+  expect(edited).toContain('Target: SharedEdgePlusZ');
+  expect(edited).toContain('Hole<Countersink>');
+  const exported = await step(page, `box-drilled-edge-${kind}`, { min: [-30,-20,0], max: [30,20,12] });
+  expect(exported.match(/ADVANCED_FACE\(/g)).toHaveLength(10);
+  expect(exported.match(/CONICAL_SURFACE\(/g)).toHaveLength(1);
+  expect(exported.match(/CYLINDRICAL_SURFACE\(/g)).toHaveLength(kind === 'Fillet' ? 3 : 2);
 });
 
 test('an end-face edge does not offer the inset partial fillet', async ({ page }) => {

@@ -730,8 +730,7 @@ export function HeliosApp({ project, initialWorkspace, chooseBase = false, onSho
       : pendingGraphFields ? 'Apply or discard the current graph edits first.'
       : busy || buildStarted !== null || outline?.document !== sourceName || outline.revision !== String(sourceRevision) ? 'Wait for the current build to finish.'
       : '';
-    const definition = model?.mesh.definitions.find(item => item.id === selectedSelection.definitionId);
-    const nextStep = unavailable || edgeSelectionHelp(selectedSelection, definition?.edges);
+    const nextStep = unavailable || edgeSelectionHelp(selectedSelection);
     return <div className="edge-feature-actions" role="group" aria-label="Selected edge actions">
       {edge && picks.length === 1 && <small className="selected-edge-kind">{edge.label}</small>}
       {(['fillet', 'chamfer'] as const).map(kind => {
