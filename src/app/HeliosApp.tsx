@@ -39,7 +39,7 @@ import { assembliesOf, buildAssemblyGraph, type AssemblyEnd } from '../graph/ass
 import type { AssemblyView } from '../graph/GraphPanel';
 import { MotionStrip } from '../viewport/MotionStrip';
 import { poseCoverage } from '../viewport/pose';
-import type { ExportFormat } from '@aetheris/cad';
+import type { ExportFormat, PmiOffsets } from '@aetheris/cad';
 import { ExportPicker } from './ExportPicker';
 import { importedProject, isStep, packProject, sourceFiles, unpackProject } from './localProject';
 import { registerRecoverableSource } from './crashRecovery';
@@ -71,6 +71,7 @@ export function HeliosApp({ project, initialWorkspace, chooseBase = false, onSho
   const openIntelliDraftRef = useRef<(node?: string | null) => void>(() => {});
   const shellLayout = useShellLayout(editorMode === 'graph' ? 'graph' : 'source');
   const [model, setModel] = useState<ModelSession | null>(null);
+  const [pmiOffsets, setPmiOffsets] = useState<PmiOffsets>({});
   const [showConcepts, setShowConcepts] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
   const [semanticSchema, setSemanticSchema] = useState<SemanticSchema | null>(null);
@@ -265,7 +266,7 @@ export function HeliosApp({ project, initialWorkspace, chooseBase = false, onSho
     setSaveState(project ? 'Unsaved' : 'Saved');
     setDirtyFiles(project ? new Set([nextName]) : new Set());
     if (!project) savedSources.current = { ...projectDocuments.current, [nextName]: nextSource };
-    await submitBuild(nextSource, nextName, sourceRevisionRef.current);
+    if (await submitBuild(nextSource, nextName, sourceRevisionRef.current)) setPmiOffsets({});
   }, [source, sourceName]);
 
   useEffect(() => {
@@ -821,7 +822,9 @@ export function HeliosApp({ project, initialWorkspace, chooseBase = false, onSho
     setBusy('Exporting');
     pushOutput(`Export started · ${formats.join(', ')} · ${projectRoot.current ?? sourceName}`);
     try {
-      const files = await runtime.exportArtifacts(formats);
+      const files = formats.includes('glb') && Object.keys(pmiOffsets).length
+        ? await runtime.exportArtifacts(formats, { pmiOffsets })
+        : await runtime.exportArtifacts(formats);
       if (revision !== sourceRevisionRef.current) { pushOutput('Export discarded · source changed while preparing files.'); return; }
       for (const file of files) {
         downloadBlob(new Blob([Uint8Array.from(file.bytes).buffer], { type: file.mediaType }), file.fileName);
@@ -1044,6 +1047,7 @@ export function HeliosApp({ project, initialWorkspace, chooseBase = false, onSho
         }}>Add hole on selected face</button>}
         {previewModel && <div className="authoring-preview-banner" role="status">Preview · {wireframePreview ? 'gold boundaries · ' : ''}source unchanged · Apply or Cancel</div>}
         <Viewport placingFeature={placingHole} placementGuide={placementGuide} placementActions={placementActions} measurement={previewModel ? null : selectionMeasurement.result}
+          pmiOffsets={pmiOffsets} onPmiOffsetsChange={setPmiOffsets} arrangePmi={!previewModel && !pendingAuthoring && !busy && buildStarted === null}
           extraSelections={previewModel ? undefined : extraSelections} showConcepts={showConcepts} pose={previewModel ? null : pose} busyMessage={busy === 'Worker failed' ? null : busy} errorMessage={shownDiagnostics.some(item => item.severity === 'error') ? (model ? 'Build failed. The last valid model remains visible; see Problems for details.' : 'Build needs attention. See Problems for the compiler diagnostic.') : null} model={wireframePreview ? model : previewModel ?? model} wireframePreview={wireframePreview} selectedEntityId={previewModel ? null : selectedEntityId} selectedTopologyId={previewModel ? null : selectedFaceId} selectedOccurrenceId={previewModel ? null : selectedSelection?.occurrenceId} theme={theme} displayMode={displayMode} viewMode={viewMode} viewCommand={previewModel && !wireframePreview ? `fit-preview-${previewModel.id}` : viewCommand} selectionMode={editorMode === 'label' ? 'face' : selectionMode} onSelect={previewModel || busy === 'Checking label' ? () => {} : select} captureRef={capturePreview}>
           {!previewModel && !pendingAuthoring && <SelectionCard picks={picks} measurement={selectionMeasurement} inches={measureInches} onToggleUnits={() => setMeasureInches(v => !v)}
             onRemove={removePick} onClear={clearPicks} onLabel={editorMode === 'label' ? undefined : () => { if (canLeaveGraphFields()) setEditorMode('label'); }} />}

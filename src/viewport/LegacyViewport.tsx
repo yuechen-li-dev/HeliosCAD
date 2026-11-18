@@ -11,11 +11,15 @@ import { HELIOS_PRESENTATIONS } from './presentation';
 import { referenceGrid } from './referenceGrid';
 import { posedMesh } from './pose';
 import { bindFeaturePlacement, placementLines, type FeaturePlacementProps } from './featurePlacement';
+import type { PmiDisplayAnnotation } from '@aetheris/cad';
+import type { ViewRay } from './pmiDrawingLayout';
 
 interface Props extends FeaturePlacementProps {
   measurement?: MeasurementResult | null;
   pmiStyle?: PmiStyle;
   projectRef?: MutableRefObject<((point: readonly number[]) => readonly [number, number, number] | null) | null>;
+  rayRef?: MutableRefObject<ViewRay | null>;
+  pmiAnnotations?: readonly PmiDisplayAnnotation[];
   extraSelections?: readonly { readonly occurrenceId: string; readonly topologyId: string }[];
   showConcepts?: boolean;
   busyMessage?: string | null;
@@ -64,11 +68,12 @@ export function LegacyViewport(props: Props) {
       return selection;
     });
     if (props.captureRef) props.captureRef.current = sceneState.capture;
+    if (props.rayRef) props.rayRef.current = cameraRay;
     if (props.projectRef) props.projectRef.current = point => {
       const v = new THREE.Vector3(point[0], point[1], point[2]).project(sceneState.camera);
       return v.z > 1 || v.z < -1 ? null : [(v.x + 1) / 2 * element.clientWidth, (1 - v.y) / 2 * element.clientHeight, v.z];
     };
-    return () => { unbindPlacement(); if (props.captureRef) props.captureRef.current = null; if (props.projectRef) props.projectRef.current = null; sceneState.dispose(); state.current = null; };
+    return () => { unbindPlacement(); if (props.captureRef) props.captureRef.current = null; if (props.projectRef) props.projectRef.current = null; if (props.rayRef) props.rayRef.current = null; sceneState.dispose(); state.current = null; };
   }, []);
 
   useEffect(() => {
@@ -100,9 +105,9 @@ export function LegacyViewport(props: Props) {
   }, [props.wireframePreview]);
   useEffect(() => {
     const current = state.current; if (!current) return;
-    const group = pmiGroup(props.model?.mesh.annotations, props.pmiStyle); current.scene.add(group); current.invalidate();
+    const group = pmiGroup(props.pmiAnnotations, props.pmiStyle); current.scene.add(group); current.invalidate();
     return () => { disposePmiGroup(group); current.invalidate(); };
-  }, [props.model, props.model?.revision, props.pmiStyle]);
+  }, [props.pmiAnnotations, props.pmiStyle]);
   useEffect(() => {
     const current = state.current;
     current?.renderer.domElement.setAttribute('data-concept-wires', '0');
