@@ -2,6 +2,7 @@ import { forwardRef, useEffect, useImperativeHandle, useLayoutEffect, useRef, us
 import Editor, { loader, type OnMount } from '@monaco-editor/react';
 import * as editorApi from '../../node_modules/monaco-editor/esm/vs/editor/editor.api.js';
 import '../../node_modules/monaco-editor/esm/vs/editor/contrib/suggest/browser/suggestController.js';
+import '../../node_modules/monaco-editor/esm/vs/editor/contrib/parameterHints/browser/parameterHints.js';
 import '../../node_modules/monaco-editor/esm/vs/editor/contrib/semanticTokens/browser/documentSemanticTokens.js';
 import '../../node_modules/monaco-editor/esm/vs/editor/contrib/hover/browser/hoverContribution.js';
 import '../../node_modules/monaco-editor/esm/vs/editor/contrib/gotoSymbol/browser/goToCommands.js';
@@ -179,7 +180,7 @@ export const SourcePanel = forwardRef<SourcePanelHandle, Props>(function SourceP
   useLayoutEffect(syncSourceFromProps, [source, fileName, sourceRevision]);
   useEffect(() => {
     const registration = client.current?.register(monaco, {
-      ownsDocument: document => editor.current?.getModel() === document,
+      ownsDocument: document => document.uri.path === `/document-${documentId.current}/${sourceState.current.fileName}`,
       onFormatError: error => onLanguageErrorRef.current?.(error),
       onNavigate: reference => onNavigateSourceRef.current?.(reference),
     });

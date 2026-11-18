@@ -7,6 +7,8 @@
 .knot-logo--hero { width:136px; height:136px; }
 .knot-logo--hero canvas { filter:brightness(var(--logo-brightness)) drop-shadow(0 0 3px #e7b32c3d) drop-shadow(0 0 9px #e7b32c1f); }
 .knot-logo--hero .knot-logo-fallback { inset:24px; font-size:54px; }
+.knot-motion-button { position:absolute; z-index:1; right:0; bottom:0; display:grid; place-items:center; width:26px; height:26px; padding:0; border:1px solid var(--border); color:var(--text-secondary); background:var(--panel-bg); font-size:12px; line-height:1; cursor:pointer; }
+.knot-motion-button:hover, .knot-motion-button:focus-visible { color:var(--text-primary); border-color:var(--accent); }
 .welcome-lockup { display:flex; align-items:center; justify-content:center; gap:16px; margin-bottom:8px; }
 .welcome-lockup .welcome-wordmark { margin:0; }
 @media(max-width:760px) { .welcome-lockup { flex-direction:column; gap:4px; }.knot-logo--hero { width:104px; height:104px; } }

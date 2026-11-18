@@ -1,6 +1,9 @@
 import { measurementLines, pmiLines, pmiMeshes, pmiBodyMaterial, type MeasurementResult, type PmiStyle } from '@aetheris/three-telos';
 import { PmiMarkers, type Project } from './PmiMarkers';
-import { markerColor } from './pmiMarkers';
+import { drawingLabels, PmiDrawingDrag } from './PmiDrawingDrag';
+import { placeDrawingLabels, type Point3, type ViewRay } from './pmiDrawingLayout';
+import type { PmiDisplayAnnotation, PmiOffsets } from '@aetheris/cad';
+import { markerColor } from './pmiMarkerLayout';
 import {
   lazy,
   Suspense,
@@ -24,7 +27,7 @@ import {
   type TelosScene,
   type TelosMesh,
 } from "@aetheris/three-telos";
-import type { ModelSession, MotionPose, SelectionDescription } from "@aetheris/cad";
+import type { DisplayMesh, ModelSession, MotionPose, SelectionDescription } from "@aetheris/cad";
 import { posedMesh } from "./pose";
 import { applyNamedView, WORLD_UP } from "./viewCommands";
 import type { DisplayMode, ThemeName, ViewMode } from "../app/types";
@@ -48,7 +51,7 @@ interface Props extends FeaturePlacementProps {
   aaDebug?: import("@aetheris/three-telos").TelosAADebug;
   model: ModelSession | null;
   /** Retained candidate edges over the accepted solid; no candidate faces. */
-  wireframePreview?: ModelSession | null;
+  wireframePreview?: DisplayMesh | null;
   /** A sampled motion pose; the viewport shows the built model moved to it. */
   pose?: MotionPose | null;
   selectedEntityId: string | null;
@@ -72,6 +75,11 @@ interface Props extends FeaturePlacementProps {
   pmiStyle?: PmiStyle;
   /** World millimetres to viewport CSS pixels and depth, or null off screen; set by the renderer. */
   projectRef?: MutableRefObject<Project | null>;
+  rayRef?: MutableRefObject<ViewRay | null>;
+  pmiAnnotations?: readonly PmiDisplayAnnotation[];
+  pmiOffsets?: PmiOffsets;
+  onPmiOffsetsChange?: (offsets: PmiOffsets) => void;
+  arrangePmi?: boolean;
   captureRef?: MutableRefObject<(() => string) | null>;
 }
 
@@ -91,14 +99,27 @@ export function probeWebGpu(): Promise<string | null> {
  * renderer. Both share the camera convention in viewCommands.ts, so the model looks the same. */
 const PMI_STYLE_KEY = 'helios.viewport.pmi-style';
 function readPmiStyle(): PmiStyle { try { return localStorage.getItem(PMI_STYLE_KEY) === 'drawing' ? 'drawing' : 'markers'; } catch { return 'markers'; } }
+const defaultPmiOffsets: PmiOffsets = {};
 
 export function Viewport(props: Props) {
   const [pmiStyle, setPmiStyle] = useState<PmiStyle>(readPmiStyle);
+  const [legendOpen, setLegendOpen] = useState(true);
   const projectRef = useRef<Project | null>(null);
+  const rayRef = useRef<ViewRay | null>(null);
   const composeRef = useRef<((context: CanvasRenderingContext2D, scale: number) => void) | null>(null);
   const rendererCapture = useRef<(() => string) | null>(null);
   const shell = useRef<HTMLDivElement>(null);
-  const annotations = props.model?.mesh.annotations ?? [];
+  const legendRef = useRef<HTMLElement>(null);
+  const baseAnnotations = props.model?.mesh.annotations;
+  const annotations = baseAnnotations ?? [];
+  const labels = useMemo(() => drawingLabels(baseAnnotations ?? []), [baseAnnotations]);
+  const [draft, setDraft] = useState<{ key: string; offset: Point3 } | null>(null);
+  const offsets = props.pmiOffsets ?? defaultPmiOffsets;
+  const activeOffsets = useMemo(() => draft ? { ...offsets, [draft.key]: draft.offset } : offsets, [draft, offsets]);
+  const drawing = useMemo(() => pmiStyle === 'drawing' ? placeDrawingLabels(baseAnnotations, activeOffsets) : baseAnnotations,
+    [pmiStyle, baseAnnotations, activeOffsets]);
+  const canArrange = pmiStyle === 'drawing' && props.arrangePmi && !!labels.length && !!props.onPmiOffsetsChange;
+  useEffect(() => { setDraft(null); }, [canArrange, props.model?.id, props.model?.revision]);
   const markers = pmiStyle === 'markers' && annotations.length > 0;
   const { captureRef } = props;
   useEffect(() => {
@@ -118,18 +139,34 @@ export function Viewport(props: Props) {
   }, [captureRef, markers]);
   const choose = (style: PmiStyle) => { setPmiStyle(style); try { localStorage.setItem(PMI_STYLE_KEY, style); } catch { /* per-viewer preference */ } };
   return <div ref={shell} tabIndex={0} style={{position:'relative',width:'100%',height:'100%'}} aria-label="Model workspace">
-    <ViewportRenderer {...props} pmiStyle={pmiStyle} projectRef={projectRef} captureRef={rendererCapture} />
-    {markers && <PmiMarkers annotations={annotations} projectRef={projectRef} composeRef={composeRef} />}
+    <ViewportRenderer {...props} pmiStyle={pmiStyle} pmiAnnotations={drawing} projectRef={projectRef} rayRef={rayRef} captureRef={rendererCapture} />
+    {markers && <PmiMarkers annotations={annotations} projectRef={projectRef} composeRef={composeRef} legendRef={legendRef} />}
+    {canArrange && <PmiDrawingDrag key={`${props.model?.id}:${props.model?.revision}`} labels={labels} offsets={activeOffsets} projectRef={projectRef} rayRef={rayRef}
+      preview={(key, offset) => setDraft({ key, offset })} commit={(key, offset) => {
+        setDraft(null);
+        if (offset) {
+          const next = { ...offsets };
+          if (offset.some(value => Math.abs(value) > 1e-7)) next[key] = offset;
+          else delete next[key];
+          props.onPmiOffsetsChange?.(next);
+        }
+      }} />}
     {props.children}
-    {annotations.length > 0 && <aside className="pmi-legend" aria-label="PMI annotations">
+    {annotations.length > 0 && <aside ref={legendRef} className="pmi-legend" aria-label="PMI annotations">
       <div className="pmi-legend-head"><strong>PMI · mm</strong>
         <span role="radiogroup" aria-label="PMI style">{(['markers', 'drawing'] as const).map(style =>
           <button key={style} type="button" role="radio" aria-checked={pmiStyle === style} className={pmiStyle === style ? 'active' : ''}
             title={style === 'markers' ? 'Numbered tags on coloured targets: for checking and screenshots' : 'ASME drawing presentation, as exported to annotated GLB'}
-            onClick={() => choose(style)}>{style === 'markers' ? 'Markers' : 'Drawing'}</button>)}</span></div>
-      {annotations.map((item, i) => <div key={item.id} className="pmi-legend-row">
+            onClick={() => choose(style)}>{style === 'markers' ? 'Markers' : 'Drawing'}</button>)}</span>
+        <button type="button" className="pmi-legend-toggle" aria-expanded={legendOpen}
+          onClick={() => setLegendOpen(open => !open)}>{legendOpen ? 'Hide list' : 'Show list'}</button></div>
+      {canArrange && <div className="pmi-layout-controls">
+        <small>Drag callouts to rearrange them. GLB uses this layout.</small>
+        {labels.some(label => offsets[label.key]) && <button type="button" onClick={() => props.onPmiOffsetsChange?.({})}>Reset layout</button>}
+      </div>}
+      {legendOpen && annotations.map((item, i) => <div key={item.id} className="pmi-legend-row">
         {pmiStyle === 'markers' && <b style={{ background: markerColor(i) }}>{i + 1}</b>}<span>{item.name}</span> {item.text}</div>)}
-      {pmiStyle === 'markers' && <small>Numbers follow the Pmi block; each colour marks its referenced surface.</small>}
+      {legendOpen && pmiStyle === 'markers' && <small>Numbers follow the Pmi block; each colour marks its referenced surface.</small>}
     </aside>}
   </div>;
 }
@@ -260,14 +297,14 @@ function TelosViewport(props: Props & { onRetry(): void; onUnavailable(reason: s
     canvas.current?.setAttribute('data-topology-highlight', JSON.stringify({ edge: value.selectedTopologyId, targets: targets.length, edges: selectedEdges.length,
       bodies: meshes.filter(mesh => mesh.selected && !mesh.overlay).length, occurrence: value.selectedOccurrenceId ?? null }));
     const concepts = value.showConcepts && value.model ? conceptWireframe(posedMesh(value.model.mesh, value.pose)) : [];
-    const preview = value.wireframePreview ? operationPreviewWireframe(value.wireframePreview.mesh) : [];
+    const preview = value.wireframePreview ? operationPreviewWireframe(value.wireframePreview) : [];
     canvas.current?.setAttribute("data-operation-preview-wires", String(preview.length / 2));
     canvas.current?.setAttribute("data-concept-wires", String(concepts.length / 2));
     const displayScene = { ...scene, meshes, lines, fields: scene.fields.map(f=>({...f, selected:!topology && selectedIds.has(f.identity.occurrenceId), visible:value.displayMode !== "wireframe"})) };
     const inspected = inspectSurfaces(inspection.current.mode === "normal" && !inspection.current.face ? displayScene : scene,
       inspection.current.mode, inspection.current.face);
-    current.setScene({ ...inspected, meshes: [...inspected.meshes, ...pmiMeshes(value.model?.mesh.annotations, value.pmiStyle)],
-      lines: [...inspected.lines, ...edgeHalos, ...concepts, ...preview, ...placementLines(value.placementGuide), ...measurementLines(value.measurement ?? null), ...pmiLines(value.model?.mesh.annotations, value.pmiStyle)] });
+    current.setScene({ ...inspected, meshes: [...inspected.meshes, ...pmiMeshes(value.pmiAnnotations, value.pmiStyle)],
+      lines: [...inspected.lines, ...edgeHalos, ...concepts, ...preview, ...placementLines(value.placementGuide), ...measurementLines(value.measurement ?? null), ...pmiLines(value.pmiAnnotations, value.pmiStyle)] });
     canvas.current?.setAttribute('data-feature-placement', JSON.stringify(value.placementGuide ? { center: value.placementGuide.center, diameter: value.placementGuide.diameter, selector: value.placementGuide.selection.selector } : null));
     canvas.current?.setAttribute("data-surface-inspection", JSON.stringify({ mode: inspection.current.mode,
       isolatedFace: inspection.current.face ?? null,
@@ -352,9 +389,10 @@ function TelosViewport(props: Props & { onRetry(): void; onUnavailable(reason: s
         { additive: event.ctrlKey || event.metaKey || event.shiftKey },
       );
     };
-    const unbindPlacement = bindFeaturePlacement(element, () => latest.current, p => {
+    const cameraRay = (p: [number, number]) => {
       const ray = host.current!.camera.worldRay(p); return { origin: ray.origin.toArray(), direction: ray.direction.toArray() };
-    }, p => {
+    };
+    const unbindPlacement = bindFeaturePlacement(element, () => latest.current, cameraRay, p => {
       const hit = host.current?.picker.pick(p, 'face');
       return hit?.definitionId ? latest.current.model?.describeSelection(hit.definitionId, hit.triangleIndex ?? 0, hit.occurrenceId) ?? null : null;
     });
@@ -405,6 +443,7 @@ function TelosViewport(props: Props & { onRetry(): void; onUnavailable(reason: s
             const [x, y, z] = current.camera.project(point);
             return z < 0 || z > 1 ? null : [x, y, z];
           };
+        if (latest.current.rayRef) latest.current.rayRef.current = cameraRay;
       })
       .catch((error) => {
         // Telos never started: the WebGL renderer can still show the model.
@@ -419,13 +458,14 @@ function TelosViewport(props: Props & { onRetry(): void; onUnavailable(reason: s
       element.removeEventListener("pointerleave", move);
       if (latest.current.captureRef) latest.current.captureRef.current = null;
       if (latest.current.projectRef) latest.current.projectRef.current = null;
+      if (latest.current.rayRef) latest.current.rayRef.current = null;
       host.current?.dispose();
       host.current = null;
     };
   }, []);
   useEffect(() => {
     apply();
-  }, [props.measurement, props.extraSelections, props.pmiStyle, props.showConcepts, props.model, props.model?.revision, props.wireframePreview, props.wireframePreview?.revision, props.pose, props.selectedEntityId, props.selectedTopologyId, props.selectedOccurrenceId,
+  }, [props.measurement, props.extraSelections, props.pmiStyle, props.pmiAnnotations, props.showConcepts, props.model, props.model?.revision, props.wireframePreview, props.pose, props.selectedEntityId, props.selectedTopologyId, props.selectedOccurrenceId,
     props.theme, props.displayMode, props.viewMode, props.viewCommand, props.aaMode, props.aaDebug,
     inspectionMode, isolatedFaceKey, props.placementGuide]);
   useEffect(() => { setIsolatedFaceKey(""); }, [props.model?.id, props.model?.revision]);

@@ -26,13 +26,18 @@ describe('curated example gallery', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Open Mounting plate' }));
     expect(open).toHaveBeenCalledWith('bracket');
   });
-  it('puts the small starter parts in Basic and all existing showcase projects in Advanced', () => {
+  it('puts focused parts in Basic and multi-feature projects in Advanced', () => {
     render(<ExampleGallery onOpen={vi.fn()} />);
     const basic = within(screen.getByRole('group', { name: 'Basic models' }));
     expect(basic.getByRole('button', { name: 'Open Simple bracket' })).toBeVisible();
     expect(basic.getByRole('button', { name: 'Open Paperclip' })).toBeVisible();
-    expect(basic.queryByRole('button', { name: 'Open Mounting plate' })).toBeNull();
-    expect(within(screen.getByRole('group', { name: 'Advanced models' })).getAllByRole('button')).toHaveLength(5);
+    expect(basic.getByRole('button', { name: 'Open Checked plate' })).toBeVisible();
+    expect(basic.getByRole('button', { name: 'Open Rounded tray' })).toBeVisible();
+    expect(basic.queryByRole('button', { name: 'Open Bearing mount' })).toBeNull();
+    const advanced = within(screen.getByRole('group', { name: 'Advanced models' }));
+    expect(advanced.getByRole('button', { name: 'Open Bearing mount' })).toBeVisible();
+    expect(advanced.getByRole('button', { name: 'Open Seated fastener' })).toBeVisible();
+    expect(advanced.queryByRole('button', { name: 'Open Checked plate' })).toBeNull();
   });
   it('saves, renames, removes and restores model references without copying a project', () => {
     const open = vi.fn(), view = render(<ExampleGallery onOpen={open} />);

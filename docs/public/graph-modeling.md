@@ -28,32 +28,35 @@ closed-shape dimension workspace for rectangles, circles and slots.
 1. Choose **New part**. In **Choose base shape**, keep **Box**, enter Size X = 60,
    Y = 40 and Z = 12 mm, then **Preview → Apply**. The block is centred in X/Y;
    its bottom is at Z = 0.
-2. Select the **Body** card. Click **Add hole…** beside its values. Leave **On**
-   at +Z for the top face. Set Center X = 8, Y = 4 mm, Diameter = 8 mm, and
-   **End → Through all**. **Preview** displays the candidate. **Apply** commits it.
+2. Choose **Top**, click the broad face, then choose **Add hole on selected
+   face**. Set **Center X** to 8 mm, **Center Y** to 4 mm, and **Diameter** to
+   8 mm. Keep **Through all**. The gold preview updates after edits. Choose
+   **Apply** when it succeeds.
 3. Click the hole's row in the Modify card to edit it. Change X, Y and diameter,
    then click **Apply changes** once. **Discard edits** resets unapplied values.
    Changing focus between fields does not rebuild the part.
-4. Click **Chamfer…** or **Fillet…**. Keep the top face and Boundary target;
-   enter a distance or radius such as 0.5 mm. **Preview → Apply**.
+4. In Graph, choose **Chamfer face rim…** to break the whole top rim. Keep the
+   top face and Boundary target, enter 0.5 mm, then **Preview → Apply**.
 
    A Box also supports a whole-face rim finish on the bottom or any side: change
    **Face** before Preview. Rim previews draw the candidate's BRep boundaries
    as gold polylines over the current solid. The solid, source and export remain
-   unchanged until **Apply**; **Cancel** removes the gold guides. Interfering or
-   unsupported combinations report a compiler diagnostic instead of a preview.
+   unchanged until **Apply**. **Cancel** removes the gold guides. For a refused
+   preview, the message next to **Apply** tells you what to change.
 5. Use **Export → STEP AP242 → Download selected format**. **Save source**
    downloads the editable design. Save before closing or refreshing a local tab.
 
 **Counterbored hole…**, **Countersunk hole…** and **Blind hole…** use the same
-placement workflow. A blind hole has a **Blind depth** input. In the End control,
-you can switch between through and blind termination. **Other expression…**
-retains access to parameter references and other compiler-admitted expressions.
+placement steps on the top face of a block. Open the tool, click the face,
+then drag the gold ring or enter **Center X/Y** to position the hole. On a
+block, (0, 0) is the center of the top. **Apply** becomes available once
+the preview succeeds.
 
-Center X/Y are measured in the support face's local frame, from its authored
-origin; they are not screen coordinates. **Use picked face** copies a retained,
-source-addressable support from the viewport. Unsupported or unmapped faces are
-not substituted with another face. **Field help** explains the compiler's fields.
+For a blind hole, set **Blind depth** with room for the drill tip. Use
+**End → Through all** when the hole should exit the other side. A flat
+bracket face supports through holes, including recessed holes. **Other
+expression…** retains access to parameter references and other compiler-admitted
+expressions.
 
 For a mounting hole on **Simple Bracket**, click its broad horizontal face and
 choose **Add hole on selected face**. Alternatively choose **Add hole…** first,
@@ -65,13 +68,14 @@ construction frame; a 6 mm hole at X = 13, Y = 10 mm is centered at world
 **Apply** writes one undoable source edit; **Cancel** leaves the source intact.
 See the [complete bracket example](https://github.com/yuechen-li-dev/Aetheris/blob/master/fixtures/Regression/OrientedComposeHoles/bracket-foot-hole.firmament).
 
-The same face can contain multiple separated **Hole**, **Counterbored hole** and
-**Countersunk hole** features. Choose the tool, click the face and drag its gold
-preview. Counterbores and countersinks show the shaft and outer recess circles.
-Placement reserves the outer recess diameter, with at least 0.01 mm of material
-between holes and face boundaries. Dragging avoids existing circular openings;
-exact coordinates that violate clearance disable Apply. Features keep their
-individual names, dimensions and undoable source edits.
+One bracket face can contain multiple separated **Hole**, **Counterbored hole**
+and **Countersunk hole** features. A block supports several plain through holes
+or one recessed hole. A blind hole with a drill point must be the only hole on
+its block. To add multiple through holes, change the existing blind hole's
+**End** to **Through all** first. Counterbores and countersinks show the shaft
+and outer recess circles. Dragging reserves at least 0.01 mm between the opening and face
+edges or existing openings. If an exact coordinate violates clearance, move
+the center or reduce the diameter before applying.
 
 On this 3 mm thick bracket, a counterbore with a 4 mm shaft, 7 mm outer diameter
 and 1 mm depth fits; a countersink with a 4 mm shaft, 7 mm outer diameter and
@@ -86,16 +90,16 @@ maximum recess depth is 2.99 mm. A refused preview reports the actual available
 thickness and tells you which parameter to reduce. The accepted solid remains
 visible until Apply.
 
-Picked-face placement requires convex planar outer boundaries, circular inner
-openings, and a clear contained corridor to a parallel exit. Each hole reserves
-a full-depth clearance cylinder at its largest radius; crossing envelopes and
-unsupported trims reject. A face selector names its source construction, so it
-does not depend on display triangle or BRep face numbers.
+**Clear face** returns to the manual **Face** and **Center** controls. On an
+extrusion, choosing **+Z** directly follows the profile's extrusion axis
+(world −Y for this bracket's XZ sketch). Click the physical face in the
+viewport when you want to drill perpendicular to it. **Field help** explains
+the available fields.
 
-The legacy **On +Z** form follows the Profile's local extrusion axis (world −Y
-for this bracket's XZ sketch). It is separate from picked-face placement.
-Apply remains disabled until a preview succeeds. Exact coordinate edits outside
-the support bounds disable Apply; dragging clamps to a safe position.
+For a field of round vents, choose **+ Add → Perforation** on a block without
+holes or edge finishes. Keep **Face** at **+Z**, choose **Grid** or **Hex**,
+and set **Pitch** greater than **Diameter** to leave material between openings.
+**Margin** sets the clearance to the edges. Choose **Preview → Apply**.
 
 Use **Pocket…** for a finite recess; **+ Add** opens the full catalog. A part has
 one material body. Choosing another base replaces that base and checks its
@@ -103,7 +107,8 @@ existing downstream features. Use an Assembly for separate parts.
 
 ## Finish one selected edge
 
-Switch **Faces** to **Edges** in the viewport toolbar, then click an edge.
+Choose **Edges** in the viewport toolbar's **Pick** control, or choose
+**Finish an edge…** from the Graph actions. Click the edge you want to finish.
 Choose **Fillet selected edge** or **Chamfer selected edge** above the viewport.
 Set **Radius** or **Distance**, inspect the automatic gold preview, then **Apply**.
 The dialog locks the target to the selected edge. Cancel leaves source unchanged;
@@ -127,8 +132,10 @@ Extrusion end-face edges currently offer chamfer only. Full-edge fillets on
 those edges are not yet supported; the earlier inset cap-fillet demo is no
 longer offered as a standard UI fillet. The Box's shared +X/+Z edge retains its
 qualified route. Imported edges, curved profile corners and other unqualified
-selections keep the actions disabled. The existing **Fillet… / Chamfer…** graph
-buttons still finish an entire face rim.
+selections show why the operation is unavailable and what to try. Use
+**Fillet face rim…** or **Chamfer face rim…** to finish the full boundary of a face.
+On an extrusion, choose **Top** or **Bottom** for the rim. Select an end face
+before opening the form to use **Use picked face**.
 
 On a single profile extrusion, these corner finishes combine with separated
 picked-side through holes, counterbores and countersinks on either bracket leg.
@@ -143,7 +150,10 @@ general Compose histories are not supported by this route.
 ## Drafts, failures and history
 
 A placement preview does not change working source. **Cancel** leaves the
-accepted design intact. Editing an existing node and choosing **Apply changes**
+accepted design intact. **Preview** and **Apply** stay below the editable fields.
+If a preview is refused, use its recovery message to correct the size or selection.
+Open **Technical details** for the compiler's full reason. Editing an existing
+node and choosing **Apply changes**
 changes source and builds it. If that build fails, the last good geometry stays
 visible and is marked out of date. The inspector reports the diagnostic and
 offers **Revert to last good**. This also resets the displayed fields.

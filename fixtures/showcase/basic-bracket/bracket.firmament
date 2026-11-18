@@ -1,13 +1,30 @@
 // Starter model: a 30 x 40 mm angle bracket, 3 mm thick and 20 mm wide.
 Model SimpleBracket {
   units: mm
+
+  Static footLength: Length = 30mm
+  Static uprightHeight: Length = 40mm
+  Static wall: Length = 3mm
+  Static width: Length = 20mm
+  Require proportions => wall > 0mm && footLength > wall && uprightHeight > wall && width > 0mm
+
+  // The two leg envelopes share the heel. Change the dimensions above to
+  // move the named construction edges together.
   Concept Struct layout on XZ {
-    Polygon2<Explicit> outline {
-      points: [[0mm,0mm], [30mm,0mm], [30mm,3mm], [3mm,3mm], [3mm,40mm], [0mm,40mm]]
-    }
+    Rect2 foot { center: [footLength / 2, wall / 2]; size: [footLength, wall] }
+    Rect2 upright { center: [wall / 2, uprightHeight / 2]; size: [wall, uprightHeight] }
+    Point2 heel { position: [wall, wall] }
   }
   Profile section using layout {
-    Loop Outer { outline |> TraceLoop }
+    Loop Outer {
+      foot.Bottom as FootOutside
+        |> foot.Right as Toe
+        |> foot.Top from foot.TopRight to heel as FootSeat
+        |> upright.Right from heel to upright.TopRight as UprightSeat
+        |> upright.Top as Crown
+        |> upright.Left to foot.BottomLeft as Back
+        |> Close
+    }
   }
-  Extrude bracket { profile: section; from: 0mm; to: 20mm }
+  Extrude bracket { profile: section; from: 0mm; to: width }
 }

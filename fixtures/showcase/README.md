@@ -1,10 +1,22 @@
 # Canonical showcase snapshots
 
-These are intact Aetheris source documents, loaded lazily by `src/showcase/catalog.ts`. The Web SDK receives the project root and the complete source snapshot. Helios does not concatenate includes or parse Firmament.
+These are editable Aetheris projects, loaded lazily by `src/showcase/catalog.ts`. The Web SDK receives the project root and the complete source snapshot. Aetheris resolves includes and compiles the geometry.
 
-Basic contains two Helios-owned starter sources: a 30 × 40 mm angle bracket with a 3 mm wall and 20 mm extrusion, and a 1 mm wire paperclip with four straights and three circular bends. The paperclip uses the same operations as Aetheris's canonical WireForm paperclip, authored through the standalone `schema WireForm` entry point supported by the bundled browser runtime. Both compile as exact solids and export enclosed STEP bodies. The original five showcase projects are grouped under Advanced. Personal groups store references to these examples, not copies of their source.
+Basic introduces one construction at a time: traced profile extrusion, wire forming, a through hole, inspection assertions, hollow stock, an involute gear and a revolved shaft. Advanced follows relationships across features and components: a bore with source-linked tolerances, a seated assembly, a machined block, perforation, a ruled loft and larger product projects. Personal groups store references to the catalog IDs.
 
-Refresh source with `node scripts/sync-showcase.mts` from HeliosCAD, with Aetheris in the sibling checkout. `provenance.json` records source-relative origins and byte hashes. Refresh and qualify the corresponding browser example after source changes; copying source is not compilation evidence.
+Start a dimension-driven profile with named Concept guides. Simple bracket
+owns its two leg envelopes and their common heel in one Concept Struct. Edit
+`wall`, `footLength`, `uprightHeight` or `width` to resize it. The traced faces
+keep the names `FootSeat` and `UprightSeat` for downstream features. For a
+radius that defines the outline, place `Round(r)` between the adjoining trace
+stages. Use an edge finish on the extruded part for a machining operation.
+
+The card order and tiers live in `src/showcase/examples.json`, also read by
+the wireframe generator. Refresh mirrored source with
+`node scripts/sync-showcase.mts` from HeliosCAD, with Aetheris in the sibling
+checkout. `provenance.json` records LF-normalized hashes and upstream paths,
+including the origin of Helios adaptations. Rebuild the thumbnail, open the
+example through the production Web SDK and check Problems after a source change.
 
 The current gallery uses black-and-white SVG wireframes generated through the
 existing Aetheris renderer. See `public/previews/showcase/wireframes/README.md`

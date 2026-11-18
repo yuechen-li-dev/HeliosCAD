@@ -1,0 +1,45 @@
+// A locating pad, a relief pocket and three different drilled passages.
+Model MachinedBlock {
+  units: mm
+
+  Static stockThickness: Length = 12mm
+  Static padX: Length = -16mm
+  Static padHeight: Length = 6mm
+
+  Profile stockOutline = Rect2 { center: [0mm, 0mm]; size: [70mm, 44mm] }
+  Profile padOutline = Rect2 { center: [padX, 0mm]; size: [14mm, 14mm] }
+  Profile recessOutline = Rect2 { center: [10mm, 0mm]; size: [20mm, 16mm] }
+
+  Compose body {
+    Base stock { profile: stockOutline; from: 0mm; to: stockThickness; role: Stock }
+    Boss pad { on: stock.Top; profile: padOutline; height: padHeight }
+    Pocket recess { on: stock.Top; profile: recessOutline; depth: 4mm; minimumFloorThickness: 3mm }
+    Hole<Shaft> bore { on: +Z; center: [padX, 0mm]; diameter: 6mm; end: ThroughAll }
+    Hole<Counterbore> mountNorth {
+      on: +Z
+      center: [26mm, 13mm]
+      diameter: 6mm
+      counterboreDiameter: 11mm
+      counterboreDepth: 3mm
+      end: ThroughAll
+    }
+    Hole<Countersink> mountSouth {
+      on: +Z
+      center: [26mm, -13mm]
+      diameter: 6mm
+      countersinkDiameter: 12mm
+      countersinkAngle: 90deg
+      end: ThroughAll
+    }
+  }
+
+  Modify body {
+    EdgeFinish<Chamfer> perimeterBreak {
+      target: stockOutline.Outer
+      on: Top
+      distance: 1mm
+    }
+  }
+
+  Assert Topology body { shells: 1; note: "Pad and stock must build as one shell." }
+}

@@ -57,11 +57,11 @@ export function SelectionCard({ picks, measurement, inches, onToggleUnits, onRem
       </>}
       {!result && !pending && planesAngle != null && <div>{mixed ? 'Axis to plane' : 'Angle'} <b>{planesAngle.toFixed(3)}°</b> <small>(from display normals)</small></div>}
       {error && <small className="label-error">{error}</small>}
-      {picks.length === 1 && !single?.diameterMm && <small>Ctrl- or Shift-click a second face to measure between them.</small>}
+      {picks.length === 1 && picks[0]!.topologyKind !== 'Edge' && !single?.diameterMm && <small>Ctrl- or Shift-click a second face to measure between them.</small>}
     </div>
     <div className="selection-footer">
       <button type="button" onClick={onToggleUnits}>{inches ? 'in' : 'mm'}</button>
-      {onLabel && <button type="button" className="primary" onClick={onLabel}>Label…</button>}
+      {onLabel && picks.every(pick => pick.topologyKind !== 'Edge') && <button type="button" className="primary" onClick={onLabel}>Label…</button>}
     </div>
   </aside>;
 }

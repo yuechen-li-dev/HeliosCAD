@@ -1,0 +1,77 @@
+.label-panel {
+  grid-template-rows: auto minmax(0, 1fr);
+}
+
+.label-panel .label-context {
+  overflow: auto;
+}
+
+.label-panel .label-actions {
+  grid-template-columns: repeat(auto-fit, minmax(min(145px, 100%), 1fr));
+}
+
+.label-panel .label-actions label {
+  align-items: start;
+}
+
+.label-panel .label-actions input,
+.label-unavailable input {
+  margin: 2px 0 0;
+}
+
+.label-updating {
+  margin: 10px 12px;
+  color: var(--text-secondary);
+}
+
+.label-panel .label-record-text {
+  cursor: default;
+}
+
+.label-panel .label-record-text:hover {
+  background: transparent;
+  border-left-color: transparent;
+}
+
+.label-fields {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+
+.label-unavailable label {
+  display: grid;
+  grid-template-columns: 18px 1fr;
+  gap: 2px 6px;
+  padding: 5px 6px;
+  color: var(--text-secondary);
+}
+
+.label-unavailable small {
+  grid-column: 2;
+  font-size: var(--type-caption);
+}
+
+.label-details summary {
+  color: var(--text-secondary);
+  font-size: var(--type-caption);
+  cursor: pointer;
+}
+
+.label-editor .label-details > label {
+  margin-top: 6px;
+}
+
+.label-editor textarea {
+  min-width: 0;
+  min-height: 56px;
+  padding: 6px 7px;
+  border: 1px solid var(--border);
+  background: var(--control-bg);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: var(--type-ui);
+}

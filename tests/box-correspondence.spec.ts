@@ -36,14 +36,15 @@ test('Box top face keeps its source selector through browser picking', async ({ 
   await page.locator('.inspector-actions').getByRole('button', { name: 'Go to Source' }).click();
   await expect(page.getByRole('textbox', { name: 'Editor content' })).toBeFocused();
 
-  await page.getByRole('button', { name: 'Selection mode' }).click();
-  await expect(page.getByRole('button', { name: 'Selection mode' })).toHaveText('PICK EDGE');
+  const pickMode = page.getByRole('group', { name: 'Pick geometry' });
+  await pickMode.getByRole('button', { name: 'Edges', exact: true }).click();
+  await expect(pickMode.getByRole('button', { name: 'Edges', exact: true })).toHaveAttribute('aria-pressed', 'true');
   await canvas.click({ position: { x: bounds!.width / 2, y: bounds!.height / 2 + 30 } });
   await expect(page.locator('.inspector')).toContainText('Edge ID');
   await expect(page.locator('.inspector')).toContainText('Body.edge(TopFront)');
   await expect(page.locator('.inspector')).toContainText('Firmament has no qualified source selector');
   await expect(page.getByRole('button', { name: 'Copy Selector' })).toHaveCount(0);
-  await page.getByRole('button', { name: 'Selection mode' }).click();
+  await pickMode.getByRole('button', { name: 'Faces', exact: true }).click();
 
   await page.getByRole('button', { name: 'Right', exact: true }).click();
   await page.waitForTimeout(800);

@@ -53,9 +53,9 @@ export function ExampleGallery({ onOpen, opening, unavailableReason }: { onOpen(
       return <GalleryRow key={group.id} name={group.name} count={items.length} revision={items.map(item => item.id).join(',')}
         focusRequested={focusGroup === group.id} onFocusHandled={() => setFocusGroup(null)}
         actions={groups.some(item => item.id === group.id) && <button type="button" className="gallery-edit-group" disabled={!!opening || !!editing} aria-label={`Edit ${group.name} group`} onClick={() => edit(group)}>Edit group</button>}>
-        {items.map(example => <button className="showcase-card" key={example.id} disabled={!!opening || !!unavailableReason || !!editing} onClick={() => onOpen(example.id)} aria-label={`Open ${example.title}`}>
+        {items.map(example => <button className="showcase-card" key={example.id} disabled={!!opening || !!unavailableReason || !!editing} onClick={() => onOpen(example.id)} aria-label={`Open ${example.title}`} aria-description={example.description}>
           <div className="showcase-image"><ShowcaseThumbnail source={example.thumbnail} title={example.title} /></div>
-          <div className="showcase-copy"><h4>{({ atlas: 'ATLAS', guitar: 'Guitar', house: 'House', bracket: 'Mounting plate', bolt: 'CODEX bolt' } as Record<string, string>)[example.id] ?? example.title}</h4><span aria-hidden="true">{opening === example.id ? 'Opening…' : '↗'}</span></div>
+          <div className="showcase-copy"><div><h4>{example.cardTitle ?? example.title}</h4><p>{example.description}</p></div><span aria-hidden="true">{opening === example.id ? 'Opening…' : '↗'}</span></div>
         </button>)}
         {!items.length && <p className="gallery-empty-group">Add models with Edit group.</p>}
       </GalleryRow>;

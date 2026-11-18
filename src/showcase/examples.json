@@ -1,0 +1,150 @@
+[
+  {
+    "id": "basic-bracket",
+    "title": "Simple bracket",
+    "category": "Mechanical",
+    "kind": "Part",
+    "tier": "basic",
+    "root": "bracket.firmament",
+    "description": "Trace the named edges of two leg guides and extrude the angle bracket."
+  },
+  {
+    "id": "paperclip",
+    "title": "Paperclip",
+    "category": "Mechanical",
+    "kind": "Part",
+    "tier": "basic",
+    "root": "paperclip.firmament",
+    "description": "Form a 1 mm wire with four straights and three bends."
+  },
+  {
+    "id": "bracket",
+    "title": "Mounting plate",
+    "category": "Mechanical",
+    "kind": "Part",
+    "tier": "basic",
+    "root": "bracket.firmament",
+    "description": "Add or adjust a centered through hole in rectangular stock."
+  },
+  {
+    "id": "checked-plate",
+    "title": "Checked plate",
+    "category": "Mechanical",
+    "kind": "Part",
+    "tier": "basic",
+    "root": "05-checked-plate.firmament",
+    "description": "Attach a bore tolerance and check the finished plate's bounds, volume and topology."
+  },
+  {
+    "id": "rounded-tray",
+    "title": "Rounded tray",
+    "category": "Mechanical",
+    "kind": "Part",
+    "tier": "basic",
+    "root": "rounded-tray.firmament",
+    "description": "Hollow a rounded extrusion to leave a 2 mm wall and floor."
+  },
+  {
+    "id": "spur-gear",
+    "title": "Spur gear",
+    "category": "Gears",
+    "kind": "Part",
+    "tier": "basic",
+    "root": "spur-basic.firmament",
+    "description": "Set the module, pressure angle and bore of a 24-tooth involute gear."
+  },
+  {
+    "id": "turned-shaft",
+    "title": "Turned shaft",
+    "category": "Mechanical",
+    "kind": "Part",
+    "tier": "basic",
+    "root": "stepped-shaft.firmament",
+    "description": "Revolve a stepped meridian to form coaxial shaft diameters."
+  },
+  {
+    "id": "bearing-mount",
+    "title": "Bearing mount",
+    "category": "Mechanical",
+    "kind": "Part",
+    "tier": "advanced",
+    "root": "showcase-bearing-mount.firmament",
+    "description": "Inspect a hub, four counterbores, pockets and source-linked tolerances in the Label tab."
+  },
+  {
+    "id": "atlas",
+    "title": "Industrial ATLAS",
+    "cardTitle": "ATLAS",
+    "category": "Robotics",
+    "kind": "Assembly",
+    "tier": "advanced",
+    "root": "atlas-industrial.firmament",
+    "description": "Inspect shared components and articulated joints in an industrial robot."
+  },
+  {
+    "id": "guitar",
+    "title": "Sunburst electric guitar",
+    "cardTitle": "Guitar",
+    "category": "Product design",
+    "kind": "Assembly",
+    "tier": "advanced",
+    "root": "guitar.firmasm",
+    "description": "Follow carved surfaces, hardware seats and string routes across a multi-file assembly."
+  },
+  {
+    "id": "machined-block",
+    "title": "Machined block",
+    "category": "Mechanical",
+    "kind": "Part",
+    "tier": "advanced",
+    "root": "03-machined-block.firmament",
+    "description": "Combine a boss, a pocket, three bore styles and an edge break in one solid."
+  },
+  {
+    "id": "seated-fastener",
+    "title": "Seated fastener",
+    "category": "Mechanical",
+    "kind": "Assembly",
+    "tier": "advanced",
+    "root": "assembly.firmasm",
+    "description": "Mate a parametric fastener to the datum of a countersunk bracket."
+  },
+  {
+    "id": "perforated-cup",
+    "title": "Perforated cup",
+    "category": "Mechanical",
+    "kind": "Part",
+    "tier": "advanced",
+    "root": "cylindrical-staggered-32.firmament",
+    "description": "Lay out 32 staggered vents on a cylindrical shell with a minimum ligament."
+  },
+  {
+    "id": "twisted-sleeve",
+    "title": "Twisted sleeve",
+    "category": "Surfacing",
+    "kind": "Part",
+    "tier": "advanced",
+    "root": "hollow-loft-twist.firmament",
+    "description": "Twist a ruled hollow loft between two circular profiles with a narrow seam."
+  },
+  {
+    "id": "house",
+    "title": "Warm-modern house",
+    "cardTitle": "House",
+    "category": "Spatial design",
+    "kind": "Scene",
+    "tier": "advanced",
+    "root": "house.firmament",
+    "description": "Explore rooms, openings, furniture and authored cameras in a composed scene."
+  },
+  {
+    "id": "bolt",
+    "title": "CODEX threaded bolt",
+    "cardTitle": "CODEX bolt",
+    "category": "Mechanical",
+    "kind": "Part",
+    "tier": "advanced",
+    "root": "hexbolt-showcase.firmament",
+    "description": "Inspect the helical groove, hex head and recessed maker mark."
+  }
+]

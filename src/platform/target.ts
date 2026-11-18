@@ -4,3 +4,4 @@
  * on a plain `#name`, and files saved through the viewer's download prompt.
  */
 export const artifactBuild = import.meta.env.VITE_HELIOS_TARGET === 'artifact';
+export const sitesBuild = import.meta.env.VITE_HELIOS_TARGET === 'sites';

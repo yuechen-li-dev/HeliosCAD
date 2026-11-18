@@ -30,8 +30,7 @@ describe('named views', () => {
     expect(direction(camera)).toEqual(axis.map(v => Math.round(v / length * 1e6) / 1e6 + 0));
     expect(camera.position.distanceTo(camera.target)).toBeCloseTo(distance, 9);
     expect(camera.mode).toBe(view === 'iso' ? 'perspective' : 'orthographic');
-    // Top looks down Z, so Y is up on screen; every other view keeps Z up.
-    expect(camera.up.toArray()).toEqual(view === 'top' ? [0, 1, 0] : [0, 0, 1]);
+    expect(camera.up.toArray()).toEqual(view === 'top' || view === 'bottom' ? [0, 1, 0] : [0, 0, 1]);
   });
 
   it('ignores commands that are not views', () => {

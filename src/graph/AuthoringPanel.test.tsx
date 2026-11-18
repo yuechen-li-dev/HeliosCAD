@@ -25,7 +25,7 @@ const mount = async () => {
 };
 
 describe('pending source transactions', () => {
-  it('retains a viewport click made before the compiler supplies hole dimensions', async () => {
+  it('retains an early face pick and drops its queued preview when the next pick is refused', async () => {
     let finish!: (value: LanguageOutline) => void;
     const runtime = { outline: vi.fn().mockReturnValue(new Promise<LanguageOutline>(resolve => { finish = resolve; })), edit: vi.fn(), preview: vi.fn() } as unknown as CadRuntime;
     const placementRef: { current: PlacementActions | null } = { current: null };
@@ -46,13 +46,20 @@ describe('pending source transactions', () => {
     await act(async () => finish({ ...outline, nodes: [{ ...outline.nodes[1], kind: 'Hole', variant: 'Countersink', fields }] }));
     await waitFor(() => expect(onPlacementGuide).toHaveBeenCalledWith(expect.objectContaining({ selection, center: [10,12], diameter: 8 })));
     expect(screen.getByRole('spinbutton', { name: 'Center X' })).toHaveValue(10);
+    await act(async () => {
+      placementRef.current!.reject('Pick the top of the block.');
+      await new Promise(resolve => setTimeout(resolve, 300));
+    });
+    expect(runtime.edit).not.toHaveBeenCalled();
+    expect(screen.getByRole('alert')).toHaveTextContent('Pick the top of the block.');
+    expect(screen.getByRole('button', { name: 'Apply' })).toBeDisabled();
     view.unmount();
   });
   it('requires an admitted preview before Apply and commits exactly its compiler edit', async () => {
     const { props, edit, runtime } = await mount();
     expect(screen.getByRole('button', { name: 'Apply' })).toBeDisabled();
     fireEvent.click(screen.getByRole('button', { name: 'Preview' }));
-    await screen.findByText('Preview admitted. Working source has not changed.');
+    await screen.findByText('Preview ready. Apply to update the part.');
     expect(runtime.preview).toHaveBeenCalledWith('candidate source', 'part.firmament', 1, { 'part.firmament': 'candidate source' });
     expect(props.onApply).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole('button', { name: 'Apply' }));
@@ -63,11 +70,14 @@ describe('pending source transactions', () => {
     vi.mocked(runtime.preview).mockResolvedValue({ model: null, diagnostics: [{ severity: 'error', code: 'unsupported-host', message: 'Existing holes need a Box host' }] });
     fireEvent.click(screen.getByRole('button', { name: 'Preview' }));
     expect(await screen.findByRole('alert')).toHaveTextContent('Existing holes need a Box host');
+    const details = screen.getByText('Technical details').closest('details');
+    expect(details).not.toHaveAttribute('open');
+    expect(details).toHaveTextContent('unsupported-host');
     expect(screen.getByRole('button', { name: 'Apply' })).toBeDisabled(); expect(props.onApply).not.toHaveBeenCalled();
   });
   it('invalidates and disposes a preview as soon as its controls change', async () => {
     const { candidate } = await mount(); fireEvent.click(screen.getByRole('button', { name: 'Preview' }));
-    await screen.findByText('Preview admitted. Working source has not changed.');
+    await screen.findByText('Preview ready. Apply to update the part.');
     fireEvent.change(screen.getByLabelText('Base shape'), { target: { value: 'cylinder' } });
     expect(screen.getByRole('button', { name: 'Apply' })).toBeDisabled(); expect(candidate.dispose).toHaveBeenCalledOnce();
   });

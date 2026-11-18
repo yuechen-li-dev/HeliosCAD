@@ -13,8 +13,9 @@
 .example-gallery .gallery-row .gallery-rail { display:grid; grid-template-columns:none; grid-auto-flow:column; grid-auto-columns:clamp(240px,31%,400px); justify-content:start; gap:18px; overflow-x:auto; padding:3px 3px 12px; scroll-snap-type:x proximity; scroll-padding-inline:3px; overscroll-behavior-x:contain; scrollbar-width:thin; scrollbar-color:var(--border-strong) transparent; }
 .gallery-rail > .showcase-card { min-width:0; scroll-snap-align:start; }
 .example-gallery .gallery-row .showcase-image { height:auto; aspect-ratio:8/5; }
-.gallery-rail .showcase-copy { min-height:60px; padding:12px 14px; }
+.gallery-rail .showcase-copy { min-height:100px; padding:12px 14px; align-items:flex-start; }
 .gallery-rail .showcase-copy h4 { margin:0; font-size:22px; font-weight:600; letter-spacing:-.035em; }
+.gallery-rail .showcase-copy p { margin:5px 0 0; font-size:13px; line-height:1.4; }
 .gallery-rail:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
 .gallery-empty-group { color:var(--text-secondary); font-size:12px; }
 .gallery-group-editor { display:grid; gap:14px; padding:18px; margin-bottom:24px; border:1px solid var(--border-strong); background:var(--panel-bg); color:var(--text-primary); }

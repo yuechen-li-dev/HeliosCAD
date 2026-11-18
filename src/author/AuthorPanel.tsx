@@ -1,10 +1,13 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { ApiError, request } from '../cloud/api';
 import { AgentWorkspace, runAgent, type AgentGateway, type AgentTurn } from './agentWorkspace';
 import { cloneProject, type EditableWorkspace, type ProjectSnapshot } from '../app/projectSnapshot';
 import { projectHashes } from './engineeringEvidence';
 import { runLocalAgent } from './localAgent';
 import { saveFile } from '../platform/saveFile';
+import { sitesBuild } from '../platform/target';
+import { browserGateway, browserProviders, connectBrowserProvider, type BrowserModel, type BrowserProvider } from './browserGateway';
+import './author.css';
 const gateway: AgentGateway = { async respond(model, snapshot, requirements, input, signal) {
   const documentHashes = await projectHashes(snapshot);
   const result = await request<{ turn: AgentTurn }>('/api/helios/author/respond', { method: 'POST', signal,
@@ -28,19 +31,30 @@ interface LocalSettings { configPath: string; defaultProvider: string; error: st
 interface ConnectionProbe { connected: boolean; message: string; models: { id: string; label: string }[] }
 interface DesktopPairing { token: string; expiresAt: string; configuration: object; message: string }
 const desktopLabel = (mode: string) => mode === 'claude-code' ? 'Claude Code' : mode === 'claude-desktop' ? 'Claude Desktop' : 'Antigravity';
+const toolActivity: Record<string, string> = {
+  read_file: 'Reading source…', edit_file: 'Editing the candidate…', outline: 'Inspecting the project…',
+  schema: 'Checking Firmament syntax…', describe_construct: 'Checking Firmament syntax…',
+  build: 'Building the candidate…', measure: 'Measuring the candidate…',
+};
 
-export function AuthorPanel({ workspace, requirements, onRequirementsChange, onCheckpoint, restoredRevision, onBusyChange }: {
+export function AuthorPanel({ workspace, requirements, onRequirementsChange, onCheckpoint, restoredRevision, onBusyChange, browser = sitesBuild }: {
   workspace: EditableWorkspace;
   requirements: string;
   onRequirementsChange(value: string): void;
   onCheckpoint(title: string, project: ProjectSnapshot): Promise<void>;
   restoredRevision: number;
   onBusyChange(busy: boolean): void;
+  browser?: boolean;
 }) {
   const current = useRef(workspace); current.current = workspace;
   const [providers, setProviders] = useState<AuthorProvider[]>([]);
   const [providerId, setProviderId] = useState('openai');
-  const [connection, setConnection] = useState('Checking AI connections…');
+  const [connection, setConnection] = useState(browser ? '' : 'Checking AI connections…');
+  const browserKey = useRef('');
+  const browserConnect = useRef<AbortController | null>(null);
+  const [browserProvider, setBrowserProvider] = useState<BrowserProvider>('openai');
+  const [browserModels, setBrowserModels] = useState<BrowserModel[]>([]);
+  const [keyError, setKeyError] = useState('');
   const [local, setLocal] = useState<LocalSettings | null>(null);
   const [mode, setMode] = useState('api');
   const [pairings, setPairings] = useState<Record<string, DesktopPairing>>({});
@@ -54,7 +68,7 @@ export function AuthorPanel({ workspace, requirements, onRequirementsChange, onC
   const [settingsMessage, setSettingsMessage] = useState('');
   const [model, setModel] = useState('gpt-6.1-sol');
   const [prompt, setPrompt] = useState('');
-  const [autoApply, setAutoApply] = useState(true);
+  const [autoApply, setAutoApply] = useState(!browser);
   // Desktop agents reason between tool calls, so their tasks get a longer default budget.
   const [chosenMinutes, setMinutes] = useState<number | null>(null);
   const minutes = chosenMinutes ?? (desktop ? 20 : 5);
@@ -63,6 +77,8 @@ export function AuthorPanel({ workspace, requirements, onRequirementsChange, onC
   const [activity, updateActivity] = useState('');
   function setActivity(value: string) { updateActivity(value); onBusyChange(!!value); }
   const [answer, setAnswer] = useState('');
+  const [messages, setMessages] = useState<{ role: 'You' | 'Helios'; text: string }[]>([]);
+  const chatEnd = useRef<HTMLDivElement>(null);
   const [outcome, setOutcome] = useState('');
   const [reviewPackage, setReviewPackage] = useState<AgentWorkspace['reviewPackage']>(null);
   const [error, setError] = useState('');
@@ -70,10 +86,11 @@ export function AuthorPanel({ workspace, requirements, onRequirementsChange, onC
   const [transcript, setTranscript] = useState<unknown[]>([]);
   const cancellation = useRef<AbortController | null>(null);
   const provider = mode === 'codex' ? { id: 'codex', label: 'Codex', configured: !!probe?.connected, credentialVariable: '', models: probe?.models ?? [] } : providers.find(p => p.id === providerId);
-  const configured = desktop ? pairingReady : !!provider?.configured;
+  const configured = browser ? browserModels.length > 0 : desktop ? pairingReady : !!provider?.configured;
   const [access, setAccess] = useState<AccessProblem>(null);
   const [statusAttempt, setStatusAttempt] = useState(0);
   useEffect(() => {
+    if (browser) return () => { browserConnect.current?.abort(); browserConnect.current = null; cancellation.current?.abort(); browserKey.current = ''; };
     const abort = new AbortController();
     void request<{ providers: AuthorProvider[]; local?: LocalSettings }>('/api/helios/author/status', { signal: abort.signal }).then(status => {
       if (!status.providers?.length) throw new Error('Provider catalog unavailable.');
@@ -83,7 +100,7 @@ export function AuthorPanel({ workspace, requirements, onRequirementsChange, onC
       else if (status.local?.defaultProvider) { const p = status.providers.find(p => p.id === status.local!.defaultProvider); if (p) { setProviderId(p.id); setModel(p.models[0].id); } }
     }).catch(async error => { const problem = await accessProblem(error); if (!abort.signal.aborted) { setAccess(problem); setConnection(''); } });
     return () => { abort.abort(); cancellation.current?.abort(); };
-  }, [statusAttempt]);
+  }, [browser, statusAttempt]);
   // Whether the native client has reached Helios's MCP endpoint with this pairing.
   useEffect(() => {
     setLastSeen(null);
@@ -94,11 +111,45 @@ export function AuthorPanel({ workspace, requirements, onRequirementsChange, onC
     poll(); const timer = setInterval(poll, 4000);
     return () => { stopped = true; clearInterval(timer); };
   }, [desktop, pairingReady, pairing?.token]);
-  useEffect(() => { setTranscript([]); setCandidate(null); setApplied(null); setAnswer(''); setOutcome(''); setError(''); setReviewPackage(null); }, [workspace.id, restoredRevision]);
+  useEffect(() => { resetConversation(); }, [workspace.id, restoredRevision]);
+  useEffect(() => { if (messages.length || activity || answer) chatEnd.current?.scrollIntoView?.({ block: 'nearest' }); }, [messages, activity, answer, outcome, error]);
+  function resetConversation() {
+    setTranscript([]); setMessages([]); setCandidate(null); setApplied(null); setAnswer(''); setOutcome(''); setError(''); setReviewPackage(null);
+  }
   function changeModel(providerId: string, model: string) {
     setProviderId(providerId); setModel(model);
     setSettingsMessage('');
-    setTranscript([]); setCandidate(null); setAnswer(''); setOutcome(''); setError(''); setReviewPackage(null);
+    resetConversation();
+  }
+  async function connect(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (browserConnect.current || activity) return;
+    const key = String(new FormData(event.currentTarget).get('password') ?? '').trim();
+    if (!key) return;
+    const keyProvider = key.startsWith('sk-ant-') ? 'anthropic' : key.startsWith('sk-') ? 'openai' : key.startsWith('AIza') ? 'gemini' : null;
+    if (keyProvider && keyProvider !== browserProvider) {
+      setKeyError('Choose ' + browserProviders[keyProvider].label + ' for this key.');
+      return;
+    }
+    const abort = new AbortController();
+    const deadline = window.setTimeout(() => abort.abort(new Error('The connection timed out. Try again.')), 20_000);
+    browserConnect.current = abort; setSettingsBusy(true); setKeyError('');
+    try {
+      const models = await connectBrowserProvider(browserProvider, key, abort.signal);
+      abort.signal.throwIfAborted();
+      browserKey.current = key;
+      setBrowserModels(models);
+      changeModel(browserProvider, models[0].id);
+    } catch (error) {
+      if (browserConnect.current === abort) setKeyError(errorText(error));
+    } finally {
+      window.clearTimeout(deadline);
+      if (browserConnect.current === abort) { browserConnect.current = null; setSettingsBusy(false); }
+    }
+  }
+  function disconnect() {
+    browserKey.current = '';
+    setBrowserModels([]); setKeyError(''); resetConversation();
   }
   async function settingsAction(action: 'reload' | 'open' | 'test') {
     setSettingsBusy(true); setSettingsMessage('');
@@ -150,25 +201,28 @@ export function AuthorPanel({ workspace, requirements, onRequirementsChange, onC
     finally { setActivity(''); }
   }
   async function run() {
-    if ((!prompt.trim() && !desktop) || cancellation.current || current.current.busy) return;
+    if (!configured || settingsBusy || local?.error || (!desktop && (!model || !prompt.trim()))
+      || (browser && candidate?.built) || cancellation.current || current.current.busy) return;
     const task = prompt.trim(), base = current.current.snapshot();
     const abort = new AbortController(); cancellation.current = abort;
     const deadline = setTimeout(() => abort.abort(new Error('Agent time budget reached. Candidate changes were not applied.')), minutes * 60_000);
     let sandbox: AgentWorkspace | undefined;
     setError(''); setAnswer(''); setOutcome(''); setCandidate(null); setReviewPackage(null); setApplied(null); setActivity('Saving recovery checkpoint…');
+    if (task) setMessages(previous => [...previous, { role: 'You', text: task }]);
     try {
       await onCheckpoint('Before AI task', base.project);
       sandbox = await AgentWorkspace.create(base.project, abort.signal);
       const activity = (text: string) => {
         if (current.current.snapshot().revision !== base.revision) abort.abort(new Error('The working source changed. Start a new task against the current revision.'));
-        setActivity(text);
+        setActivity(toolActivity[text] ?? text);
       };
       const input = [...transcript, { role: 'user', content: task }];
       const result = mode !== 'api'
         ? await runLocalAgent(gateway, sandbox, desktop ? '' : model, requirements, input, abort.signal, activity, setAnswer,
           { agent: mode, pairingToken: pairing?.token, applyMode: autoApply ? 'auto' : 'review', budgetMinutes: minutes })
-        : await runAgent(gateway, sandbox, model, requirements, input, abort.signal, activity);
-      abort.signal.throwIfAborted(); setTranscript(result.transcript); setAnswer(result.text + (result.tokens === null ? '' : `\n\nReported token usage: ${result.tokens}.`)); setPrompt('');
+        : await runAgent(browser ? browserGateway(browserProvider, browserKey.current) : gateway, sandbox, model, requirements, input, abort.signal, activity);
+      abort.signal.throwIfAborted(); setTranscript(result.transcript); setAnswer(''); setPrompt('');
+      if (result.text) setMessages(previous => [...previous, { role: 'Helios', text: result.text }]);
       setReviewPackage(sandbox.reviewPackage ?? null);
       const changed = JSON.stringify(base.project) !== JSON.stringify(sandbox.project);
       if (changed) {
@@ -184,8 +238,39 @@ export function AuthorPanel({ workspace, requirements, onRequirementsChange, onC
     finally { clearTimeout(deadline); sandbox?.dispose(); cancellation.current = null; setActivity(''); }
   }
   return <section className="author-panel" aria-label="AI Author">
-    <div className="panel-heading">AI author</div>
+    <header className="author-header">
+      <div><h2>AI Author</h2>{browser && <span>{configured ? browserProviders[browserProvider].label + ' · ' + model : 'Connect a provider'}</span>}</div>
+      <button type="button" className="author-new" disabled={!!activity || !messages.length && !candidate} onClick={resetConversation}>New conversation</button>
+    </header>
     <div className="author-body">
+      {browser && <div className="author-connection">
+        {configured ? <details>
+          <summary>Connection</summary>
+          <div className="author-connection-fields">
+            <label>Model<select aria-label="AI model" value={model} disabled={!!activity} onChange={e => changeModel(browserProvider, e.target.value)}>
+              {browserModels.map(item => <option key={item.id} value={item.id}>{item.label}</option>)}
+            </select></label>
+            <button type="button" disabled={!!activity} onClick={disconnect}>Disconnect</button>
+          </div>
+        </details> : <>
+          <label>Provider<select aria-label="AI provider" value={browserProvider} disabled={settingsBusy} onChange={e => {
+            setBrowserProvider(e.target.value as BrowserProvider); setKeyError('');
+          }}>
+            {Object.entries(browserProviders).map(([id, item]) => <option key={id} value={id}>{item.label}</option>)}
+          </select></label>
+          <form method="post" autoComplete="on" key={browserProvider} onSubmit={event => void connect(event)}>
+            <input id="helios-provider-user" className="author-key-account" aria-hidden="true" tabIndex={-1} name="username" autoComplete="username" value={browserProviders[browserProvider].label} readOnly />
+            <label htmlFor="helios-provider-password">API key</label>
+            <div className="author-key-entry">
+              <input id="helios-provider-password" name="password" type="password" autoComplete="current-password" autoCapitalize="none"
+                spellCheck={false} required maxLength={512} readOnly={settingsBusy} placeholder={browserProviders[browserProvider].label + ' API key'} aria-describedby="helios-provider-help" />
+              <button type="submit" disabled={settingsBusy}>{settingsBusy ? 'Connecting…' : 'Connect'}</button>
+            </div>
+          </form>
+          <p id="helios-provider-help">Your key goes directly to the selected provider. Helios keeps it in this tab until you disconnect or reload. Your password manager can save it.</p>
+          {keyError && <p role="alert">{keyError}</p>}
+        </>}
+      </div>}
       {access && <div className="author-access" role="status">
         {access === 'local-session'
           ? <p>Your local Helios session has expired. Restart Helios from its launcher, then select Retry.</p>
@@ -194,7 +279,7 @@ export function AuthorPanel({ workspace, requirements, onRequirementsChange, onC
           : <p>AI needs the Helios host. Run the standalone Helios app, or start Leviathan for source-workspace development. <a href="https://github.com/yuechen-li-dev/HeliosCAD/blob/main/docs/public/ai-connections.md" target="_blank" rel="noopener">Setup</a></p>}
         <button onClick={() => setStatusAttempt(value => value + 1)}>Retry</button>
       </div>}
-      <p role="status">{activity || connection || (desktop ? `${desktopLabel(mode)} · native chat and subscription. ${pairingReady ? 'Pairing ready; start a task to grant candidate access.' : 'Prepare or renew your desktop connection below.'}` : mode === 'codex' ? (probe?.connected ? 'Codex · ChatGPT subscription' : 'Test the Codex connection. Sign in with ChatGPT in Codex first.') : configured ? `${provider?.label} · ${local ? 'API usage · local credentials' : 'server credentials'}` : local ? 'Configure this provider in helios.toml, then reload connections.' : `Configure ${provider?.credentialVariable} on the host. Keys stay out of source and chat.`)}</p>
+      {!browser && <p role="status">{connection || (desktop ? `${desktopLabel(mode)} · native chat and subscription. ${pairingReady ? 'Pairing ready; start a task to grant candidate access.' : 'Prepare or renew your desktop connection below.'}` : mode === 'codex' ? (probe?.connected ? 'Codex · ChatGPT subscription' : 'Test the Codex connection. Sign in with ChatGPT in Codex first.') : configured ? `${provider?.label} · ${local ? 'API usage · local credentials' : 'server credentials'}` : local ? 'Configure this provider in helios.toml, then reload connections.' : `Configure ${provider?.credentialVariable} on the host. Keys stay out of source and chat.`)}</p>}
       {local && <>
         <label>Connection<select aria-label="AI connection" value={mode} disabled={!!activity || settingsBusy} onChange={e => {
           setMode(e.target.value); changeModel(providerId, e.target.value === 'codex' ? probe?.models[0]?.id ?? '' : providers.find(p => p.id === providerId)!.models[0].id);
@@ -231,36 +316,51 @@ export function AuthorPanel({ workspace, requirements, onRequirementsChange, onC
           <p>Pairing is limited to eight hours on this local host. Start a task here, then send the copied prompt in {desktopLabel(mode)}. Stop agent revokes the current candidate; your desktop app stays open.</p>
         </>}
       </div>}
-      {mode === 'api' && <label>Provider<select aria-label="AI provider" value={providerId} disabled={!!activity || settingsBusy || !providers.length} onChange={e => {
+      {!browser && mode === 'api' && <label>Provider<select aria-label="AI provider" value={providerId} disabled={!!activity || settingsBusy || !providers.length} onChange={e => {
         const next = providers.find(p => p.id === e.target.value)!; changeModel(next.id, next.models[0].id);
       }}>{providers.map(p => <option key={p.id} value={p.id}>{p.label}</option>)}</select></label>}
-      {!desktop && <label>Model<select aria-label="AI model" value={model} disabled={!!activity || settingsBusy || !provider} onChange={e => changeModel(providerId, e.target.value)}>
+      {!browser && !desktop && <label>Model<select aria-label="AI model" value={model} disabled={!!activity || settingsBusy || !provider} onChange={e => changeModel(providerId, e.target.value)}>
         {provider?.models.map(m => <option key={m.id} value={m.id}>{m.label}</option>)}
       </select></label>}
-      <p>Changing provider or model starts a fresh conversation. Your project, requirements and checkpoints stay in place.</p>
+      <details className="author-task-settings" open={!browser || undefined}>
+      <summary>Task settings</summary>
+      <div className="author-task-fields">
       <label>Engineering requirements<textarea aria-label="Engineering requirements" value={requirements} disabled={!!activity || workspace.busy} placeholder="Interfaces, envelope, material, tolerances…" onChange={e => { onRequirementsChange(e.target.value); setCandidate(null); }} /></label>
       <fieldset className="author-apply-mode" disabled={!!activity}><legend>After a successful build</legend>
         <label><input type="radio" name="author-apply-mode" checked={autoApply} onChange={() => setAutoApply(true)} />Apply right away <small>for small steps; a checkpoint is saved first and Undo is one click</small></label>
         <label><input type="radio" name="author-apply-mode" checked={!autoApply} onChange={() => setAutoApply(false)} />Review the diff first <small>for larger changes</small></label>
       </fieldset>
       <label>Task budget (minutes)<input aria-label="Agent time budget" type="number" min="1" max="60" value={minutes} disabled={!!activity} onChange={e => setMinutes(Math.max(1, Math.min(60, Number(e.target.value) || 5)))} /></label>
+      </div>
+      </details>
+      <div className="author-thread" role="log" aria-label="Conversation" aria-relevant="additions">
+        {!messages.length && !answer && !activity && <p className="author-empty">Ask about this part or describe a change to its design.</p>}
+        {messages.map((message, index) => <div key={index} className={message.role === 'You' ? 'author-message author-message-user' : 'author-message'}>
+          <strong>{message.role}</strong><div className="agent-answer">{message.text}</div>
+        </div>)}
+        {answer && <div className="author-message"><strong>Helios</strong><div className="agent-answer">{answer}</div></div>}
+      </div>
+      {activity && <p className="author-task-status" role="status">{activity}</p>}
       {error && <p role="alert">{error}</p>}
       {outcome && <p role="status">{outcome}</p>}
       {applied && !activity && <button onClick={() => void undoApplied()}>Undo AI changes</button>}
-      {answer && <div className="agent-answer">{answer}</div>}
       {reviewPackage && <button onClick={() => {
         void saveFile(new Blob([reviewPackage.bytes.slice().buffer], { type: 'application/zip' }), reviewPackage.fileName).catch(error => setError(errorText(error)));
       }}>Download draft review package</button>}
-      {candidate && <div><strong>{candidate.built ? 'Built candidate' : 'Rejected candidate'} · source changes</strong>
+      {candidate && <div className="author-candidate"><strong>{candidate.built ? 'Built candidate' : 'Rejected candidate'} · source changes</strong>
         {Object.keys(candidate.project.documents).filter(p => candidate!.project.documents[p] !== candidate!.base.documents[p]).map(path => <details key={path}><summary>{path}</summary><p>Before</p><pre>{candidate!.base.documents[path] ?? '(new file)'}</pre><p>After</p><pre>{candidate!.project.documents[path]}</pre></details>)}
         <button disabled={!candidate.built || !!activity || workspace.busy} onClick={() => void apply(candidate).catch(error => setError(errorText(error)))}>Apply candidate</button>
         <button disabled={!!activity} onClick={() => setCandidate(null)}>Discard candidate</button>
       </div>}
+      <div ref={chatEnd} />
     </div>
-    <div className="author-composer"><textarea aria-label="Engineering intent" value={prompt} disabled={!!activity} placeholder={desktop ? `Optional: describe the change here, or just ask ${desktopLabel(mode)} in its chat.` : 'Describe the part or change…'} onChange={e => setPrompt(e.target.value)} />
-      {activity ? <button disabled={activity === 'Applying built candidate…' || !cancellation.current} onClick={() => cancellation.current?.abort(new Error('Cancelled. Candidate changes were not applied.'))}>{activity === 'Applying built candidate…' || !cancellation.current ? 'Finishing transaction…' : 'Stop agent'}</button>
-        : <button disabled={!configured || (!desktop && !model) || settingsBusy || !!local?.error || (!desktop && !prompt.trim()) || workspace.busy} onClick={() => void run()}>{desktop ? 'Start desktop task' : 'Run agent'}</button>}
-      <button disabled={!!activity} onClick={() => { setTranscript([]); setCandidate(null); setApplied(null); setAnswer(''); setOutcome(''); setError(''); setReviewPackage(null); }}>New conversation</button>
-    </div>
+    <form className="author-composer" onSubmit={event => { event.preventDefault(); void run(); }}><textarea aria-label="Engineering intent" value={prompt} disabled={!!activity} placeholder={desktop ? `Optional: describe the change here, or just ask ${desktopLabel(mode)} in its chat.` : 'Describe the part or change…'} onChange={e => setPrompt(e.target.value)}
+      onKeyDown={event => { if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) { event.preventDefault(); event.currentTarget.form?.requestSubmit(); } }} />
+      <div className="author-composer-actions">
+      <span>{browser && configured ? (candidate?.built ? 'Apply or discard the candidate' : autoApply ? 'Apply after build' : 'Review before applying') : ''}</span>
+      {activity ? <button type="button" disabled={activity === 'Applying built candidate…' || !cancellation.current} onClick={() => cancellation.current?.abort(new Error('Cancelled. Candidate changes were not applied.'))}>{activity === 'Applying built candidate…' || !cancellation.current ? 'Finishing transaction…' : 'Stop agent'}</button>
+        : <button type="submit" disabled={!configured || (!desktop && !model) || settingsBusy || !!local?.error || (!desktop && !prompt.trim()) || (browser && !!candidate?.built) || workspace.busy}>{desktop ? 'Start desktop task' : browser ? 'Send' : 'Run agent'}</button>}
+      </div>
+    </form>
   </section>;
 }

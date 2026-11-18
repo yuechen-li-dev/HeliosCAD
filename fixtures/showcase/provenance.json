@@ -3,13 +3,13 @@
     "project": "bolt",
     "origin": "fixtures/Thread/hexbolt-showcase.firmament",
     "document": "hexbolt-showcase.firmament",
-    "sha256": "0a9ff648b24dae18ae762ccb466405ce1b46c82e99f342d3335cd5c34d7de6db"
+    "sha256": "ca6620c45f5a355bf775579f6b70fdd95bd797bb3d5363ea7772a6cf17025912"
   },
   {
     "project": "atlas",
     "origin": "fixtures/Canonical/AssemblyInterfaces/IndustrialAtlas/atlas-industrial.firmament",
     "document": "atlas-industrial.firmament",
-    "sha256": "1e414a93d779e5d297429e2e03bbc882c859f0173f1fa770190c48a5aec78d1e"
+    "sha256": "0f4c276cd81f82c002cb04bbcf823c6b77a424f08bbd3e3e7b650f65d554c544"
   },
   {
     "project": "atlas",
@@ -27,7 +27,7 @@
     "project": "atlas",
     "origin": "fixtures/Canonical/AssemblyInterfaces/IndustrialAtlas/fore-housing.firmament",
     "document": "fore-housing.firmament",
-    "sha256": "8ade754de5fe8cc544d1590365fd60cd6915bad22c57b8a6b8cca599d312a8ba"
+    "sha256": "d4b9f63a55bed63a4e8a6a85d56a35ac0489be31836dbf1478a389cd273b6c30"
   },
   {
     "project": "atlas",
@@ -39,7 +39,7 @@
     "project": "atlas",
     "origin": "fixtures/Canonical/AssemblyInterfaces/IndustrialAtlas/hardware.firmament",
     "document": "hardware.firmament",
-    "sha256": "a26f9e23cfee883f85b0598030549cdb05670e66cb8dde76bf37091cae236a08"
+    "sha256": "aa16eeffb084d5123d4032aa91341b7eb9e07a684d5b3d5bc45fcd713fa32256"
   },
   {
     "project": "atlas",
@@ -63,151 +63,151 @@
     "project": "atlas",
     "origin": "fixtures/Canonical/AssemblyInterfaces/IndustrialAtlas/upper-housing.firmament",
     "document": "upper-housing.firmament",
-    "sha256": "eccc1630099e7fd70aaf92630d902e301d94f6887d046f1fbb4cf53535f3fc0a"
+    "sha256": "aab1ef2927fb8613b9dcefeaa89d84f28d5411c1f6ba3749f52846f13a701e75"
   },
   {
     "project": "guitar",
     "origin": "fixtures/Canonical/AssemblyInterfaces/GuitarX0/CarvedMaple.firmament",
     "document": "CarvedMaple.firmament",
-    "sha256": "2a0fadeadc67541aa0c1138b4450691f54453c814d78be597e68117492e74afb"
+    "sha256": "375d3e0b18db11ec80f6260d76a491f88c1b3bcae1fc8412ab73ad9e5ed42fb4"
   },
   {
     "project": "guitar",
     "origin": "fixtures/Canonical/AssemblyInterfaces/GuitarX0/IvoryBinding.firmament",
     "document": "IvoryBinding.firmament",
-    "sha256": "63a59354c8aa2601c12f4ed86e3c3750e79c94b7d8e20e09af1fd7f93dd036a2"
+    "sha256": "7b538e150edbaba650182af216935dda7720a0a92e2de54c9682064c5ef32d06"
   },
   {
     "project": "guitar",
     "origin": "fixtures/Canonical/AssemblyInterfaces/GuitarX0/MahoganyBack.firmament",
     "document": "MahoganyBack.firmament",
-    "sha256": "23b571f651678a6b873b07ab7cd6fb00ea09e798b12ecb602ec6ad97703bde95"
+    "sha256": "024cb218b9293dcb93973492fbe92ea89d9410de0b927c8beca120c3d8378e21"
   },
   {
     "project": "guitar",
     "origin": "fixtures/Canonical/AssemblyInterfaces/GuitarX0/Neck.firmament",
     "document": "Neck.firmament",
-    "sha256": "a548fd21df44ea6b46f77b1b435b61ddc40c3fc600421643f62161200e16dccc"
+    "sha256": "d8665b6774309845727f6e67442fa0f3f6469ff97a12927734c9d544ee89d380"
   },
   {
     "project": "guitar",
     "origin": "fixtures/Canonical/AssemblyInterfaces/GuitarX0/body-assembly.firmament",
     "document": "body-assembly.firmament",
-    "sha256": "765b2171017bb9a4f69e1aa05f8e905f93ce1cd9f3199556156c3b860ec97e14"
+    "sha256": "dd14c30b7eb8837550d9f4b0560c5d49f9b05bd277a9b9e5e237cfcb93ef4c4b"
   },
   {
     "project": "guitar",
     "origin": "fixtures/Canonical/AssemblyInterfaces/GuitarX0/body-outline.firmament",
     "document": "body-outline.firmament",
-    "sha256": "413d96a0e9d5496f158dbf4f7571078fdd583ba173307edd604980fbaee46c13"
+    "sha256": "bc4b4d730188ec0ca5e6e16ce60cc35a41e4e91c3983ffe83572990d8470834c"
   },
   {
     "project": "guitar",
     "origin": "fixtures/Canonical/AssemblyInterfaces/GuitarX0/body-profile.firmament",
     "document": "body-profile.firmament",
-    "sha256": "d4f47f6273331a13a11e883d366a7ada8656093669f5660707e9f886517b3865"
+    "sha256": "7ddef15adec98e5e81be3427741abbdf2f930f620d51a0b92f46ac810024940e"
   },
   {
     "project": "guitar",
     "origin": "fixtures/Canonical/AssemblyInterfaces/GuitarX0/bridge-assembly.firmament",
     "document": "bridge-assembly.firmament",
-    "sha256": "bc6c33c70f276a3dcf9c16789dc4b631a012a8b7ebe5ae80a792609311eb3006"
+    "sha256": "132d4e953db9ba4c092b12d582ddbf0244ac83325aa480f93854a8da980086f2"
   },
   {
     "project": "guitar",
     "origin": "fixtures/Canonical/AssemblyInterfaces/GuitarX0/electronics-assembly.firmament",
     "document": "electronics-assembly.firmament",
-    "sha256": "db3d8c3403c27650e9ed081a9876657f02e05d64937fefdb91c5f2ce4c10e615"
+    "sha256": "5c02421ab20b5210425e5f26b4d111ba335015f96e75d1363088a51eefdc436e"
   },
   {
     "project": "guitar",
     "origin": "fixtures/Canonical/AssemblyInterfaces/GuitarX0/guitar-x0.firmament",
     "document": "guitar-x0.firmament",
-    "sha256": "341f2518852d4ef4d3f0c73313793b3d2ce24b5cd50d7815555b2bd9123bf2d9"
+    "sha256": "3093239db1cd56d9f6fa9690860b8feebb5f6c4294f8db422398df3dce5cdfca"
   },
   {
     "project": "guitar",
     "origin": "fixtures/Canonical/AssemblyInterfaces/GuitarX0/guitar.firmasm",
     "document": "guitar.firmasm",
-    "sha256": "10c11dd2fa4361c87d14e22d318348ce18be0925119496184e846a603b1ca2db"
+    "sha256": "e2ab718437b9ff1ca6c64af54f61eb37fbe1f339b9b0fce0f004b099a2c7a6dc"
   },
   {
     "project": "guitar",
     "origin": "fixtures/Canonical/AssemblyInterfaces/GuitarX0/hardware-definitions.firmament",
     "document": "hardware-definitions.firmament",
-    "sha256": "5e5977bcf3094f29f80897228791358c6d3f0677bd589be5eb3b33ae77272a78"
+    "sha256": "5dc7c1aa8ef65e4a6736bf6302347d998f56defc43802a68f8d4a2338a5b7ec7"
   },
   {
     "project": "guitar",
     "origin": "fixtures/Canonical/AssemblyInterfaces/GuitarX0/hardware-layout.firmament",
     "document": "hardware-layout.firmament",
-    "sha256": "b8b1fa90be962e3d12f2992f0a3c69b8f44bb5692ec191d11bfd07ef3e5a4ec0"
+    "sha256": "92cdc0f3e5193a000df73110d3240ffa80cc7a56c5a689f29464d39075683ddf"
   },
   {
     "project": "guitar",
     "origin": "fixtures/Canonical/AssemblyInterfaces/GuitarX0/knob.firmament",
     "document": "knob.firmament",
-    "sha256": "0ce866fa7811b18ce4748ab02a32677a84afddd2d151deb3cd04708d2b0c4944"
+    "sha256": "996d3af70589002b3ab9f7296a730aa63415ea3250a14d1a22275ae5fb84afcc"
   },
   {
     "project": "guitar",
     "origin": "fixtures/Canonical/AssemblyInterfaces/GuitarX0/materials.firmament",
     "document": "materials.firmament",
-    "sha256": "1978adbcc974d243e6cd2180cb6b816f9bd4f80d5f91641fa77e66902266baa4"
+    "sha256": "c92c898d3fb84d2e69be42e65bf5ac7ba48372a7f06bef930eb6efa9d426f883"
   },
   {
     "project": "guitar",
     "origin": "fixtures/Canonical/AssemblyInterfaces/GuitarX0/neck-assembly.firmament",
     "document": "neck-assembly.firmament",
-    "sha256": "d6f5aed86e6531b587d1dbd59cbd9e427e7412b188acbace1e3f3a55bbfac8cd"
+    "sha256": "b39777dd1d324f7d0e4fb492a7a7b09e3462889c4a3d9780bd94176dfffc1a5d"
   },
   {
     "project": "guitar",
     "origin": "fixtures/Canonical/AssemblyInterfaces/GuitarX0/neck-profile.firmament",
     "document": "neck-profile.firmament",
-    "sha256": "366a80573166ad8946ced8609aba6f834d1eb689f69e86571cb3937184835b2c"
+    "sha256": "0905efcdc36bfa27c6565ed9ad8616af2bbcf2dbd497e9ca31c2b946507ea71b"
   },
   {
     "project": "guitar",
     "origin": "fixtures/Canonical/AssemblyInterfaces/GuitarX0/pickup.firmament",
     "document": "pickup.firmament",
-    "sha256": "bf53a6bfdeee13d984d549dfae14b297c0cac0e39016f5203d62812a1f239e49"
+    "sha256": "b344043983e31eae711f50ba49dac3b11c9d556b95f670d84b538cf103400316"
   },
   {
     "project": "guitar",
     "origin": "fixtures/Canonical/AssemblyInterfaces/GuitarX0/pickups-assembly.firmament",
     "document": "pickups-assembly.firmament",
-    "sha256": "aec1c5cebc631a9939c8155ec988eb757d94eec53e43927712247b778daa4b4f"
+    "sha256": "2cd8bc0ec2684dc38303ff3580653871e031e77afa0dd7ca8dc2b45ef994bab0"
   },
   {
     "project": "guitar",
     "origin": "fixtures/Canonical/AssemblyInterfaces/GuitarX0/selector.firmament",
     "document": "selector.firmament",
-    "sha256": "3e2de414dbdfc7c85526705f380923fc923ca662df2bb3d5bbb065c85109b566"
+    "sha256": "1870f6960e464b36f057e672ecf124ea7bc96db7d9edf91d14c50b791df851c5"
   },
   {
     "project": "guitar",
     "origin": "fixtures/Canonical/AssemblyInterfaces/GuitarX0/string-low-e.firmament",
     "document": "string-low-e.firmament",
-    "sha256": "064c251c9ed033cb94ad525e29c412b54e10deb28c708476c7360c7b329bfd95"
+    "sha256": "7a699e08b8c203ece5b3a620b19fd404133212ce5560988cc01963955b5692f1"
   },
   {
     "project": "guitar",
     "origin": "fixtures/Canonical/AssemblyInterfaces/GuitarX0/strings-assembly.firmament",
     "document": "strings-assembly.firmament",
-    "sha256": "d547605d2c4d2832ad9f973cdf50cb86bc499f7e3d4dd90b9bec72247b4aeaeb"
+    "sha256": "b29d0b17ed4a0eb11c9e5a4c7f4c492ec555b131a5d488893482ec7d35f5b1e6"
   },
   {
     "project": "guitar",
     "origin": "fixtures/Canonical/AssemblyInterfaces/GuitarX0/tuner.firmament",
     "document": "tuner.firmament",
-    "sha256": "c36c2e99422591957ea6b02b1d9d759506eb0c40e7c96ebb662219d77fe0b5ae"
+    "sha256": "53a9009d7f95c47f28d71c8856870c3d4fe594f97f2c84e1833fe8cb67889a61"
   },
   {
     "project": "guitar",
     "origin": "fixtures/Canonical/AssemblyInterfaces/GuitarX0/tuners-assembly.firmament",
     "document": "tuners-assembly.firmament",
-    "sha256": "de831b9c6e8022219d44d81bc32777cab24b902396f103630742ef08dcb78e4e"
+    "sha256": "bd8631a6cfcf70d479d0a18b432c4ac58f2dba2daa22d4c7df9cede255b0411f"
   },
   {
     "project": "house",
@@ -258,6 +258,48 @@
     "sha256": "db14a6281720315a6695d253dc944d1a117eae0cb1ff1e65cd77072d86e48ac7"
   },
   {
+    "project": "spur-gear",
+    "origin": "fixtures/Canonical/Gears/spur-basic.firmament",
+    "document": "spur-basic.firmament",
+    "sha256": "7f7683569c5c028a72a8697cacd77c76ae4bcacee88e957297849ebe1a9e7a1a"
+  },
+  {
+    "project": "turned-shaft",
+    "origin": "fixtures/Canonical/Revolve/stepped-shaft.firmament",
+    "document": "stepped-shaft.firmament",
+    "sha256": "ca22535bb98a928b82ebd813861030e3466a226de3716dab460705041b501972"
+  },
+  {
+    "project": "seated-fastener",
+    "origin": "fixtures/Regression/CodeNativeAssembly/assembly.firmasm",
+    "document": "assembly.firmasm",
+    "sha256": "e07baef53e53781c5b61a78ff8c532896845df21ecf2f5037a9515a1a416ecce"
+  },
+  {
+    "project": "seated-fastener",
+    "origin": "fixtures/Regression/CodeNativeAssembly/bracket.firmament",
+    "document": "bracket.firmament",
+    "sha256": "6c78dafcac110d898bcd69933a1b27e028eefe923c5e00bb7ad76a0dddc37917"
+  },
+  {
+    "project": "seated-fastener",
+    "origin": "fixtures/Regression/CodeNativeAssembly/fastener-library.firmament",
+    "document": "fastener-library.firmament",
+    "sha256": "4dc60458b34b51fdad65062360b9d42baec534b42ac42d0323c933a437887a99"
+  },
+  {
+    "project": "perforated-cup",
+    "origin": "fixtures/Canonical/Perforation/cylindrical-staggered-32.firmament",
+    "document": "cylindrical-staggered-32.firmament",
+    "sha256": "7fc1d22d829e69ddb33a95b7f04da89399c2c774448f369302bd598821ba6bb7"
+  },
+  {
+    "project": "twisted-sleeve",
+    "origin": "fixtures/Canonical/SectionChain/hollow-loft-twist.firmament",
+    "document": "hollow-loft-twist.firmament",
+    "sha256": "5e6c3d668817dfacf399664bdf20c29150636416ac50e502472cb6be1c6ecbf8"
+  },
+  {
     "project": "bracket",
     "origin": "HeliosCAD/src/sdk/samples.ts#bracketSource",
     "document": "bracket.firmament",
@@ -267,12 +309,41 @@
     "project": "basic-bracket",
     "origin": "HeliosCAD/fixtures/showcase/basic-bracket/bracket.firmament",
     "document": "bracket.firmament",
-    "sha256": "5a042c5b62d22e62dffef344f2ce7ab0e426622902bb6136fc3ceb3d795acc95"
+    "sha256": "8a508f4e9ec821a30c29997d4bb75aea441b3d73a70b0b2ce286d686bed25dea"
   },
   {
     "project": "paperclip",
     "origin": "HeliosCAD/fixtures/showcase/paperclip/paperclip.firmament",
     "document": "paperclip.firmament",
-    "sha256": "bf78f714455640efb86e6ae7091254c9c2596cb928262dbfa572f66386ac413c"
+    "sha256": "bf78f714455640efb86e6ae7091254c9c2596cb928262dbfa572f66386ac413c",
+    "adaptedFrom": "fixtures/Canonical/WireForm/paperclip.firmament"
+  },
+  {
+    "project": "checked-plate",
+    "origin": "HeliosCAD/fixtures/showcase/checked-plate/05-checked-plate.firmament",
+    "document": "05-checked-plate.firmament",
+    "sha256": "10dcfb46f2b245ee1c90a1f18e41ab5e15bad3bf46ea73b0bdcb0c5fa02fe61b",
+    "adaptedFrom": "fixtures/Canonical/Learn/05-checked-plate.firmament"
+  },
+  {
+    "project": "rounded-tray",
+    "origin": "HeliosCAD/fixtures/showcase/rounded-tray/rounded-tray.firmament",
+    "document": "rounded-tray.firmament",
+    "sha256": "2b896acb52df26b9552e75c418f4f8f9df4bebaf53efd001108734b2b6d24082",
+    "adaptedFrom": "fixtures/Canonical/Hollow/rounded-tray.firmament"
+  },
+  {
+    "project": "machined-block",
+    "origin": "HeliosCAD/fixtures/showcase/machined-block/03-machined-block.firmament",
+    "document": "03-machined-block.firmament",
+    "sha256": "19fb06324ad77a9f04f167b4de6732076bbb0fef05091a5bf0b17950c9876b2b",
+    "adaptedFrom": "fixtures/Canonical/Learn/03-machined-block.firmament"
+  },
+  {
+    "project": "bearing-mount",
+    "origin": "HeliosCAD/fixtures/showcase/bearing-mount/showcase-bearing-mount.firmament",
+    "document": "showcase-bearing-mount.firmament",
+    "sha256": "76cecdb63a27c782efa7e636845616a4d8676f836991ff6178bd8805ee19d419",
+    "adaptedFrom": "fixtures/Canonical/PMI/showcase-bearing-mount.firmament"
   }
 ]

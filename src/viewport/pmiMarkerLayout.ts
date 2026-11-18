@@ -25,14 +25,17 @@ export function markerTags(annotations: readonly PmiDisplayAnnotation[]): Marker
 export interface Placement { readonly id: string; readonly x: number; readonly y: number; readonly width: number; readonly height: number; readonly ax: number; readonly ay: number }
 
 /**
- * Places tags beside their anchors without overlapping each other, the viewport edge or another record's anchor.
+ * Places tags beside their anchors, keeping them clear of other tags and the annotation legend.
  * Candidates ring each anchor at growing distances, upper right first; a tag that fits nowhere takes its last
  * candidate, so every record is always shown. Deterministic for a given view, so screenshots are reproducible.
  */
-export function layoutTags(tags: readonly { id: string; ax: number; ay: number; width: number; height: number }[], width: number, height: number): Placement[] {
+export function layoutTags(tags: readonly { id: string; ax: number; ay: number; width: number; height: number }[], width: number, height: number,
+  reserved?: Pick<Placement, 'x' | 'y' | 'width' | 'height'>): Placement[] {
   const placed: Placement[] = [];
+  const touching = (p: Pick<Placement, 'x' | 'y' | 'width' | 'height'>, x: number, y: number, w: number, h: number) =>
+    x < p.x + p.width + 4 && x + w + 4 > p.x && y < p.y + p.height + 4 && y + h + 4 > p.y;
   const overlaps = (x: number, y: number, w: number, h: number) =>
-    placed.some(p => x < p.x + p.width + 4 && x + w + 4 > p.x && y < p.y + p.height + 4 && y + h + 4 > p.y)
+    placed.some(p => touching(p, x, y, w, h))
     || tags.some(t => t.ax > x - 6 && t.ax < x + w + 6 && t.ay > y - 6 && t.ay < y + h + 6);
   const directions = [[1, -1], [1, 1], [-1, -1], [-1, 1], [1, 0], [-1, 0], [0, -1], [0, 1]] as const;
   // Nearer the top of the screen first, so tags stack predictably.
@@ -42,9 +45,10 @@ export function layoutTags(tags: readonly { id: string; ax: number; ay: number; 
       const x = dx > 0 ? tag.ax + r * .7 : dx < 0 ? tag.ax - r * .7 - tag.width : tag.ax - tag.width / 2;
       const y = dy > 0 ? tag.ay + r * .5 : dy < 0 ? tag.ay - r * .5 - tag.height : tag.ay - tag.height / 2;
       const inside = x >= 4 && y >= 4 && x + tag.width <= width - 4 && y + tag.height <= height - 4;
+      if (!inside || (reserved && touching(reserved, x, y, tag.width, tag.height))) continue;
       const candidate = { id: tag.id, x, y, width: tag.width, height: tag.height, ax: tag.ax, ay: tag.ay };
-      if (inside && !overlaps(x, y, tag.width, tag.height)) { best = candidate; break search; }
-      if (inside) best ??= candidate;
+      if (!overlaps(x, y, tag.width, tag.height)) { best = candidate; break search; }
+      best ??= candidate;
     }
     placed.push(best ?? { id: tag.id, x: double(tag.ax + 12, 4, width - tag.width - 4), y: double(tag.ay - tag.height - 12, 4, height - tag.height - 4), width: tag.width, height: tag.height, ax: tag.ax, ay: tag.ay });
   }

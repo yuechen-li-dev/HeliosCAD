@@ -84,21 +84,31 @@ test('an out-of-band nominal warns and needs a second click', async ({ page }) =
   await form.getByLabel('Nominal (mm)', { exact: true }).fill('9.5');
   await form.getByLabel('Fit', { exact: true }).selectOption('H7');
   await expect(form.getByLabel('Upper + (mm)', { exact: true })).toHaveValue('0.015');
+  await form.getByLabel('Nominal (mm)', { exact: true }).fill('10.1');
+  await expect(form.getByLabel('Upper + (mm)', { exact: true })).toHaveValue('0.018');
+  await form.getByLabel('Nominal (mm)', { exact: true }).fill('9.5');
   await expect(form.getByRole('alert')).toContainText('does not meet its own requirement');
   await form.getByRole('button', { name: 'Apply', exact: true }).click();
   await expect(form.getByRole('button', { name: 'Apply anyway', exact: true })).toBeVisible();
+  await form.getByLabel('Nominal (mm)', { exact: true }).fill('10');
+  await expect(form.getByRole('alert')).toHaveCount(0);
+  await form.getByRole('button', { name: 'Apply', exact: true }).click();
+  await expect(page.getByLabel('PMI records', { exact: true })).toContainText('PlusMinus(0.015mm, 0mm)');
+  await expect(page.getByLabel('PMI annotations')).toContainText('Diameter');
 });
 
 test('the face opposite a datum plane takes its thickness, measured and rounded', async ({ page }) => {
   await openPart(page);
   const canvas = page.locator('.viewport-canvas canvas'), box = (await canvas.boundingBox())!;
-  await canvas.click({ position: { x: box.width / 2, y: box.height / 2 - 100 }, modifiers: ['Alt'] });
+  await page.getByRole('button', { name: 'Top', exact: true }).click();
+  const stock = { x: box.width / 2 + 100, y: box.height / 2 };
+  await canvas.click({ position: stock });
   await page.getByRole('form', { name: 'Add Datum', exact: true }).getByRole('button', { name: 'Apply', exact: true }).click();
-  await expect(page.locator('.status-ready')).toContainText('Ready');
-  // Orbit below the part and pick its bottom face.
-  const cx = box.x + box.width / 2, cy = box.y + box.height / 2;
-  await page.mouse.move(cx, cy + 150); await page.mouse.down(); await page.mouse.move(cx, cy - 250, { steps: 16 }); await page.mouse.up();
-  await canvas.click({ position: { x: box.width / 2, y: box.height / 2 + 100 }, modifiers: ['Alt'] });
+  await expect(page.getByLabel('PMI records', { exact: true }).getByRole('button', { name: 'A Datum', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: /Command palette/ }).click();
+  await page.getByLabel('Search commands').fill('Bottom view');
+  await page.getByRole('button', { name: 'Bottom view', exact: true }).click();
+  await canvas.click({ position: stock });
   const radio = page.getByRole('radio', { name: /^Distance from A 9\.000$/ });
   await radio.check();
   const form = page.getByRole('form', { name: 'Add Distance', exact: true });
