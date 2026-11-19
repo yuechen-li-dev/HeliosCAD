@@ -218,12 +218,16 @@ for (const kind of ['Chamfer'] as const) test(`a picked bracket edge accepts one
   await page.getByRole('tab', { name: 'Graph', exact: true }).click();
   const before = (await saveSource(page, `single-edge-${kind}-before`)).source;
   await page.getByRole('button', { name: 'Top', exact: true }).click();
-  await inspector(page).getByRole('button', { name: 'Finish an edge…', exact: true }).click();
+  await inspector(page).getByRole('button', { name: `${kind} an edge…`, exact: true }).click();
   await expect(page.getByRole('button', { name: 'Edges', exact: true })).toHaveAttribute('aria-pressed', 'true');
-  await expect(page.getByText(/Click an edge in the viewport/)).toBeVisible();
+  // The runtime builds the finish on every offered edge; the ones that build are lit.
+  await expect(page.getByText(/can take a chamfer, shown in gold/)).toBeVisible({ timeout: 60_000 });
+  const canvas = page.locator('[data-testid="viewport"] canvas');
+  const lit = JSON.parse((await canvas.getAttribute('data-finish-highlight'))!);
+  expect(lit).toMatchObject({ kind: 'chamfer' }); expect(lit.admitted).toBeGreaterThan(0);
+  // The Top view separates the two extrusion caps across the screen.
   await clickWorld(page, [18, -20, 3]);
-  const action = page.getByRole('button', { name: `${kind} selected edge`, exact: true });
-  await expect(action).toBeEnabled(); await action.click();
+  await expect(panel(page).getByText(/Builds with Distance .* mm/)).toBeVisible({ timeout: 60_000 });
   await expect(panel(page).getByRole('region', { name: 'Selected edge' })).toContainText('Extrusion end-face edge');
   await expect(panel(page).getByLabel('Face', { exact: true })).toHaveCount(0);
   await expect(panel(page).getByLabel('Target', { exact: true })).toHaveCount(0);
@@ -236,7 +240,9 @@ for (const kind of ['Chamfer'] as const) test(`a picked bracket edge accepts one
   await expect(panel(page).getByRole('button', { name: 'Apply', exact: true })).toBeDisabled();
   await panel(page).getByRole('button', { name: 'Cancel', exact: true }).click();
   expect((await saveSource(page, `single-edge-${kind}-cancelled`)).source).toBe(before);
-  await action.click(); await panel(page).getByLabel(size, { exact: true }).fill('0.5');
+  // The edge stays selected after Cancel; its button follows the same admission.
+  const action = page.getByRole('button', { name: `${kind} selected edge`, exact: true });
+  await expect(action).toBeEnabled(); await action.click(); await panel(page).getByLabel(size, { exact: true }).fill('0.5');
   await expect(panel(page).getByRole('status')).toContainText('Preview ready');
   await page.getByRole('button', { name: 'Iso', exact: true }).click();
   await page.screenshot({ path: resolve(output, `single-edge-${kind.toLowerCase()}-preview.png`), fullPage: true });
@@ -318,7 +324,7 @@ for (const kind of ['Fillet', 'Chamfer'] as const) test(`a drilled Box can ${kin
   expect(exported.match(/CYLINDRICAL_SURFACE\(/g)).toHaveLength(kind === 'Fillet' ? 3 : 2);
 });
 
-test('an end-face edge does not offer the inset partial fillet', async ({ page }) => {
+test('an end-face edge running into the inside bend offers a chamfer and says why not a fillet', async ({ page }) => {
   await page.goto('/'); await page.getByRole('button', { name: 'Open Simple bracket', exact: true }).click();
   await expect(page.locator('.status-ready')).toContainText('Ready', { timeout: 120_000 });
   await page.getByRole('tab', { name: 'Graph', exact: true }).click();
@@ -327,8 +333,27 @@ test('an end-face edge does not offer the inset partial fillet', async ({ page }
   await clickWorld(page, [18,-20,3]);
   await expect(page.getByRole('button', { name: 'Fillet selected edge', exact: true })).toBeDisabled();
   await expect(page.getByRole('button', { name: 'Chamfer selected edge', exact: true })).toBeEnabled();
-  await expect(page.getByRole('group', { name: 'Selected edge actions' })).toContainText('Choose Chamfer here, or click Iso and pick a corner that runs along the extrusion.');
+  await expect(page.getByRole('group', { name: 'Selected edge actions' })).toContainText('runs into an inside corner', { timeout: 60_000 });
   expect((await saveSource(page, 'unsupported-single-edge')).source).not.toContain('EdgeFinish');
+});
+
+test('an end-face edge with square corners takes a fillet along its whole length', async ({ page }) => {
+  await page.goto('/'); await page.getByRole('button', { name: 'Open Simple bracket', exact: true }).click();
+  await expect(page.locator('.status-ready')).toContainText('Ready', { timeout: 120_000 });
+  await page.getByRole('tab', { name: 'Graph', exact: true }).click();
+  await page.getByRole('button', { name: 'Front', exact: true }).click();
+  await page.getByRole('group', { name: 'Pick geometry' }).getByRole('button', { name: 'Edges', exact: true }).click();
+  // The foot's end edge: square outside corners at both ends.
+  await clickWorld(page, [30,-20,1.5]);
+  const fillet = page.getByRole('button', { name: 'Fillet selected edge', exact: true });
+  await expect(fillet).toBeEnabled({ timeout: 60_000 }); await fillet.click();
+  await expect(panel(page).getByText(/Builds with Radius/)).toBeVisible({ timeout: 60_000 });
+  await panel(page).getByLabel('Radius', { exact: true }).fill('1');
+  await expect(panel(page).getByRole('status')).toContainText('Preview ready');
+  await panel(page).getByRole('button', { name: 'Apply', exact: true }).click(); await ready(page);
+  const saved = (await saveSource(page, 'full-length-end-face-fillet')).source;
+  expect(saved).toMatch(/EdgeFinish \w+ \{ Face: Top Target: section\.Outer\.Toe Kind: Fillet Radius: 1mm \}/);
+  expect(saved).not.toContain('EndClearance');
 });
 
 for (const kind of ['Fillet', 'Chamfer'] as const) test(`the inside L bend takes a full-width ${kind.toLowerCase()} and only the picked edge highlights`, async ({ page }) => {
@@ -340,7 +365,7 @@ for (const kind of ['Fillet', 'Chamfer'] as const) test(`the inside L bend takes
   await clickWorld(page, [3,-10,3]);
   const canvas = page.locator('[data-testid="viewport"] canvas');
   await expect.poll(async () => JSON.parse((await canvas.getAttribute('data-topology-highlight'))!)).toMatchObject({ edges: 1, bodies: 0 });
-  await expect(page.getByRole('region', { name: 'Inspector', exact: true })).toContainText('Fillet and chamfer are available on this edge in Graph.');
+  await expect(page.getByRole('region', { name: 'Inspector', exact: true })).toContainText('The buttons above the viewport say which finishes it takes.');
   await page.screenshot({ path: resolve(output, 'inside-bend-edge-selected.png'), fullPage: true });
   await page.getByRole('button', { name: `${kind} selected edge`, exact: true }).click();
   await expect(panel(page).getByRole('region', { name: 'Selected edge' })).toContainText('Inside bend · full length');

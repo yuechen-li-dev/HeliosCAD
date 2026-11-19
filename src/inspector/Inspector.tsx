@@ -44,7 +44,7 @@ export function Inspector({ model, schema, projection, projectionCurrent = true,
         <div className="entity-hero"><span className="entity-glyph">{entity.kind === 'Hole' ? '⊙' : '◆'}</span><div><strong>{entity.name}</strong><small>{displayKind(entity.kind)}</small></div></div>
         <Section id="identity" label="Identity">
           {selection?.edgeFinish && <p className="section-note">
-            {selection.edgeFinish.filletSupported === false ? 'Chamfer is available on this edge in Graph.' : 'Fillet and chamfer are available on this edge in Graph.'}
+            This edge can be finished from source. The buttons above the viewport say which finishes it takes.
           </p>}
           <dl className="identity-list">
             <dt>Semantic ID</dt><dd className="identifier"><Identifier value={entity.id} /></dd>

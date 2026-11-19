@@ -57,9 +57,6 @@ export function edgePreviewAdvice(
 
 /** A pick can be useful for inspection even when it has no authored finish selector. */
 export function edgeSelectionHelp(selection: SelectionDescription): string {
-  if (selection.edgeFinish?.filletSupported === false) {
-    return 'Full-edge fillets are not supported on this end-face edge. Choose Chamfer here, or click Iso and pick a corner that runs along the extrusion.';
-  }
   if (selection.edgeFinish) return '';
   if (selection.sourceAddressability === 'ImportedStable') {
     return 'This edge comes from imported geometry. Open the original editable part to fillet or chamfer it here.';

@@ -97,8 +97,10 @@ const usable = (pick: SelectionDescription) => pick.topologyKind !== 'Edge' && S
 /** What a selection offers, ranked: the first enabled action is the one the card preselects. Records the selection
  * cannot express are left out; records it nearly can are present and disabled with the measured reason. */
 export function labelActions(picks: readonly SelectionDescription[], faces: readonly (LabelFace | null)[], datums: readonly LabelDatum[],
-  outline: LanguageOutline | null, holes: readonly RecognizedHole[] = [], siblings: readonly LabelFace[] = []): { actions: LabelAction[]; notice: string | null } {
-  const result = offeredActions(picks, faces, datums, outline, holes, siblings);
+  outline: LanguageOutline | null, holes: readonly RecognizedHole[] = [], siblings: readonly LabelFace[] = [],
+  /** Names the part already carries outside the source, such as the datums of an imported STEP file. */
+  takenNames: readonly string[] = []): { actions: LabelAction[]; notice: string | null } {
+  const result = offeredActions(picks, faces, datums, outline, holes, siblings, takenNames);
   // A face takes each requirement once: a second record of the same kind on the same target is a contradiction or a
   // duplicate, never what was meant. Datums are handled above with their letter.
   const records = pmiRecords(outline);
@@ -139,7 +141,7 @@ function sameFaces(written: string | undefined, faces: readonly [string, string]
 }
 
 function offeredActions(picks: readonly SelectionDescription[], faces: readonly (LabelFace | null)[], datums: readonly LabelDatum[],
-  outline: LanguageOutline | null, holes: readonly RecognizedHole[], siblings: readonly LabelFace[]): { actions: LabelAction[]; notice: string | null } {
+  outline: LanguageOutline | null, holes: readonly RecognizedHole[], siblings: readonly LabelFace[], takenNames: readonly string[]): { actions: LabelAction[]; notice: string | null } {
   const base = LABEL_DEFAULTS;
   if (picks.length === 0)
     return { actions: [PART_NOTE], notice: null };
@@ -164,7 +166,7 @@ function offeredActions(picks: readonly SelectionDescription[], faces: readonly 
   const all = datums.map(d => d.name);
   const AXIS_ZONES = ['Cylindrical', null] as const;
   const actions: LabelAction[] = [];
-  const letter = nextDatumLetter(outline);
+  const letter = nextDatumLetter(outline, takenNames);
 
   // Holes: faces of one cylinder are one hole, and a hole is labeled by its recognized name. A hole split into several
   // faces, or several holes, must be recognized first; a whole single-face cylinder can be labeled by its face as well.

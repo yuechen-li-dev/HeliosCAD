@@ -1,5 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { ConstructProjection, Diagnostic, EditableProperty, FieldProjection, LanguageOutline, ModelSession, LanguageEditOperation, LanguageField, MotionPose, OutlineField, OutlineNode, PaletteItem, SelectionDescription, SemanticSchema, UnitValue } from '@aetheris/cad';
+import type { ConstructProjection, Diagnostic, EdgeFinishKind, EdgeFinishRange, EditableProperty, FieldProjection, LanguageOutline, ModelSession, LanguageEditOperation, LanguageField, MotionPose, OutlineField, OutlineNode, PaletteItem, SelectionDescription, SemanticSchema, UnitValue } from '@aetheris/cad';
 import { prepareStepImport, WebSdkCadRuntime } from '../sdk/CadRuntime';
 import { AetherisWorkerClient, type BuildResult } from '../sdk/AetherisWorkerClient';
 import { assemblySource, bracketSource, emptyModelSource } from '../sdk/samples';
@@ -15,6 +15,7 @@ import { matchKind } from 'machinalayout/match';
 import { editorSource, SourcePanel, type SourcePanelHandle } from '../source/SourcePanel';
 import { Viewport } from '../viewport/Viewport';
 import { edgeOperationPreview } from '../viewport/edgeOperationPreview';
+import { finishHighlight, finishNotes, finishSummary, finishVerdict, useEdgeFinishAdmission } from '../graph/edgeFinishAdmission';
 import type { BusyState, DisplayMode, ThemeName, ViewMode } from './types';
 import type { Project } from '../cloud/api';
 import { ModelTree } from '../model-tree/ModelTree';
@@ -41,7 +42,7 @@ import { MotionStrip } from '../viewport/MotionStrip';
 import { poseCoverage } from '../viewport/pose';
 import type { ExportFormat, PmiOffsets } from '@aetheris/cad';
 import { ExportPicker } from './ExportPicker';
-import { importedProject, isStep, localFileLimit, localWorkspaceLimit, packProject, sourceFiles, unpackProject } from './localProject';
+import { importedProject, isStep, localFileLimit, localWorkspaceLimit, packProject, sourceFiles, stepTextSha256, unpackProject } from './localProject';
 import { registerRecoverableSource } from './crashRecovery';
 import { LabelPanel } from '../label/LabelPanel';
 import { labelRefusal } from '../label/feedback';
@@ -60,6 +61,10 @@ import { artifactBuild } from '../platform/target';
 const LearnCenter = lazy(() => import('../learn/LearnCenter').then(m => ({ default: m.LearnCenter })));
 
 type UtilityTab = { kind: 'files' } | { kind: 'inspector' } | { kind: 'examples' } | { kind: 'llm' } | { kind: 'version-control' } | { kind: 'tutorial' };
+
+/** What an imported STEP part takes in Helios today, said where the hole and finish tools would be. */
+const IMPORTED_PART_NOTE = 'This is an imported STEP part. Label it in the Label tab: datums, sizes, tolerances and notes. '
+  + 'Adding holes or edge finishes to an imported part is not supported yet.';
 
 export function HeliosApp({ project, initialWorkspace, chooseBase = false, onShowcase, onSave, onPublish, onBack, onSignOut }: { project?: Project; initialWorkspace?: WorkspaceProject; chooseBase?: boolean; onShowcase?: () => void; onSave?: (source: string) => Promise<void>; onPublish?: (payload: { expectedRevisionId: string; title: string; description: string; category: string; tags: string[]; previewPngBase64: string }) => Promise<void>; onBack?: () => void; onSignOut?: () => void } = {}) {
   const [learnPage, setLearnPage] = useState<string | null>(null);
@@ -109,6 +114,10 @@ export function HeliosApp({ project, initialWorkspace, chooseBase = false, onSho
   const [theme, setTheme] = useTheme();
   const [displayMode, setDisplayMode] = useState<DisplayMode>('shaded');
   const [selectionMode, setSelectionMode] = useState<'face' | 'edge'>('face');
+  /** Picking an edge for this finish: admitted edges are lit, a click on one starts authoring. */
+  const [finishPick, setFinishPick] = useState<EdgeFinishKind | null>(null);
+  const [edgeRange, setEdgeRange] = useState<{ readonly edge: string; readonly range: EdgeFinishRange | null; readonly error?: string } | null>(null);
+  const finishes = useEdgeFinishAdmission(model);
   const [viewMode, setViewMode] = useState<ViewMode>('perspective');
   const [viewCommand, setViewCommand] = useState('iso-0'); // Parts open in an isometric view; fit follows each new model.
   const [runtimeName, setRuntimeName] = useState('Aetheris');
@@ -193,6 +202,11 @@ export function HeliosApp({ project, initialWorkspace, chooseBase = false, onSho
     return sourceRevisionRef.current;
   };
   useEffect(() => { if (pendingAuthoring && pendingAuthoring.revision !== sourceRevision) setPendingAuthoring(null); }, [sourceRevision, pendingAuthoring]);
+  useEffect(() => { if (!pendingAuthoring) setEdgeRange(null); }, [pendingAuthoring]);
+  // A source-owned edge's buttons need to know whether each finish builds there.
+  useEffect(() => {
+    if (selectedSelection?.topologyKind === 'Edge' && selectedSelection.edgeFinish) { finishes.load('fillet'); finishes.load('chamfer'); }
+  }, [selectedSelection, finishes.load]);
   function beginAuthoring(action: AuthoringAction, mate?: PendingAuthoring['mate']) {
     if (pendingAuthoring || !canLeaveGraphFields()) return;
     if (busy || buildStarted !== null) { pushOutput('Wait for the current operation to finish.'); return; }
@@ -343,6 +357,29 @@ export function HeliosApp({ project, initialWorkspace, chooseBase = false, onSho
     }
     setPicks(selection ? [selection] : []);
     setSelectedEntityId(entityId); setSelectedFaceId(faceId); setSelectedSelection(selection);
+    // While picking for a finish, a click on an admitted edge starts it; a refused edge stays selected and says why.
+    if (finishPick && selection?.topologyKind === 'Edge' && finishVerdict(finishes.state(finishPick), selection.faceId, finishPick).enabled)
+      beginEdgeFinish(finishPick, selection);
+  };
+  /** Start authoring a finish on one admitted edge, and fetch the sizes it builds at. */
+  const beginEdgeFinish = (kind: EdgeFinishKind, edge: SelectionDescription) => {
+    const item = palette.find(p => p.id === kind); if (!item) return;
+    setFinishPick(null);
+    const id = edge.faceId;
+    setEdgeRange({ edge: id, range: null });
+    void finishes.range(kind, id).then(
+      range => setEdgeRange(r => r?.edge === id ? { edge: id, range } : r),
+      (error: unknown) => setEdgeRange(r => r?.edge === id ? { edge: id, range: null, error: error instanceof Error ? error.message : String(error) } : r));
+    beginAuthoring({ kind: 'feature', item: { ...item, nameStem: kind === 'fillet' ? 'EdgeFillet' : 'EdgeChamfer' }, edge });
+  };
+  /** Light the edges that take this finish; picking one starts it. */
+  const startFinishPick = (kind: EdgeFinishKind) => {
+    if (pendingAuthoring || previewModel || !canLeaveGraphFields()) return;
+    // A pick starts clean: an edge left selected would hide the lit edges behind its own buttons.
+    clearPicks();
+    if (selectionMode !== 'edge') { setSelectionMode('edge'); if (displayMode === 'shaded') setDisplayMode('edges'); }
+    setFinishPick(kind);
+    finishes.load(kind);
   };
   const keptPicks = useRef<SelectionDescription[]>([]); keptPicks.current = picks;
   const removePick = (index: number) => { const next = picks.filter((_, i) => i !== index), first = next[0] ?? null;
@@ -351,6 +388,7 @@ export function HeliosApp({ project, initialWorkspace, chooseBase = false, onSho
   const chooseSelectionMode = (mode: 'face' | 'edge') => {
     if (pendingAuthoring || previewModel || selectionMode === mode || !canLeaveGraphFields()) return;
     clearPicks();
+    setFinishPick(null);
     setSelectionMode(mode);
     if (mode === 'edge' && displayMode === 'shaded') setDisplayMode('edges');
   };
@@ -701,6 +739,9 @@ export function HeliosApp({ project, initialWorkspace, chooseBase = false, onSho
       }, reason: assemblyGraph?.joints.some(j => j.id === inspectedId) ? undefined : 'Select a mate first.' },
     ];
   }
+  // A model whose only bodies are imported STEP parts: Graph's hole and finish tools do not apply to them yet.
+  const importedOnly = !!outline?.nodes.some(n => n.kind === 'InlineStep')
+    && !outline.nodes.some(n => ['Box', 'Cylinder', 'Extrude', 'Compose', 'Revolve', 'Loft', 'Sweep'].includes(n.kind));
   const contextActions = () => {
     const node = outlineNode(outline, inspectedId);
     const target = featureTarget(outline, inspectedId);
@@ -712,13 +753,18 @@ export function HeliosApp({ project, initialWorkspace, chooseBase = false, onSho
     const updating = outline?.document !== sourceName || outline.revision !== String(sourceRevision);
     const canPickFinish = 'body' in target && model?.mesh.definitions.some(definition =>
       definition.edges?.some(edge => edge.edgeFinish?.body === target.body.name));
+    if ('body' in target && target.body.kind === 'InlineStep')
+      return <div className="node-construction-actions"><p className="imported-part-note" role="note">{IMPORTED_PART_NOTE}</p></div>;
     return <div className="node-construction-actions">{updating && <small role="status">Updating graph controls…</small>}{'body' in target && <div className="node-feature-actions" aria-label={`Features on ${target.body.name}`}>
       <small>On {target.body.name}</small>
       {palette.filter(item => ['hole', 'hole-blind', 'counterbore', 'countersink'].includes(item.id)).map(item =>
         <button key={item.id} disabled={!!busy || buildStarted !== null || updating} title={item.description} onClick={() => beginAuthoring({ kind: 'feature', item })}>
           {item.id === 'hole' ? 'Add hole…' : `${item.label}…`}</button>)}
-      {canPickFinish && <button disabled={!!busy || buildStarted !== null || updating || pendingGraphFields || displayRevision !== sourceRevision}
-        title="Pick a single edge in the viewport, then choose Fillet or Chamfer." onClick={() => chooseSelectionMode('edge')}>Finish an edge…</button>}
+      {canPickFinish && (['fillet', 'chamfer'] as const).map(kind =>
+        <button key={`pick-${kind}`} disabled={!!busy || buildStarted !== null || updating || pendingGraphFields || displayRevision !== sourceRevision}
+          aria-pressed={finishPick === kind}
+          title={`Light the edges that take a ${kind}, then click one to size it.`} onClick={() => startFinishPick(kind)}>
+          {kind === 'fillet' ? 'Fillet an edge…' : 'Chamfer an edge…'}</button>)}
       {palette.filter(item => item.id === 'chamfer' || item.id === 'fillet').map(item =>
         <button key={item.id} disabled={!!busy || buildStarted !== null || updating} title={item.description} onClick={() => beginAuthoring({ kind: 'feature', item })}>
           {item.id === 'chamfer' ? 'Chamfer face rim…' : 'Fillet face rim…'}</button>)}
@@ -726,23 +772,34 @@ export function HeliosApp({ project, initialWorkspace, chooseBase = false, onSho
       <button key={a.id} disabled={!!a.reason || !!busy || buildStarted !== null || updating} title={a.reason ?? a.description} onClick={a.run}>{a.label}</button>)}</div>;
   };
   const selectedEdgeActions = () => {
-    if (editorMode === 'label' || pendingAuthoring || selectedSelection?.topologyKind !== 'Edge') return null;
+    if (editorMode === 'label' || pendingAuthoring) return null;
+    if (finishPick && selectedSelection?.topologyKind !== 'Edge')
+      return <div className="edge-feature-actions" role="group" aria-label="Edge finish picking">
+        <small role="status">{finishSummary(finishPick, finishes.state(finishPick))}</small>
+        <button onClick={() => setFinishPick(null)}>Done</button>
+      </div>;
+    if (selectedSelection?.topologyKind !== 'Edge') return null;
     const edge = selectedSelection.edgeFinish;
     const unavailable = picks.length !== 1 ? 'Click one edge without Ctrl or Shift to replace the selection.'
       : displayRevision !== sourceRevision ? 'Build the current source before finishing an edge.'
       : pendingGraphFields ? 'Apply or discard the current graph edits first.'
       : busy || buildStarted !== null || outline?.document !== sourceName || outline.revision !== String(sourceRevision) ? 'Wait for the current build to finish.'
       : '';
-    const nextStep = unavailable || edgeSelectionHelp(selectedSelection);
+    // Each button follows the runtime's trial build of that finish on this edge, so a lit button builds.
+    const verdicts = (['fillet', 'chamfer'] as const).map(kind => ({ kind, ...finishVerdict(finishes.state(kind), selectedSelection.faceId, kind) }));
+    const notes = unavailable ? [unavailable] : edge
+      ? finishNotes({ fillet: finishes.state('fillet'), chamfer: finishes.state('chamfer') }, selectedSelection.faceId, finishPick)
+      : [edgeSelectionHelp(selectedSelection)].filter(Boolean);
     return <div className="edge-feature-actions" role="group" aria-label="Selected edge actions">
       {edge && picks.length === 1 && <small className="selected-edge-kind">{edge.label}</small>}
-      {(['fillet', 'chamfer'] as const).map(kind => {
+      {verdicts.map(({ kind, enabled }) => {
         const item = palette.find(p => p.id === kind);
-        return <button key={kind} disabled={!!unavailable || !edge || !item || kind === 'fillet' && edge.filletSupported === false}
-          onClick={() => { if (item) beginAuthoring({ kind: 'feature', item: { ...item, nameStem: kind === 'fillet' ? 'EdgeFillet' : 'EdgeChamfer' }, edge: selectedSelection }); }}>
+        return <button key={kind} disabled={!!unavailable || !edge || !item || !enabled}
+          onClick={() => beginEdgeFinish(kind, selectedSelection)}>
           {kind === 'fillet' ? 'Fillet selected edge' : 'Chamfer selected edge'}</button>;
       })}
-      {nextStep && <small>{nextStep}</small>}
+      {finishPick && <button onClick={() => setFinishPick(null)}>Done</button>}
+      {notes.length > 0 && <small className="edge-finish-notes">{notes.map(note => <span key={note}>{note}</span>)}</small>}
     </div>;
   };
   const revertGraphEdit = () => {
@@ -972,7 +1029,11 @@ export function HeliosApp({ project, initialWorkspace, chooseBase = false, onSho
             stepImport.current = importController;
             setImportingStep(true);
             const assembly = await prepareStepImport(file, importController.signal);
-            next = assembly ?? importedProject(file.name, await file.text());
+            if (assembly) next = assembly;
+            else {
+              const text = await file.text();
+              next = importedProject(file.name, text, await stepTextSha256(text));
+            }
             importController.signal.throwIfAborted();
             importWarnings = assembly?.warnings ?? [];
             if (assembly) pushOutput(`Imported ${assembly.solidCount} solid definitions from ${file.name}.`);
@@ -1016,6 +1077,7 @@ export function HeliosApp({ project, initialWorkspace, chooseBase = false, onSho
           inspector={<div className="graph-side">
             {pendingAuthoring && outline ? <AuthoringPanel pending={pendingAuthoring} source={source} sourceName={sourceName} outline={outline} palette={palette} schema={semanticSchema}
               runtime={runtime} assembly={assemblyGraph} jointKinds={jointKinds} selection={selectedSelection} placementRef={placementActions} onPlacementGuide={setPlacementGuide}
+              edgeRange={edgeRange}
               documents={projectDocuments.current} root={projectRoot.current ?? sourceName} onCancel={() => setPendingAuthoring(null)}
               onPreview={setPreviewModel} onSketch={newIntelliDraft}
               onInspect={id => { setPendingAuthoring(null); selectGraphNode(id); }}
@@ -1076,7 +1138,7 @@ export function HeliosApp({ project, initialWorkspace, chooseBase = false, onSho
         {previewModel && <div className="authoring-preview-banner" role="status">Preview · {wireframePreview ? 'gold boundaries · ' : ''}source unchanged · Apply or Cancel</div>}
         <Viewport placingFeature={placingHole} placementGuide={placementGuide} placementActions={placementActions} measurement={previewModel ? null : selectionMeasurement.result}
           pmiOffsets={pmiOffsets} onPmiOffsetsChange={setPmiOffsets} arrangePmi={!previewModel && !pendingAuthoring && !busy && buildStarted === null}
-          extraSelections={previewModel ? undefined : extraSelections} showConcepts={showConcepts} pose={previewModel ? null : pose} busyMessage={busy === 'Worker failed' ? null : busy} errorMessage={shownDiagnostics.some(item => item.severity === 'error') ? (model ? 'Build failed. The last valid model remains visible; see Problems for details.' : 'Build needs attention. See Problems for the compiler diagnostic.') : null} model={wireframePreview ? model : previewModel ?? model} wireframePreview={wireframePreview} selectedEntityId={previewModel ? null : selectedEntityId} selectedTopologyId={previewModel ? null : selectedFaceId} selectedOccurrenceId={previewModel ? null : selectedSelection?.occurrenceId} theme={theme} displayMode={displayMode} viewMode={viewMode} viewCommand={previewModel && !wireframePreview ? `fit-preview-${previewModel.id}` : viewCommand} selectionMode={editorMode === 'label' ? 'face' : selectionMode} onSelect={previewModel || busy === 'Checking label' ? () => {} : select} captureRef={capturePreview}>
+          extraSelections={previewModel ? undefined : extraSelections} showConcepts={showConcepts} pose={previewModel ? null : pose} busyMessage={busy === 'Worker failed' ? null : busy} errorMessage={shownDiagnostics.some(item => item.severity === 'error') ? (model ? 'Build failed. The last valid model remains visible; see Problems for details.' : 'Build needs attention. See Problems for the compiler diagnostic.') : null} model={wireframePreview ? model : previewModel ?? model} wireframePreview={wireframePreview} selectedEntityId={previewModel ? null : selectedEntityId} selectedTopologyId={previewModel ? null : selectedFaceId} selectedOccurrenceId={previewModel ? null : selectedSelection?.occurrenceId} theme={theme} displayMode={displayMode} viewMode={viewMode} viewCommand={previewModel && !wireframePreview ? `fit-preview-${previewModel.id}` : viewCommand} selectionMode={editorMode === 'label' ? 'face' : selectionMode} finishHighlight={finishPick && !pendingAuthoring && !previewModel ? finishHighlight(finishPick, finishes.state(finishPick)) : null} onSelect={previewModel || busy === 'Checking label' ? () => {} : select} captureRef={capturePreview}>
           {!previewModel && !pendingAuthoring && <SelectionCard picks={picks} measurement={selectionMeasurement} inches={measureInches} onToggleUnits={() => setMeasureInches(v => !v)}
             onRemove={removePick} onClear={clearPicks} onLabel={editorMode === 'label' ? undefined : () => { if (canLeaveGraphFields()) setEditorMode('label'); }} />}
         </Viewport>
@@ -1103,10 +1165,10 @@ export function HeliosApp({ project, initialWorkspace, chooseBase = false, onSho
         }} />}
         {model?.motions?.length ? <MotionStrip clips={model.motions} revision={model.revision} onPose={setPose}
           sample={(motion, t) => runtime.sampleMotion(motion, t)} coverage={next => poseCoverage(model.mesh, next)} /> : null}
-        {editorMode === 'graph' && selectionMode === 'edge' && !pendingAuthoring && !selectedSelection && model &&
+        {editorMode === 'graph' && selectionMode === 'edge' && !finishPick && !pendingAuthoring && !selectedSelection && model &&
           <div className="pick-edge-hint" role="status">Click an edge in the viewport to see its finish options.</div>}
         {welcomeHint && !pendingAuthoring && !selectedSelection && editorMode !== 'label' && (editorMode !== 'graph' || selectionMode === 'face') &&
-          <div className="workflow-hint"><span>{editorMode === 'graph'
+          <div className="workflow-hint"><span>{importedOnly ? IMPORTED_PART_NOTE : editorMode === 'graph'
             ? 'Click a face to add a hole. Switch to Edges to fillet or chamfer. Use Label for notes and dimensions.'
             : 'Use Graph to add holes and finish edges. Use Label for notes and dimensions.'}</span><button aria-label="Dismiss workflow hint" onClick={() => { setWelcomeHint(false); localStorage.setItem('helios-workflow-understood', '1'); }}>×</button></div>}
         </div>

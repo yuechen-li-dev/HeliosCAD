@@ -190,6 +190,7 @@ button, a { transition: background-color 100ms, border-color 100ms, color 100ms;
 .edge-feature-actions button { padding: 8px 12px; border: 1px solid var(--gold); background: var(--panel-bg); color: var(--text-primary); cursor: pointer; }
 .edge-feature-actions button:disabled { opacity: .55; cursor: default; }
 .edge-feature-actions small { max-width: 400px; padding: 6px 9px; background: var(--panel-bg); }
+.edge-feature-actions .edge-finish-notes { display: grid; gap: 4px; flex-basis: 100%; max-width: 340px; }
 .edge-feature-actions .selected-edge-kind { flex-basis: 100%; max-width: max-content; font-weight: 600; }
 .authoring-panel .placement-hint { border-left: 2px solid var(--gold); padding: 8px; }
 .authoring-panel [aria-label="Face placement"] { display: grid; gap: 8px; padding: 10px; border: 1px solid var(--gold); }

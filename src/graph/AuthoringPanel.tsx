@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import type { Diagnostic, LanguageEdit, LanguageEditOperation, LanguageOutline, ModelSession, OutlineNode, PaletteItem, SelectionDescription, SemanticSchema } from '@aetheris/cad';
+import type { Diagnostic, EdgeFinishRange, LanguageEdit, LanguageEditOperation, LanguageOutline, ModelSession, OutlineNode, PaletteItem, SelectionDescription, SemanticSchema } from '@aetheris/cad';
 import type { CadRuntime } from '../sdk/CadRuntime';
 import { FieldRow, FieldSet } from './NodeInspector';
 import { parseQuantity, spliceField } from './fieldEdit';
@@ -23,6 +23,23 @@ interface Props {
   onInspect?(node: string): void;
   placementRef?: React.MutableRefObject<PlacementActions | null>;
   onPlacementGuide?(guide: PlacementGuide | null): void;
+  /** For a single-edge finish: the sizes the runtime's trial builds found, once known. */
+  edgeRange?: { readonly edge: string; readonly range: EdgeFinishRange | null; readonly error?: string } | null;
+}
+
+/** The size a single-edge finish's range allows, as text; null while unknown. */
+export function edgeRangeText(range: EdgeFinishRange | null | undefined): string | null {
+  if (range?.minimumMm == null || range.maximumMm == null) return null;
+  return range.maximumIsSearchLimit ? `${range.minimumMm} mm or more` : `${range.minimumMm} mm to ${range.maximumMm} mm`;
+}
+
+/** Why a size is outside the edge's range, or null when it is inside (or the range is unknown). */
+export function edgeSizeProblem(size: number, range: EdgeFinishRange | null | undefined, field: string): string | null {
+  // A size of zero or less keeps the compiler's own message.
+  if (!Number.isFinite(size) || size <= 0 || range?.minimumMm == null || range.maximumMm == null) return null;
+  if (size < range.minimumMm || !range.maximumIsSearchLimit && size > range.maximumMm)
+    return `This edge builds with a ${field} of ${edgeRangeText(range)}. Set ${field} inside that range.`;
+  return null;
 }
 
 const titles = { base: 'Choose base shape', feature: 'Place feature', pattern: 'Grid a seed hole', patternEditor: 'Edit Patterns', extrude: 'Extrude a profile', pocket: 'Create pocket', placement: 'Place component', mate: 'Add mate' };
@@ -245,7 +262,14 @@ export function AuthoringPanel(props: Props) {
     }
   };
   const runPreview = async () => {
-    invalidate(); const ticket = ++generation.current; setState('preparing');
+    invalidate();
+    if (singleEdge && draftNode && fieldDraft.current) {
+      const sizeField = featureKind === 'fillet' ? 'Radius' : 'Distance';
+      const text = fieldDraft.current.read()?.find(c => c.field === sizeField)?.value ?? draftNode.fields.find(f => f.name === sizeField)?.text ?? '';
+      const problem = edgeSizeProblem(parseQuantity(text)?.number ?? NaN, props.edgeRange?.range, sizeField);
+      if (problem) { setError(problem); setState('failed'); return; }
+    }
+    const ticket = ++generation.current; setState('preparing');
     try {
       const edit = await runtime.edit(source, operations(), sourceName, String(pending.revision));
       if (ticket !== generation.current) return;
@@ -313,7 +337,10 @@ export function AuthoringPanel(props: Props) {
         <p>Existing features and references remain. Preview checks their compatibility with the replacement.</p>
         {bodies.find(n => n.id === body)?.kind.toLowerCase() !== base && <p>Changing kind replaces the base fields with catalog defaults. Original base fields: {bodies.find(n => n.id === body)?.fields.map(f => `${f.name}: ${f.text}`).join('; ') || 'none'}. Review Source change before Apply.</p>}
         <button onClick={props.onSketch}>New IntelliDraft part…</button></>}
-      {isFeature && <>{singleEdge ? <section aria-label="Selected edge"><strong>{edge?.edgeFinish?.body} · {edge?.edgeFinish?.label}</strong><p>Only this edge is selected. Set the size and inspect the gold preview, then Apply.</p></section> : bodyChoice}
+      {isFeature && <>{singleEdge ? <section aria-label="Selected edge"><strong>{edge?.edgeFinish?.body} · {edge?.edgeFinish?.label}</strong><p>Only this edge is selected. Set the size and inspect the gold preview, then Apply.</p>
+        <p className="edge-size-range">{props.edgeRange?.error ? `Size range unavailable: ${props.edgeRange.error}`
+          : edgeRangeText(props.edgeRange?.range) ? `Builds with ${featureKind === 'fillet' ? 'Radius' : 'Distance'} ${edgeRangeText(props.edgeRange?.range)}.`
+          : 'Finding the sizes this edge takes…'}</p></section> : bodyChoice}
         {interactiveHole && <p className="placement-hint">{support
           ? 'Drag the gold ring or adjust Center X and Center Y. Shift-drag or right-drag moves the camera.'
           : featureKind === 'hole-blind' ? 'Click the top of a block to place the blind hole, or enter the face and center below.'

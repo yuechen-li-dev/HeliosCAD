@@ -156,3 +156,32 @@ test('two intersecting planes explain distance refusal and can take an orientati
   await expect(page.getByLabel('PMI annotations')).toContainText('Perpendicularity');
   await page.screenshot({ path: `${evidence}/edit-refusal.png` });
 });
+
+test('a STEP file from another system imports and labels beside the datums it carries', async ({ page }) => {
+  // STEP Tools' Boxy: written by ST-Developer, with datums A, B and C on three of its faces.
+  await page.goto('/local');
+  await ready(page);
+  await page.getByRole('banner').locator('input[type=file]').setInputFiles('../Aetheris/testdata/step242/steptools/boxy_with_surfacetex.stp');
+  await expect(page.locator('.status-ready')).toHaveText('Ready', { timeout: 300_000 });
+  await expect(page.getByRole('button', { name: /^Problems 0/ })).toBeVisible();
+  await page.getByRole('tab', { name: 'Source', exact: true }).click();
+  // A file Aetheris did not write is admitted by a pin of its exact text.
+  await expect(page.locator('.editor-pane')).toContainText('textSha256');
+  await page.getByRole('tab', { name: 'Graph', exact: true }).click();
+  await expect(page.locator('.node-construction-actions')).toContainText('Adding holes or edge finishes to an imported part is not supported yet.');
+  await page.getByRole('tab', { name: 'Label', exact: true }).click();
+  const fromFile = page.getByLabel('From the STEP file', { exact: true });
+  for (const name of ['A', 'B', 'C']) await expect(fromFile).toContainText(`Datum ${name}`);
+  await expect(fromFile).not.toContainText('Not located');
+  await page.getByRole('button', { name: 'Top', exact: true }).click();
+  // The top face's rim, between the central opening and the outer wall.
+  await clickFace(page, [20, 35, 80]);
+  const datum = page.getByRole('form', { name: 'Add Datum', exact: true });
+  await expect(datum.getByLabel('Name', { exact: true })).toHaveValue('D');
+  await datum.getByRole('button', { name: 'Apply', exact: true }).click();
+  // Applying rebuilds the imported part; the development runtime takes most of a minute.
+  await expect(records(page).getByLabel('From the STEP file', { exact: true })).toBeVisible({ timeout: 300_000 });
+  await expect(page.locator('.status-ready')).toHaveText('Ready', { timeout: 300_000 });
+  await expect(records(page)).toContainText(/Datums\s*D\s*Datum/i);
+  await page.screenshot({ path: `${evidence}/foreign-step-datum.png` });
+});

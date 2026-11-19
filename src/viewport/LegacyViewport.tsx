@@ -1,4 +1,5 @@
 import { measurementGroup, type MeasurementResult, type PmiStyle } from '@aetheris/three-telos';
+import type { FinishHighlight } from '../graph/edgeFinishAdmission';
 import { useEffect, useRef, type MutableRefObject } from 'react';
 import type { MotionPose } from '@aetheris/cad';
 import * as THREE from 'three';
@@ -34,6 +35,8 @@ interface Props extends FeaturePlacementProps {
   viewMode: ViewMode;
   viewCommand: string;
   selectionMode: 'face' | 'edge' | 'auto';
+  /** While picking an edge for a finish: the edges that take it, drawn gold and always visible. */
+  finishHighlight?: FinishHighlight | null;
   onSelect(entityId: string | null, faceId: string | null, selection?: SelectionDescription | null, options?: { readonly additive: boolean }): void;
   captureRef?: MutableRefObject<(() => string) | null>;
   pose?: MotionPose | null;
@@ -119,6 +122,14 @@ export function LegacyViewport(props: Props) {
   }, [props.showConcepts, props.model, props.model?.revision, props.pose]);
   useEffect(() => { if (state.current) selectEntity(state.current, props.model, props.selectedEntityId, props.selectedTopologyId, props.selectedOccurrenceId, props.extraSelections ?? []); }, [props.model, props.selectedEntityId, props.selectedTopologyId, props.selectedOccurrenceId, props.extraSelections]);
   useEffect(() => { if (state.current) applyAppearance(state.current, props.theme, props.displayMode); }, [props.theme, props.displayMode]);
+  useEffect(() => {
+    const current = state.current; if (!current) return;
+    const highlight = props.finishHighlight ?? null;
+    current.finishLit = highlight?.admitted ?? null;
+    current.renderer.domElement.setAttribute('data-finish-highlight', JSON.stringify(highlight
+      ? { kind: highlight.kind, admitted: highlight.admitted.size, refused: highlight.refused.size } : null));
+    updateMaterials(current); current.invalidate();
+  }, [props.finishHighlight, props.model, props.model?.revision]);
   useEffect(() => { if (state.current) applyViewCommand(state.current, props.viewMode, props.viewCommand); }, [props.viewMode, props.viewCommand]);
   useEffect(() => { if (state.current) state.current.selectionMode = props.selectionMode; }, [props.selectionMode]);
   // A motion pose moves occurrences in place: the built geometry stays loaded.
@@ -235,7 +246,7 @@ function createScene(host: HTMLDivElement, onSelect: Props['onSelect']) {
     onSelect(resolved?.semanticEntityId ?? null, resolved?.faceId ?? null, resolved, additive);
   });
   controls.addEventListener('change', () => publishCamera(renderer.domElement, camera, controls.target, authority));
-  const state = { scene, renderer, perspective, orthographic, authority, lights, backdrop, theme: 'apollonia' as ThemeName, displayMode: 'shaded' as DisplayMode, get camera() { return camera; }, set camera(value) { camera = value; }, controls, grid, group, model: null as ModelSession | null, selectionMode: 'face' as 'face' | 'edge' | 'auto', selectedIds: new Set<string>(), hovered: null as THREE.Mesh | THREE.LineSegments | null, invalidate,
+  const state = { scene, renderer, perspective, orthographic, authority, lights, backdrop, theme: 'apollonia' as ThemeName, displayMode: 'shaded' as DisplayMode, get camera() { return camera; }, set camera(value) { camera = value; }, controls, grid, group, model: null as ModelSession | null, selectionMode: 'face' as 'face' | 'edge' | 'auto', selectedIds: new Set<string>(), finishLit: null as ReadonlySet<string> | null, hovered: null as THREE.Mesh | THREE.LineSegments | null, invalidate,
     capture() { renderer.render(scene, camera); return renderer.domElement.toDataURL('image/png'); },
     dispose() { cancelAnimationFrame(raf); resize.disconnect(); controls.dispose(); renderer.dispose(); host.replaceChildren(); } };
   invalidate();
@@ -380,7 +391,15 @@ function updateMaterials(state: ReturnType<typeof createScene>) {
       const strength = selected ? 0.52 : object === state.hovered ? 0.16 : 0;
       const base = meta.baseColor ?? DEFAULT_COLOR;
       (object.material as THREE.MeshStandardMaterial).color.setRGB(...[0, 1, 2].map(i => base[i] * (1 - strength) + selection[i] * strength) as [number, number, number], THREE.LinearSRGBColorSpace);
-    } else if (object instanceof THREE.LineSegments) (object.material as THREE.LineBasicMaterial).color.set(selected ? 0xffca63 : object === state.hovered ? 0x35d9ff : edge);
+    } else if (object instanceof THREE.LineSegments) {
+      // Edges lit for the finish being picked are gold and shown even over a shaded body.
+      const lit = !!meta.edgeId && !!state.finishLit?.has(meta.edgeId);
+      const material = object.material as THREE.LineBasicMaterial;
+      material.color.set(selected ? 0xffca63 : object === state.hovered ? 0x35d9ff : lit ? 0xf29a0d : edge);
+      // While picking, the other edges fade back so the lit ones stand out.
+      material.opacity = lit || selected || object === state.hovered ? 1 : state.finishLit ? 0.25 : 0.72;
+      object.visible = state.displayMode === 'edges' || lit;
+    }
   }
 }
 
