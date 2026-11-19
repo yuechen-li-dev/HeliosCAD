@@ -7,11 +7,26 @@ const path = (name: string) => {
   if (!name || /[\\:#?"\x00-\x1f]/.test(name) || name.startsWith('/') || name.split('/').some(p => p === '..' || p === '')) throw new Error(`Invalid workspace path: ${name}`);
   return name;
 };
-export function importedProject(name: string, text: string): ProjectSnapshot {
+/** An Aetheris export carries its own canonical evidence; any other STEP is bound by a pin of its exact text. */
+export const isAetherisCanonicalStep = (text: string) => text.includes('Aetheris AP242 subset export') && text.includes('Aetheris.Kernel')
+  && text.includes("FILE_SCHEMA(('AP242_MANAGED_MODEL_BASED_3D_ENGINEERING_MIM_LF'))");
+/** The `textSha256` pin: SHA-256 of the text as UTF-8 with CRLF and CR converted to LF, nothing else changed. */
+export async function stepTextSha256(text: string): Promise<string> {
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text.replace(/\r\n?/g, '\n')));
+  return Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, '0')).join('');
+}
+/**
+ * A STEP part becomes the source asset of a one-part model. The file is kept verbatim. A STEP from another
+ * system is pinned by its text hash, which is how Firmament admits a part it did not write; an Aetheris export
+ * needs no pin.
+ */
+export function importedProject(name: string, text: string, textSha256?: string): ProjectSnapshot {
   const asset = path(name);
   const model = name.replace(/\.[^.]+$/, '').replace(/[^A-Za-z0-9_]/g, '_').replace(/^[^A-Za-z_]/, '_');
   const root = `${model || 'Imported'}.firmament`;
-  return { root, documents: { [asset]: text, [root]: `Model ${model || 'Imported'} {\n    units: mm\n    InlineStep part { path: "${asset}" }\n}\n` } };
+  const pin = isAetherisCanonicalStep(text) ? '' : textSha256 ? ` textSha256: "${textSha256}"` : '';
+  if (!pin && !isAetherisCanonicalStep(text)) throw new Error('A STEP part from another system needs its text hash.');
+  return { root, documents: { [asset]: text, [root]: `Model ${model || 'Imported'} {\n    units: mm\n    InlineStep part { path: "${asset}"${pin} }\n}\n` } };
 }
 /** A portable local workspace retains STEP text verbatim alongside its source layer. */
 export function packProject(project: ProjectSnapshot): Uint8Array {

@@ -48,6 +48,10 @@ const plainNote = (text: string): string => {
 const summary = (fields: Readonly<Record<string, string>>) =>
   [fields.value, fields.tolerance, fields.datumRefs && `| ${fields.datumRefs}`, fields.text && plainNote(fields.text)].filter(Boolean).join(' ');
 
+/** The selector of the displayed face that came from STEP entity #id, whatever the imported body is called. */
+const sourceFaceSelector = (model: ModelSession | null, entity: number) => model?.mesh.definitions.flatMap(d => d.ranges ?? [])
+  .find(r => r.selector?.endsWith(`.face("#${entity}")`))?.selector ?? null;
+
 /** Label: the `Pmi` block as a list of records, and the records the current selection can take. */
 export function LabelPanel(props: Props) {
   const { picks, model, outline } = props;
@@ -57,7 +61,10 @@ export function LabelPanel(props: Props) {
     name: r.name, selector: r.target!, nodeId: r.nodeId, face: model ? findFace(model.mesh, r.target!) : null })), [records, model]);
   const holes = useMemo(() => recognizedHoles(outline), [outline]);
   const cylinders = useMemo(() => model ? allFaces(model.mesh).filter(f => f.surfaceKind === 'Cylinder') : [], [model]);
-  const { actions, notice } = useMemo(() => labelActions(picks, faces, datums, outline, holes, cylinders), [picks, faces, datums, outline, holes, cylinders]);
+  // Requirements the imported STEP file carries itself: shown, read-only, and their names are taken.
+  const sourcePmi = useMemo(() => (model?.mesh.annotations ?? []).filter(a => a.name && !records.some(r => r.name === a.name)), [model, records]);
+  const takenNames = useMemo(() => sourcePmi.map(a => a.name), [sourcePmi]);
+  const { actions, notice } = useMemo(() => labelActions(picks, faces, datums, outline, holes, cylinders, takenNames), [picks, faces, datums, outline, holes, cylinders, takenNames]);
   const offered = actions.some(a => a.id === 'note') ? actions : [...actions, PART_NOTE];
   const enabled = offered.filter(a => !a.disabled);
   const unavailable = offered.filter(a => a.disabled);
@@ -74,7 +81,11 @@ export function LabelPanel(props: Props) {
         {holes.map(h => <button key={h.nodeId} type="button" className="label-record" title={h.entities.join(', ')}
           onClick={() => props.onSelectTargets(h.entities.map(e => `${h.body}.face("${e}")`))}>
           <b>{h.name}</b><span>Recognized</span><small>{h.entities.length} face{h.entities.length > 1 ? 's' : ''}</small></button>)}</div>}
-      {records.length === 0 && <p className="label-empty">No labels on this part yet.</p>}
+      {sourcePmi.length > 0 && <div className="label-group" aria-label="From the STEP file"><h3>From the STEP file</h3>
+        {sourcePmi.map(a => <button key={a.id} type="button" className="label-record" title="Carried by the imported STEP file; read-only here."
+          disabled={a.stepFaceEntities.length === 0} onClick={() => props.onSelectTargets(a.stepFaceEntities.map(e => sourceFaceSelector(model, e)).filter((x): x is string => !!x))}>
+          <b>{a.name}</b><span>{a.kind}</span><small>{a.stepFaceEntities.length ? a.text : 'Not located on the part'}</small></button>)}</div>}
+      {records.length === 0 && sourcePmi.length === 0 && <p className="label-empty">No labels on this part yet.</p>}
       {GROUPS.map(([title, kinds]) => {
         const items = records.filter(r => kinds.includes(r.kind));
         return items.length ? <div key={title} className="label-group"><h3>{title}</h3>

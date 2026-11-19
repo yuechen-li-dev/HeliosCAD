@@ -42,7 +42,7 @@ import { MotionStrip } from '../viewport/MotionStrip';
 import { poseCoverage } from '../viewport/pose';
 import type { ExportFormat, PmiOffsets } from '@aetheris/cad';
 import { ExportPicker } from './ExportPicker';
-import { importedProject, isStep, packProject, sourceFiles, unpackProject } from './localProject';
+import { importedProject, isStep, packProject, sourceFiles, stepTextSha256, unpackProject } from './localProject';
 import { registerRecoverableSource } from './crashRecovery';
 import { LabelPanel } from '../label/LabelPanel';
 import { labelRefusal } from '../label/feedback';
@@ -61,6 +61,10 @@ import { artifactBuild } from '../platform/target';
 const LearnCenter = lazy(() => import('../learn/LearnCenter').then(m => ({ default: m.LearnCenter })));
 
 type UtilityTab = { kind: 'files' } | { kind: 'inspector' } | { kind: 'examples' } | { kind: 'llm' } | { kind: 'version-control' } | { kind: 'tutorial' };
+
+/** What an imported STEP part takes in Helios today, said where the hole and finish tools would be. */
+const IMPORTED_PART_NOTE = 'This is an imported STEP part. Label it in the Label tab: datums, sizes, tolerances and notes. '
+  + 'Adding holes or edge finishes to an imported part is not supported yet.';
 
 export function HeliosApp({ project, initialWorkspace, chooseBase = false, onShowcase, onSave, onPublish, onBack, onSignOut }: { project?: Project; initialWorkspace?: WorkspaceProject; chooseBase?: boolean; onShowcase?: () => void; onSave?: (source: string) => Promise<void>; onPublish?: (payload: { expectedRevisionId: string; title: string; description: string; category: string; tags: string[]; previewPngBase64: string }) => Promise<void>; onBack?: () => void; onSignOut?: () => void } = {}) {
   const [learnPage, setLearnPage] = useState<string | null>(null);
@@ -732,6 +736,9 @@ export function HeliosApp({ project, initialWorkspace, chooseBase = false, onSho
       }, reason: assemblyGraph?.joints.some(j => j.id === inspectedId) ? undefined : 'Select a mate first.' },
     ];
   }
+  // A model whose only bodies are imported STEP parts: Graph's hole and finish tools do not apply to them yet.
+  const importedOnly = !!outline?.nodes.some(n => n.kind === 'InlineStep')
+    && !outline.nodes.some(n => ['Box', 'Cylinder', 'Extrude', 'Compose', 'Revolve', 'Loft', 'Sweep'].includes(n.kind));
   const contextActions = () => {
     const node = outlineNode(outline, inspectedId);
     const target = featureTarget(outline, inspectedId);
@@ -743,6 +750,8 @@ export function HeliosApp({ project, initialWorkspace, chooseBase = false, onSho
     const updating = outline?.document !== sourceName || outline.revision !== String(sourceRevision);
     const canPickFinish = 'body' in target && model?.mesh.definitions.some(definition =>
       definition.edges?.some(edge => edge.edgeFinish?.body === target.body.name));
+    if ('body' in target && target.body.kind === 'InlineStep')
+      return <div className="node-construction-actions"><p className="imported-part-note" role="note">{IMPORTED_PART_NOTE}</p></div>;
     return <div className="node-construction-actions">{updating && <small role="status">Updating graph controls…</small>}{'body' in target && <div className="node-feature-actions" aria-label={`Features on ${target.body.name}`}>
       <small>On {target.body.name}</small>
       {palette.filter(item => ['hole', 'hole-blind', 'counterbore', 'countersink'].includes(item.id)).map(item =>
@@ -1005,7 +1014,7 @@ export function HeliosApp({ project, initialWorkspace, chooseBase = false, onSho
           if (files.some(file => file.size > 32 * 1024 * 1024) || files.reduce((sum, file) => sum + file.size, 0) > 64 * 1024 * 1024) throw new Error('Local import supports files up to 32 MB and workspaces up to 64 MB.');
           let next;
           if (files.length === 1 && /\.zip$/i.test(files[0].name)) next = unpackProject(new Uint8Array(await files[0].arrayBuffer()));
-          else if (files.length === 1 && isStep(files[0].name)) next = importedProject(files[0].name, await files[0].text());
+          else if (files.length === 1 && isStep(files[0].name)) { const text = await files[0].text(); next = importedProject(files[0].name, text, await stepTextSha256(text)); }
           else {
             if (files.some(file => !/\.(firmament|firmasm|step|stp)$/i.test(file.name))) throw new Error('Open Firmament source, STEP, or a .helios.zip workspace.');
             const entries = await Promise.all(files.map(async file => [file.name, await file.text()] as const));
@@ -1126,7 +1135,7 @@ export function HeliosApp({ project, initialWorkspace, chooseBase = false, onSho
         {editorMode === 'graph' && selectionMode === 'edge' && !finishPick && !pendingAuthoring && !selectedSelection && model &&
           <div className="pick-edge-hint" role="status">Click an edge in the viewport to see its finish options.</div>}
         {welcomeHint && !pendingAuthoring && !selectedSelection && editorMode !== 'label' && (editorMode !== 'graph' || selectionMode === 'face') &&
-          <div className="workflow-hint"><span>{editorMode === 'graph'
+          <div className="workflow-hint"><span>{importedOnly ? IMPORTED_PART_NOTE : editorMode === 'graph'
             ? 'Click a face to add a hole. Switch to Edges to fillet or chamfer. Use Label for notes and dimensions.'
             : 'Use Graph to add holes and finish edges. Use Label for notes and dimensions.'}</span><button aria-label="Dismiss workflow hint" onClick={() => { setWelcomeHint(false); localStorage.setItem('helios-workflow-understood', '1'); }}>×</button></div>}
         </div>
