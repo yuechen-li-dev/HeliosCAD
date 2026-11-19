@@ -259,8 +259,8 @@ export function HeliosApp({ project, initialWorkspace, chooseBase = false, onSho
     const root = projectRoot.current ?? name;
     const rootSource = root === name ? value : projectDocuments.current[root];
     try {
-      const info = await runtime.initialize();
-      setRuntimeName(formatAetherisRuntime(info));
+      await runtime.initialize();
+      if (runtime.info) setRuntimeName(formatAetherisRuntime(runtime.info));
       if (submission === latestSubmission.current) setBusy('Building');
     } catch (error) {
       setDiagnostics([toDiagnostic(error, 'HELIOS-WORKER')]);
