@@ -48,7 +48,10 @@ The development runtime is interpreted and 6 to 10 times slower (Boxy 44 s); it 
 
 - New e2e: `label-human.spec.ts` › "a STEP file from another system imports and labels beside the datums it carries"
   (import, pinned source, imported-part note, file datums listed and located, next datum D applied).
-- Label e2e (7, with the new one) and Helios unit tests (288) pass; the hole and edge-finish e2e are rerun below.
+- Label e2e (7, with the new one) and Helios unit tests (288) pass. Hole and edge-finish e2e: 24 of 25 pass.
+- Failing: "a picked bracket edge accepts one chamfer…" clicks the FootSeat edge in Front view and gets the back
+  (Bottom) cap edge, not the front (Top) one; the two coincide on screen. Deterministic in two runs. Telos's edge
+  pick should take the nearer of coincident edges; not yet diagnosed whether the pick or the test's click point moved.
 
 Verdict: meaningful progression. Foreign STEP files import and label; the dead-end tools on them are replaced by an
 honest note. New holes and finishes on imported parts are isolated as the next kernel feature.
