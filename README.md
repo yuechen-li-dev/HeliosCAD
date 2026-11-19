@@ -4,7 +4,9 @@ Helios is a CAD workbench for making parts and adding manufacturing information
 to STEP files. A Helios model is a Firmament file. You can edit it in the graph
 or change the code and rebuild it with the [Aetheris kernel](https://github.com/yuechen-li-dev/Aetheris).
 
-**[Try the browser preview](https://helios-cad-wasm.yuechenli.chatgpt.site/)** · [Download Helios 0.1.0 for Windows x64](https://github.com/yuechen-li-dev/HeliosCAD/releases/download/v0.1.0/Helios-0.1.0-win-x64.zip)
+# **[Try the rolling release browser preview](https://helios-cad-wasm.yuechenli.chatgpt.site/)** 
+
+[Download Helios 0.1.0 for Windows x64](https://github.com/yuechen-li-dev/HeliosCAD/releases/download/v0.1.0/Helios-0.1.0-win-x64.zip)
 
 The preview runs on your device in Chrome or Edge. Download your work with
 **Save source** or **Save workspace** before closing the tab.
