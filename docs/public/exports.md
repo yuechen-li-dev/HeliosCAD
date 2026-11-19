@@ -59,10 +59,16 @@ with a Firmament annotation layer. The [Label tab](label.md) adds datums,
 diameters and geometric tolerances to its faces. The viewport displays supported callouts and an annotation legend. **Save
 workspace** retains STEP text and source in `.helios.zip`; **Open file** reopens
 it. Local checkpoints retain assets too. Cloud single-source saving refuses
-multi-file workspaces. Arbitrary vendor files, imported assemblies and existing
-semantic-PMI layers in an imported STEP are not qualified in this first slice;
-they are not silently reconstructed or stripped. Reopen the original workspace
-to continue annotation work.
+multi-file workspaces. Reopen the original workspace to continue annotation work.
+
+For a supported multibody file or assembly, **Import STEP** opens the solids as
+an assembly with each body selectable. A flat file opens with its bodies in
+their original positions. Import runs in a browser worker and can be canceled
+while it reads and prepares the solids. **Save workspace** retains the generated
+assembly and component STEP files. Surface-only models skipped by the importer
+are reported. Assembly import carries geometry and placement with no recovery
+of vendor mates or annotation layers. Local STEP files and expanded workspaces
+are limited to 64 MiB.
 
 For parts modeled in SolidWorks, the [SolidWorks export add-in](solidworks.md)
 uses its ordinary AP214 exporter and the existing Aetheris canonicalization path,

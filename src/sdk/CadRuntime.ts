@@ -2,6 +2,20 @@ import { Aetheris, type LanguagePalette, type LanguageEdit, type LanguageEditOpe
 
 export interface OpenResult { model: ModelSession | null; diagnostics: readonly Diagnostic[] }
 
+export async function prepareStepImport(file: File, signal: AbortSignal) {
+  signal.throwIfAborted();
+  const cad = await Aetheris.create({ worker: true });
+  const abort = () => cad.terminate();
+  signal.addEventListener('abort', abort, { once: true });
+  try {
+    signal.throwIfAborted();
+    return await cad.prepareStepAssembly(file, file.name);
+  } finally {
+    signal.removeEventListener('abort', abort);
+    cad.terminate();
+  }
+}
+
 export interface CadRuntime {
   setProjectContext?(root: string | null, documents: Readonly<Record<string,string>>): void;
   readonly info: RuntimeInfo | null;

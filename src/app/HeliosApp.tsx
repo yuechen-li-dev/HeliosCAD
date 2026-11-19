@@ -1,6 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ConstructProjection, Diagnostic, EditableProperty, FieldProjection, LanguageOutline, ModelSession, LanguageEditOperation, LanguageField, MotionPose, OutlineField, OutlineNode, PaletteItem, SelectionDescription, SemanticSchema, UnitValue } from '@aetheris/cad';
-import { WebSdkCadRuntime } from '../sdk/CadRuntime';
+import { prepareStepImport, WebSdkCadRuntime } from '../sdk/CadRuntime';
 import { AetherisWorkerClient, type BuildResult } from '../sdk/AetherisWorkerClient';
 import { assemblySource, bracketSource, emptyModelSource } from '../sdk/samples';
 import { LocalHostControl } from '../desktop/LocalHostControl';
@@ -23,7 +23,7 @@ import { ExampleDialog } from '../showcase/ExampleDialog';
 import { loadShowcase, type WorkspaceProject } from '../showcase/catalog';
 import { WorkspacePanels } from './WorkspacePanels';
 import { ResizeHandle } from './ResizeHandle';
-import { WorkspaceStatus } from './WorkspaceStatus';
+import { formatAetherisRuntime, WorkspaceStatus } from './WorkspaceStatus';
 import { useTheme } from '../themes/useTheme';
 import { GraphPanel, type GraphSelection } from '../graph/GraphPanel';
 import type { GraphLayouts } from '../graph/useGraphNodes';
@@ -41,7 +41,7 @@ import { MotionStrip } from '../viewport/MotionStrip';
 import { poseCoverage } from '../viewport/pose';
 import type { ExportFormat, PmiOffsets } from '@aetheris/cad';
 import { ExportPicker } from './ExportPicker';
-import { importedProject, isStep, packProject, sourceFiles, unpackProject } from './localProject';
+import { importedProject, isStep, localFileLimit, localWorkspaceLimit, packProject, sourceFiles, unpackProject } from './localProject';
 import { registerRecoverableSource } from './crashRecovery';
 import { LabelPanel } from '../label/LabelPanel';
 import { labelRefusal } from '../label/feedback';
@@ -111,10 +111,13 @@ export function HeliosApp({ project, initialWorkspace, chooseBase = false, onSho
   const [selectionMode, setSelectionMode] = useState<'face' | 'edge'>('face');
   const [viewMode, setViewMode] = useState<ViewMode>('perspective');
   const [viewCommand, setViewCommand] = useState('iso-0'); // Parts open in an isometric view; fit follows each new model.
-  const [runtimeName, setRuntimeName] = useState('WASM');
+  const [runtimeName, setRuntimeName] = useState('Aetheris');
   const [lastTiming, setLastTiming] = useState<{ label: string; milliseconds: number } | null>(null);
   const [phaseTiming, setPhaseTiming] = useState<string | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
+  const stepImport = useRef<AbortController | null>(null);
+  const [importingStep, setImportingStep] = useState(false);
+  useEffect(() => () => stepImport.current?.abort(), []);
   const projectDocuments = useRef<Record<string,string>>(Object.fromEntries(Object.entries(initialWorkspace?.documents ?? {}).map(([name, text]) => [name, editorSource(text)])));
   const projectRoot = useRef<string | null>(initialWorkspace?.root ?? null);
   const savedSources = useRef<Record<string,string>>({ ...projectDocuments.current, [initialName]: initialSource });
@@ -242,7 +245,8 @@ export function HeliosApp({ project, initialWorkspace, chooseBase = false, onSho
     const root = projectRoot.current ?? name;
     const rootSource = root === name ? value : projectDocuments.current[root];
     try {
-      await runtime.initialize();
+      const info = await runtime.initialize();
+      setRuntimeName(formatAetherisRuntime(info));
       if (submission === latestSubmission.current) setBusy('Building');
     } catch (error) {
       setDiagnostics([toDiagnostic(error, 'HELIOS-WORKER')]);
@@ -251,7 +255,6 @@ export function HeliosApp({ project, initialWorkspace, chooseBase = false, onSho
       return false;
     }
     const result = await buildClient.submit(rootSource, root, revision, projectDocuments.current);
-    if (runtime.info) setRuntimeName(`WASM Worker · ${runtime.info.packageVersion}`);
     if (submission === latestSubmission.current) acceptBuild(result);
     if (submission === latestSubmission.current && result.request.sourceRevision !== sourceRevisionRef.current) {
       setBusy(null);
@@ -927,7 +930,7 @@ export function HeliosApp({ project, initialWorkspace, chooseBase = false, onSho
     ...(['front', 'top', 'bottom', 'right', 'iso', 'fit', 'fitselection'] as const).map(view => ({ id: view, label: `${view === 'iso' ? 'Isometric' : view === 'fitselection' ? 'Fit selection' : view[0].toUpperCase() + view.slice(1)} view`, run: () => view === 'fit' || view === 'fitselection' ? setViewCommand(`${view}-${Date.now()}`) : namedView(view) }))
   ];
 
-  const documentControlsBlocked = pendingGraphFields || !!pendingAuthoring;
+  const documentControlsBlocked = pendingGraphFields || !!pendingAuthoring || importingStep;
   const documentControlsHint = pendingAuthoring ? 'Apply or cancel the current preview first.'
     : pendingGraphFields ? 'Apply or discard the graph field edits first.' : undefined;
 
@@ -940,7 +943,9 @@ export function HeliosApp({ project, initialWorkspace, chooseBase = false, onSho
         <button aria-label="Redo" title="Redo · Ctrl+Shift+Z" disabled={!historyState.redo || !!busy || documentControlsBlocked} onClick={() => void runHistory('redo')}>↷</button>
         <button disabled={documentControlsBlocked} title={documentControlsHint} onClick={() => setExamplesOpen(true)}>Examples</button>
         <button disabled={documentControlsBlocked} title={documentControlsHint} onClick={() => fileInput.current?.click()}>Open file</button>
-        <button disabled={documentControlsBlocked} title={documentControlsHint ?? 'Import a supported canonical STEP part'} onClick={() => fileInput.current?.click()}>Import STEP</button>
+        {importingStep
+          ? <button onClick={() => stepImport.current?.abort()} aria-label="Cancel STEP import">Cancel STEP import</button>
+          : <button disabled={documentControlsBlocked || !!busy} title={documentControlsHint ?? 'Open a STEP part or assembly'} onClick={() => fileInput.current?.click()}>Import STEP</button>}
         <button disabled={pendingGraphFields} title="Download source, or a portable workspace with all imported assets · Ctrl+S" onClick={() => onSave ? void save() : downloadSource()}>{!onSave && Object.keys(projectDocuments.current).length > 1 ? 'Save workspace' : 'Save source'}</button>
         <button className="build-action" disabled={buildStarted !== null || !!busy || documentControlsBlocked} title={documentControlsHint ?? 'Build project · Ctrl+Enter'} onClick={() => void rebuildSource()}>{buildStarted !== null ? `Building · ${elapsedSeconds.toFixed(1)} s` : 'Build'}</button>
         <ExportPicker formats={model?.exportFormats ?? []} disabled={!model || !!busy || buildStarted !== null || !!pendingAuthoring} open={exportOpen} onOpen={setExportOpen} onExport={exportSelected} />
@@ -953,11 +958,26 @@ export function HeliosApp({ project, initialWorkspace, chooseBase = false, onSho
       <input ref={fileInput} hidden type="file" multiple accept=".firmament,.firmasm,.step,.stp,.zip" onChange={async event => {
         const files = Array.from(event.target.files ?? []); if (!files.length) return;
         event.target.value = '';
+        if (stepImport.current) return;
+        let importController: AbortController | undefined;
         try {
-          if (files.some(file => file.size > 32 * 1024 * 1024) || files.reduce((sum, file) => sum + file.size, 0) > 64 * 1024 * 1024) throw new Error('Local import supports files up to 32 MB and workspaces up to 64 MB.');
+          if (files.some(file => file.size > localFileLimit(file.name)) || files.reduce((sum, file) => sum + file.size, 0) > localWorkspaceLimit)
+            throw new Error('Local import supports STEP files and workspaces up to 64 MiB, with a 32 MiB limit for other individual files.');
           let next;
+          let importWarnings: readonly string[] = [];
           if (files.length === 1 && /\.zip$/i.test(files[0].name)) next = unpackProject(new Uint8Array(await files[0].arrayBuffer()));
-          else if (files.length === 1 && isStep(files[0].name)) next = importedProject(files[0].name, await files[0].text());
+          else if (files.length === 1 && isStep(files[0].name)) {
+            const file = files[0];
+            importController = new AbortController();
+            stepImport.current = importController;
+            setImportingStep(true);
+            const assembly = await prepareStepImport(file, importController.signal);
+            next = assembly ?? importedProject(file.name, await file.text());
+            importController.signal.throwIfAborted();
+            importWarnings = assembly?.warnings ?? [];
+            if (assembly) pushOutput(`Imported ${assembly.solidCount} solid definitions from ${file.name}.`);
+            setImportingStep(false);
+          }
           else {
             if (files.some(file => !/\.(firmament|firmasm|step|stp)$/i.test(file.name))) throw new Error('Open Firmament source, STEP, or a .helios.zip workspace.');
             const entries = await Promise.all(files.map(async file => [file.name, await file.text()] as const));
@@ -970,7 +990,16 @@ export function HeliosApp({ project, initialWorkspace, chooseBase = false, onSho
           projectDocuments.current = next.documents; projectRoot.current = next.root;
           setProjectFileNames(sourceFiles(next.documents)); setWorkspaceTitle(stripExtension(next.root)); setUtilityTab({ kind: 'inspector' });
           await open(next.documents[next.root], next.root);
-        } catch (error) { setDiagnostics([toDiagnostic(error, 'HELIOS-OPEN')]); setBusy(null); }
+          if (importWarnings.length) {
+            for (const warning of importWarnings) pushOutput(warning);
+            setDiagnostics(items => [...items, ...importWarnings.map(message => ({ severity: 'warning' as const, code: 'STEP-ASSEMBLY-IMPORT', message }))]);
+            shellLayout.setBottomOpen(true);
+          }
+        } catch (error) {
+          if (!importController?.signal.aborted) setDiagnostics([toDiagnostic(error, 'HELIOS-OPEN')]);
+        } finally {
+          if (importController) { stepImport.current = null; setImportingStep(false); }
+        }
       }} />
     </header>
     {project && <div className="cloud-project-bar"><button onClick={() => { if (saveState === 'Saved' || confirm('Leave this project with unsaved source?')) onBack?.(); }}>← Discover</button><strong>{project.name}</strong><span className="cloud-save-state" role="status">{saveState}</span><div className="cloud-editor-actions"><button className="cloud-save" onClick={() => void save()}>Save</button>{onPublish && <button onClick={() => { setPublishState(''); setPublishOpen(true); }}>Publish</button>}<button onClick={() => downloadText(source, sourceName)}>Download source</button>{onSignOut && <button onClick={() => { if (saveState === 'Saved' || confirm('Sign out with unsaved source?')) onSignOut(); }}>Sign out</button>}</div></div>}
@@ -1122,7 +1151,7 @@ export function HeliosApp({ project, initialWorkspace, chooseBase = false, onSho
       </aside>
       <div className="bottom-region" style={shellLayout.place('bottom')}><ResizeHandle axis="vertical" label="Resize bottom panel" value={shellLayout.bottomPixels} onResize={shellLayout.resizeBottom} /><BottomDock collapsed={!shellLayout.bottomOpen} onToggle={() => shellLayout.setBottomOpen(value => !value)} diagnostics={shownDiagnostics} busy={busy} sourceName={sourceName} sourceRevision={sourceRevision} displayRevision={displayRevision} lastTiming={lastTiming} events={phaseTiming ? [...outputEvents, phaseTiming] : outputEvents} onDiagnosticClick={diagnostic => { if (diagnostic.source) navigateSource(diagnostic.source); }} /></div>
     </main>
-    <WorkspaceStatus busy={busy ?? (workerFailed ? 'Worker failed' : null)} elapsed={elapsedSeconds} runtimeName={runtimeName} model={model} sourceRevision={sourceRevision} displayRevision={displayRevision} diagnostics={shownDiagnostics} timing={lastTiming} theme={theme} viewMode={viewMode} onRestart={() => { void buildClient.restart().then(() => submitBuild(source, sourceName)).catch(error => setDiagnostics([toDiagnostic(error, 'HELIOS-WORKER-RESTART')])); }} />
+    <WorkspaceStatus busy={importingStep ? 'Reading STEP solids' : busy ?? (workerFailed ? 'Worker failed' : null)} elapsed={elapsedSeconds} runtimeName={runtimeName} model={model} sourceRevision={sourceRevision} displayRevision={displayRevision} diagnostics={shownDiagnostics} timing={lastTiming} theme={theme} viewMode={viewMode} onRestart={() => { void buildClient.restart().then(() => submitBuild(source, sourceName)).catch(error => setDiagnostics([toDiagnostic(error, 'HELIOS-WORKER-RESTART')])); }} />
     {paletteOpen && <CommandPalette commands={paletteCommands} onClose={() => setPaletteOpen(false)} />}
     {learnPage !== null && <Suspense fallback={<div className="app-loading" role="status">Opening Firmament manual…</div>}><LearnCenter initialPage={learnPage} onClose={() => setLearnPage(null)} /></Suspense>}
     {examplesOpen && <ExampleDialog onClose={() => setExamplesOpen(false)}><ExampleGallery onOpen={id => void openExample(id)} opening={openingExample} unavailableReason={busy ? "A project operation is running. Open another example when it finishes." : undefined} /></ExampleDialog>}

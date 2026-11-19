@@ -2,6 +2,9 @@ import { strFromU8, strToU8, unzipSync, zipSync } from 'fflate';
 import type { ProjectSnapshot } from './projectSnapshot';
 
 export const isStep = (name: string) => /\.(step|stp)$/i.test(name);
+export const localDocumentLimit = 32 * 1024 * 1024;
+export const localWorkspaceLimit = 64 * 1024 * 1024;
+export const localFileLimit = (name: string) => isStep(name) ? localWorkspaceLimit : localDocumentLimit;
 export const sourceFiles = (documents: Record<string, string>) => Object.keys(documents).filter(name => !isStep(name));
 const path = (name: string) => {
   if (!name || /[\\:#?"\x00-\x1f]/.test(name) || name.startsWith('/') || name.split('/').some(p => p === '..' || p === '')) throw new Error(`Invalid workspace path: ${name}`);
@@ -26,7 +29,7 @@ export function unpackProject(bytes: Uint8Array): ProjectSnapshot {
   // Bound decompression before allocating any individual file, including a hostile ZIP entry.
   let total = 0;
   const entries = unzipSync(bytes, { filter: entry => {
-    if (entry.originalSize > 32 * 1024 * 1024 || (total += entry.originalSize) > 64 * 1024 * 1024) throw new Error('Workspace exceeds the 64 MB local import limit.');
+    if (entry.originalSize > localFileLimit(entry.name) || (total += entry.originalSize) > localWorkspaceLimit) throw new Error('Workspace exceeds the local import size limit.');
     path(entry.name); return true;
   } });
   const manifest = JSON.parse(strFromU8(entries['helios-workspace.json'] ?? new Uint8Array()));

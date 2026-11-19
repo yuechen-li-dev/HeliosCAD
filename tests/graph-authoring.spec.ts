@@ -217,14 +217,11 @@ for (const kind of ['Chamfer'] as const) test(`a picked bracket edge accepts one
   await expect(page.locator('.status-ready')).toContainText('Ready', { timeout: 120_000 });
   await page.getByRole('tab', { name: 'Graph', exact: true }).click();
   const before = (await saveSource(page, `single-edge-${kind}-before`)).source;
-  await page.getByRole('button', { name: 'Front', exact: true }).click();
+  await page.getByRole('button', { name: 'Top', exact: true }).click();
   await inspector(page).getByRole('button', { name: 'Finish an edge…', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Edges', exact: true })).toHaveAttribute('aria-pressed', 'true');
   await expect(page.getByText(/Click an edge in the viewport/)).toBeVisible();
-  const canvas = page.locator('[data-testid="viewport"] canvas');
-  const camera = JSON.parse((await canvas.getAttribute('data-surface-inspection'))!).camera, rect = (await canvas.boundingBox())!;
-  await page.mouse.click(rect.x + rect.width / 2 + (18 - camera.target[0]) * rect.height / camera.span,
-    rect.y + rect.height / 2 - (3 - camera.target[2]) * rect.height / camera.span);
+  await clickWorld(page, [18, -20, 3]);
   const action = page.getByRole('button', { name: `${kind} selected edge`, exact: true });
   await expect(action).toBeEnabled(); await action.click();
   await expect(panel(page).getByRole('region', { name: 'Selected edge' })).toContainText('Extrusion end-face edge');

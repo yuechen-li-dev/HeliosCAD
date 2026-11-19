@@ -1,5 +1,11 @@
-import type { Diagnostic, ModelSession } from '@aetheris/cad';
+import type { Diagnostic, ModelSession, RuntimeInfo } from '@aetheris/cad';
 import type { BusyState, ThemeName, ViewMode } from './types';
+
+export function formatAetherisRuntime(info: RuntimeInfo): string {
+  const revision = info.sourceRevision?.slice(0, 8);
+  const execution = info.execution === 'dotnet' ? '.NET native' : info.execution === 'wasm' ? 'WASM' : null;
+  return [`Aetheris v${info.packageVersion}${revision ? ` ${revision}` : ''}`, execution].filter(Boolean).join(' · ');
+}
 
 export function WorkspaceStatus({ busy, elapsed, runtimeName, model, sourceRevision, displayRevision, diagnostics, timing, theme, viewMode, onRestart }: {
   busy: BusyState; elapsed: number; runtimeName: string; model: ModelSession | null;
