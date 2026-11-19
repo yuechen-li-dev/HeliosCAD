@@ -56,25 +56,33 @@ jobs:
           node-version: 26
       - uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: 10.0.401
+          dotnet-version: 10.0.x
+      - name: Read the Aetheris SDK version
+        id: dotnet
+        working-directory: Aetheris
+        shell: pwsh
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          "version=$(dotnet --version)" >> $env:GITHUB_OUTPUT
       - uses: actions/cache/restore@v4
         id: sdk
         with:
           path: |
             Aetheris/Aetheris.Web.Runtime/sdk/dist
             Aetheris/artifacts/local/helios-sdk/aetheris-cad-2.0.0.tgz
-          key: helios-sdk-${{ steps.sources.outputs.aetheris }}-net10.0.401-win
+          key: helios-sdk-${{ steps.sources.outputs.aetheris }}-net${{ steps.dotnet.outputs.version }}-win
       - name: Build production browser SDK
+        working-directory: Aetheris
         shell: pwsh
         run: |
           $PSNativeCommandUseErrorActionPreference = $true
           dotnet workload install wasm-tools --skip-manifest-update
           if ('${{ steps.sdk.outputs.cache-hit }}' -ne 'true') {
-            node Aetheris/Aetheris.Web.Runtime/sdk/scripts/build.mjs --production
-            New-Item -ItemType Directory -Force Aetheris/artifacts/local/helios-sdk | Out-Null
-            npm pack ./Aetheris/Aetheris.Web.Runtime/sdk --pack-destination Aetheris/artifacts/local/helios-sdk
+            node Aetheris.Web.Runtime/sdk/scripts/build.mjs --production
+            New-Item -ItemType Directory -Force artifacts/local/helios-sdk | Out-Null
+            npm pack ./Aetheris.Web.Runtime/sdk --pack-destination artifacts/local/helios-sdk
           } else {
-            dotnet restore Aetheris/Aetheris.Web.Runtime/Aetheris.Web.Runtime.csproj
+            dotnet restore Aetheris.Web.Runtime/Aetheris.Web.Runtime.csproj
           }
       - uses: actions/cache/save@v4
         if: steps.sdk.outputs.cache-hit != 'true'
