@@ -107,12 +107,22 @@ existing downstream features. Use an Assembly for separate parts.
 
 ## Finish one selected edge
 
-Choose **Edges** in the viewport toolbar's **Pick** control, or choose
-**Finish an edge…** from the Graph actions. Click the edge you want to finish.
-Choose **Fillet selected edge** or **Chamfer selected edge** above the viewport.
-Set **Radius** or **Distance**, inspect the automatic gold preview, then **Apply**.
-The dialog locks the target to the selected edge. Cancel leaves source unchanged;
-Apply writes one EdgeFinish declaration and can be undone in one step.
+Choose **Fillet an edge…** or **Chamfer an edge…** from the Graph actions. Every
+edge that takes that finish lights up in gold; Helios knows because it builds the
+finish on each edge before showing it. Click a gold edge to start. An edge that
+stays unlit cannot take the finish on this model yet: click it to see why. Choose
+**Done** to stop picking.
+
+You can also choose **Edges** in the viewport toolbar's **Pick** control and click
+any edge. **Fillet selected edge** and **Chamfer selected edge** above the viewport
+are available only when that finish builds on the edge; otherwise the reason is
+shown beside them.
+
+The dialog locks the target to the selected edge and shows the sizes the edge
+takes, such as "Builds with Radius 0.01 mm to 4.2 mm". Set **Radius** or
+**Distance** inside that range, inspect the automatic gold preview, then **Apply**.
+Cancel leaves source unchanged; Apply writes one EdgeFinish declaration and can be
+undone in one step.
 
 For Simple Bracket, use **Iso** and select the inside crease where the foot
 meets the upright. The selection reads **Inside bend · full length**. A 2 mm

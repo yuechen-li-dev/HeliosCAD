@@ -32,6 +32,7 @@ import { posedMesh } from "./pose";
 import { applyNamedView, WORLD_UP } from "./viewCommands";
 import type { DisplayMode, ThemeName, ViewMode } from "../app/types";
 import { HELIOS_PRESENTATIONS } from "./presentation";
+import type { FinishHighlight } from "../graph/edgeFinishAdmission";
 import { bindFeaturePlacement, placementLines, type FeaturePlacementProps } from './featurePlacement';
 const LegacyViewport = lazy(() =>
   import("./LegacyViewport").then((module) => ({
@@ -63,6 +64,8 @@ interface Props extends FeaturePlacementProps {
   viewCommand: string;
   /** `auto` picks an edge under the pointer and the face otherwise; Alt forces the face. */
   selectionMode: "face" | "edge" | "auto";
+  /** While picking an edge for a finish: the edges that take it, drawn gold and always visible. */
+  finishHighlight?: FinishHighlight | null;
   onSelect(
     entityId: string | null,
     faceId: string | null,
@@ -208,6 +211,17 @@ function ViewportRenderer(props: Props) {
 }
 
 /** An edge within a few pixels in `auto` mode (unless Alt is held), else the face under the pointer. */
+/** Whether an edge is lit for the finish being picked. */
+function finishLit(highlight: FinishHighlight | null | undefined, edgeId: string | number | undefined) {
+  return !!highlight && edgeId !== undefined && highlight.admitted.has(String(edgeId));
+}
+/** Lit edges are gold; while picking, the rest fade back so the lit ones stand out. */
+function edgeColor(theme: ThemeName, finishable: boolean, picking = false): [number, number, number, number] {
+  if (finishable) return [0.95, 0.62, 0.05, 1];
+  const alpha = picking ? 0.3 : 0.85;
+  return theme === "bronze-age" ? [0.18, 0.22, 0.2, alpha] : [0.3, 0.35, 0.32, alpha];
+}
+
 function pickAt(host: TelosHost, pixel: [number, number], mode: Props['selectionMode'], faceOnly: boolean) {
   if (mode !== 'auto') return host.picker.pick(pixel, mode);
   return (faceOnly ? null : host.picker.pick(pixel, 'edge')) ?? host.picker.pick(pixel, 'face');
@@ -279,18 +293,18 @@ function TelosViewport(props: Props & { onRetry(): void; onUnavailable(reason: s
             });
           }
     }
-    const lines = scene.lines.map((line) => ({
-      ...line,
-      selected:
-        topology ? targeted(line.identity.edgeId, line.identity.occurrenceId)
-          : selectedIds.has(line.identity.occurrenceId),
-      widthPixels: topology && targeted(line.identity.edgeId, line.identity.occurrenceId) ? 4 : 1,
-      visible: value.displayMode !== "shaded" || topology && targeted(line.identity.edgeId, line.identity.occurrenceId),
-      color:
-        value.theme === "bronze-age"
-          ? [0.18, 0.22, 0.2, 0.85]
-          : [0.3, 0.35, 0.32, 0.85],
-    }));
+    const lines = scene.lines.map((line) => {
+      const finishable = finishLit(value.finishHighlight, line.identity.edgeId);
+      return {
+        ...line,
+        selected:
+          topology ? targeted(line.identity.edgeId, line.identity.occurrenceId)
+            : selectedIds.has(line.identity.occurrenceId),
+        widthPixels: topology && targeted(line.identity.edgeId, line.identity.occurrenceId) ? 4 : finishable ? 3 : 1,
+        visible: value.displayMode !== "shaded" || finishable || topology && targeted(line.identity.edgeId, line.identity.occurrenceId),
+        color: edgeColor(value.theme, finishable, !!value.finishHighlight),
+      };
+    });
     const selectedEdges = lines.filter(line => line.selected && topology && !!line.identity.edgeId);
     const edgeHalos = selectedEdges.map(line => ({ ...line, id: `${line.id}:selection-halo`, selected: false,
       overlay: true, pickable: false, depthMode: 'always-on-top' as const, widthPixels: 10, color: [1, .68, .12, .25] }));
@@ -300,6 +314,8 @@ function TelosViewport(props: Props & { onRetry(): void; onUnavailable(reason: s
     const preview = value.wireframePreview ? operationPreviewWireframe(value.wireframePreview) : [];
     canvas.current?.setAttribute("data-operation-preview-wires", String(preview.length / 2));
     canvas.current?.setAttribute("data-concept-wires", String(concepts.length / 2));
+    canvas.current?.setAttribute("data-finish-highlight", JSON.stringify(value.finishHighlight
+      ? { kind: value.finishHighlight.kind, admitted: value.finishHighlight.admitted.size, refused: value.finishHighlight.refused.size } : null));
     const displayScene = { ...scene, meshes, lines, fields: scene.fields.map(f=>({...f, selected:!topology && selectedIds.has(f.identity.occurrenceId), visible:value.displayMode !== "wireframe"})) };
     const inspected = inspectSurfaces(inspection.current.mode === "normal" && !inspection.current.face ? displayScene : scene,
       inspection.current.mode, inspection.current.face);
@@ -413,9 +429,10 @@ function TelosViewport(props: Props & { onRetry(): void; onUnavailable(reason: s
       for (const line of current.scene.lines) {
         if (!line.identity.edgeId || line.overlay) continue;
         const hovered = latest.current.selectionMode !== 'face' && !!hit?.edgeId && line.identity.edgeId === hit.edgeId && line.identity.occurrenceId === hit.occurrenceId;
-        const width = line.selected ? 4 : hovered ? 3 : 1;
+        const finishable = finishLit(latest.current.finishHighlight, line.identity.edgeId);
+        const width = line.selected ? 4 : hovered || finishable ? 3 : 1;
         changed ||= line.widthPixels !== width; line.widthPixels = width;
-        line.color = hovered ? [.2, .85, 1, 1] : latest.current.theme === 'bronze-age' ? [.18,.22,.2,.85] : [.3,.35,.32,.85];
+        line.color = hovered ? [.2, .85, 1, 1] : edgeColor(latest.current.theme, finishable, !!latest.current.finishHighlight);
       }
       if (changed) current.invalidate();
     };
@@ -465,7 +482,7 @@ function TelosViewport(props: Props & { onRetry(): void; onUnavailable(reason: s
   }, []);
   useEffect(() => {
     apply();
-  }, [props.measurement, props.extraSelections, props.pmiStyle, props.pmiAnnotations, props.showConcepts, props.model, props.model?.revision, props.wireframePreview, props.pose, props.selectedEntityId, props.selectedTopologyId, props.selectedOccurrenceId,
+  }, [props.finishHighlight, props.measurement, props.extraSelections, props.pmiStyle, props.pmiAnnotations, props.showConcepts, props.model, props.model?.revision, props.wireframePreview, props.pose, props.selectedEntityId, props.selectedTopologyId, props.selectedOccurrenceId,
     props.theme, props.displayMode, props.viewMode, props.viewCommand, props.aaMode, props.aaDebug,
     inspectionMode, isolatedFaceKey, props.placementGuide]);
   useEffect(() => { setIsolatedFaceKey(""); }, [props.model?.id, props.model?.revision]);

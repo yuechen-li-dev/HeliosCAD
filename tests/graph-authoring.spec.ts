@@ -218,15 +218,18 @@ for (const kind of ['Chamfer'] as const) test(`a picked bracket edge accepts one
   await page.getByRole('tab', { name: 'Graph', exact: true }).click();
   const before = (await saveSource(page, `single-edge-${kind}-before`)).source;
   await page.getByRole('button', { name: 'Front', exact: true }).click();
-  await inspector(page).getByRole('button', { name: 'Finish an edge…', exact: true }).click();
+  await inspector(page).getByRole('button', { name: `${kind} an edge…`, exact: true }).click();
   await expect(page.getByRole('button', { name: 'Edges', exact: true })).toHaveAttribute('aria-pressed', 'true');
-  await expect(page.getByText(/Click an edge in the viewport/)).toBeVisible();
+  // The runtime builds the finish on every offered edge; the ones that build are lit.
+  await expect(page.getByText(/can take a chamfer, shown in gold/)).toBeVisible({ timeout: 60_000 });
   const canvas = page.locator('[data-testid="viewport"] canvas');
+  const lit = JSON.parse((await canvas.getAttribute('data-finish-highlight'))!);
+  expect(lit).toMatchObject({ kind: 'chamfer' }); expect(lit.admitted).toBeGreaterThan(0);
   const camera = JSON.parse((await canvas.getAttribute('data-surface-inspection'))!).camera, rect = (await canvas.boundingBox())!;
+  // Clicking a lit edge starts the finish on it.
   await page.mouse.click(rect.x + rect.width / 2 + (18 - camera.target[0]) * rect.height / camera.span,
     rect.y + rect.height / 2 - (3 - camera.target[2]) * rect.height / camera.span);
-  const action = page.getByRole('button', { name: `${kind} selected edge`, exact: true });
-  await expect(action).toBeEnabled(); await action.click();
+  await expect(panel(page).getByText(/Builds with Distance .* mm/)).toBeVisible({ timeout: 60_000 });
   await expect(panel(page).getByRole('region', { name: 'Selected edge' })).toContainText('Extrusion end-face edge');
   await expect(panel(page).getByLabel('Face', { exact: true })).toHaveCount(0);
   await expect(panel(page).getByLabel('Target', { exact: true })).toHaveCount(0);
@@ -239,7 +242,9 @@ for (const kind of ['Chamfer'] as const) test(`a picked bracket edge accepts one
   await expect(panel(page).getByRole('button', { name: 'Apply', exact: true })).toBeDisabled();
   await panel(page).getByRole('button', { name: 'Cancel', exact: true }).click();
   expect((await saveSource(page, `single-edge-${kind}-cancelled`)).source).toBe(before);
-  await action.click(); await panel(page).getByLabel(size, { exact: true }).fill('0.5');
+  // The edge stays selected after Cancel; its button follows the same admission.
+  const action = page.getByRole('button', { name: `${kind} selected edge`, exact: true });
+  await expect(action).toBeEnabled(); await action.click(); await panel(page).getByLabel(size, { exact: true }).fill('0.5');
   await expect(panel(page).getByRole('status')).toContainText('Preview ready');
   await page.getByRole('button', { name: 'Iso', exact: true }).click();
   await page.screenshot({ path: resolve(output, `single-edge-${kind.toLowerCase()}-preview.png`), fullPage: true });
