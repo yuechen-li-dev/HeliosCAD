@@ -11,6 +11,10 @@ or change the code and rebuild it with the [Aetheris kernel](https://github.com/
 The preview runs on your device in Chrome or Edge. Download your work with
 **Save source** or **Save workspace** before closing the tab.
 
+The 0.2 browser preview adds imported edge and rim finishing on supported
+STEP solids, and opens supported multibody STEP workspaces.
+[0.2 browser release notes](docs/release/0.2.0.md)
+
 The interface is still early. If you get stuck, [tell us on GitHub](https://github.com/yuechen-li-dev/HeliosCAD/issues/new)
 what you were trying to do and what happened. A screenshot or a small model
 helps if you can share one.

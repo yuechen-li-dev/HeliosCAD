@@ -144,7 +144,9 @@ try {
   const glb = Object.entries(exports).find(([name]) => name.endsWith('.glb'));
   assert.ok(pdf && glb); assert.equal(Buffer.from(pdf[1]).subarray(0, 4).toString(), '%PDF'); assert.equal(Buffer.from(glb[1]).subarray(0, 4).toString(), 'glTF');
   await page.getByRole('banner').locator('input[type=file]').setInputFiles(stepPath);
-  await expect(page.locator('.workspace-identity strong')).toHaveText('box');
+  // STEP is classified in a fresh worker before the workspace switches.
+  // Include its cold WASM startup in the import deadline.
+  await expect(page.locator('.workspace-identity strong')).toHaveText('box', { timeout: 120_000 });
   await expect(page.locator('.status-ready')).toContainText('Ready', { timeout: 120_000 });
   await page.getByRole('banner').locator('input[type=file]').setInputFiles(join(root, 'fixtures/author-local/part.firmament'));
   await expect(page.locator('.workspace-identity small')).toContainText('part.firmament');
