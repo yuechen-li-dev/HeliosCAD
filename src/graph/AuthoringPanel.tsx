@@ -7,11 +7,12 @@ import { PatternEditor } from './PatternEditor';
 import { bodyParent, featureTarget, paletteOperation, uniqueName } from './graphAuthoring';
 import { jointOperations, type AssemblyGraph, type AssemblyEnd } from './assemblyGraph';
 import { constrainCenter, localPoint, worldPoint, type PlacementActions, type PlacementGuide } from '../viewport/featurePlacement';
-import { edgePreviewAdvice, pickedRimFace } from './edgePreviewAdvice';
+import { geometryOnly, importedFinishPrerequisites, type ImportedFinishTarget } from './importedEdgeFinish';
+import { edgePreviewAdvice, pickedRimFace, importedFinishAdvice } from './edgePreviewAdvice';
 import { holeEndProblem, holeFieldLabel, holePlacementProblem, holePreviewAdvice, isHoleTool } from './holeAuthoring';
 
 export type AuthoringAction = { kind: 'base' | 'patternEditor' | 'pattern' | 'extrude' | 'pocket' | 'placement' | 'mate'; item?: never; baseId?: string }
-  | { kind: 'feature'; item: PaletteItem; edge?: SelectionDescription };
+  | { kind: 'feature'; item: PaletteItem; edge?: SelectionDescription; importedFinish?: ImportedFinishTarget };
 export interface PendingAuthoring { action: AuthoringAction; node: string | null; revision: number; mate?: { kind: string; a: AssemblyEnd; b: AssemblyEnd; existing?: string } }
 
 interface Props {
@@ -54,8 +55,11 @@ export function AuthoringPanel(props: Props) {
   const selected = outline.nodes.find(n => n.id === pending.node);
   const edge = pending.action.kind === 'feature' ? pending.action.edge : undefined;
   const singleEdge = edge !== undefined;
+  const importedFinish = pending.action.kind === 'feature' ? pending.action.importedFinish : undefined;
+  const importedBody = importedFinish && outline.nodes.find(node => node.id === importedFinish.body);
+  const [excludeSourceAnnotations, setExcludeSourceAnnotations] = useState(() => geometryOnly(importedBody));
   const featureKind = pending.action.kind === 'feature' ? pending.action.item.id : null;
-  const rimFinish = !singleEdge && (featureKind === 'fillet' || featureKind === 'chamfer');
+  const rimFinish = !importedFinish && !singleEdge && (featureKind === 'fillet' || featureKind === 'chamfer');
   const target = featureTarget(outline, pending.node);
   const bodies = outline.nodes.filter(n => ['Box', 'Cylinder', 'Extrude', 'Compose', 'Sphere', 'Ellipsoid', 'Polyhedron'].includes(n.kind)
     && !n.occurrence && outline.nodes.some(p => p.id === n.parentId && ['Model', 'Struct'].includes(p.kind)));
@@ -232,6 +236,10 @@ export function AuthoringPanel(props: Props) {
         return [{ kind: 'insertDeclaration', parent: bodyParent(outline, pending.node), source: editedDraft(), name }];
       }
       case 'feature': {
+        if (importedFinish) {
+          if (!importedBody || !excludeSourceAnnotations) throw new Error('Allow a geometry-only revision before previewing.');
+          return [{ kind: 'insertFeature', node: importedBody.id, source: editedDraft(), name }];
+        }
         if (singleEdge && (!edge?.edgeFinish || !body)) throw new Error('Select a source-owned edge on a body in this document.');
         if (placementError) throw new Error(placementError);
         const overrides = edge?.edgeFinish ? [{ field: 'Face', value: edge.edgeFinish.face }, { field: 'Target', value: edge.edgeFinish.target }]
@@ -271,7 +279,11 @@ export function AuthoringPanel(props: Props) {
     }
     const ticket = ++generation.current; setState('preparing');
     try {
-      const edit = await runtime.edit(source, operations(), sourceName, String(pending.revision));
+      const draftOperations = operations();
+      const prerequisites = importedFinish && importedBody
+        ? await importedFinishPrerequisites(importedBody, importedFinish, sourceName, props.documents) : [];
+      if (ticket !== generation.current) return;
+      const edit = await runtime.edit(source, [...prerequisites, ...draftOperations], sourceName, String(pending.revision));
       if (ticket !== generation.current) return;
       const documents = { ...props.documents, [sourceName]: edit.text };
       const result = await runtime.preview(props.root === sourceName ? edit.text : documents[props.root], props.root, pending.revision, documents);
@@ -318,14 +330,17 @@ export function AuthoringPanel(props: Props) {
   const fieldSchema = rimBody?.kind === 'Extrude' && draftSchema ? { ...draftSchema, fields: draftSchema.fields.map(field =>
     field.name.toLowerCase() === 'face' ? { ...field, choices: ['Top', 'Bottom'] } : field) } : draftSchema;
   const holeAdvice = featureKind && (interactiveHole || perforation) ? holePreviewAdvice(previewIssues, error, featureKind) : null;
-  const refusal = placementError || edgeAdvice || holeAdvice || previewRecovery(error, previewIssues, isFeature);
+  const importedAdvice = importedFinish && (featureKind === 'fillet' || featureKind === 'chamfer')
+    ? importedFinishAdvice(previewIssues, error, featureKind, importedFinish.topology) : null;
+  const refusal = placementError || importedAdvice || edgeAdvice || holeAdvice || previewRecovery(error, previewIssues, isFeature);
   const inputsLocked = state === 'preparing' && !isFeature;
   useEffect(() => {
     const active = document.activeElement;
     if (failed && active instanceof HTMLElement && fieldsRef.current?.contains(active))
       active.scrollIntoView?.({ block: 'nearest' });
   }, [failed, refusal]);
-  const title = pending.action.kind === 'feature' ? singleEdge ? `${pending.action.item.id === 'fillet' ? 'Fillet' : 'Chamfer'} selected edge` : `Add ${pending.action.item.label}`
+  const title = importedFinish ? (featureKind === 'fillet' ? 'Fillet' : 'Chamfer') + ' selected ' + (importedFinish.topology === 'Edge' ? 'edge' : 'face rim')
+    : pending.action.kind === 'feature' ? singleEdge ? `${pending.action.item.id === 'fillet' ? 'Fillet' : 'Chamfer'} selected edge` : `Add ${pending.action.item.label}`
     : pending.action.kind === 'mate' && pending.mate?.existing ? 'Edit mate' : titles[pending.action.kind];
 
   return <aside className="authoring-panel" aria-label={title}>
@@ -337,7 +352,17 @@ export function AuthoringPanel(props: Props) {
         <p>Existing features and references remain. Preview checks their compatibility with the replacement.</p>
         {bodies.find(n => n.id === body)?.kind.toLowerCase() !== base && <p>Changing kind replaces the base fields with catalog defaults. Original base fields: {bodies.find(n => n.id === body)?.fields.map(f => `${f.name}: ${f.text}`).join('; ') || 'none'}. Review Source change before Apply.</p>}
         <button onClick={props.onSketch}>New IntelliDraft part…</button></>}
-      {isFeature && <>{singleEdge ? <section aria-label="Selected edge"><strong>{edge?.edgeFinish?.body} · {edge?.edgeFinish?.label}</strong><p>Only this edge is selected. Set the size and inspect the gold preview, then Apply.</p>
+      {isFeature && <>{importedFinish ? <section aria-label="Imported finish selection">
+        <strong>{importedFinish.topology === 'Edge' ? 'STEP edge' : 'STEP face rim'} {importedFinish.entity}</strong>
+        <p>Set the size, then Preview. Apply saves the finish in Firmament.</p>
+        {!geometryOnly(importedBody) && <label className="imported-geometry-consent">
+          <input type="checkbox" checked={excludeSourceAnnotations} onChange={event => {
+            invalidate();
+            setExcludeSourceAnnotations(event.target.checked);
+          }} />
+          Exclude annotations from the imported STEP in this revision
+        </label>}
+      </section> : singleEdge ? <section aria-label="Selected edge"><strong>{edge?.edgeFinish?.body} · {edge?.edgeFinish?.label}</strong><p>Only this edge is selected. Set the size and inspect the gold preview, then Apply.</p>
         <p className="edge-size-range">{props.edgeRange?.error ? `Size range unavailable: ${props.edgeRange.error}`
           : edgeRangeText(props.edgeRange?.range) ? `Builds with ${featureKind === 'fillet' ? 'Radius' : 'Distance'} ${edgeRangeText(props.edgeRange?.range)}.`
           : 'Finding the sizes this edge takes…'}</p></section> : bodyChoice}
@@ -354,7 +379,7 @@ export function AuthoringPanel(props: Props) {
           </section> : null}
         {perforation && <p className="placement-hint">Use +Z for the top of a block. Pitch is the distance between opening centers, and Margin leaves material around the edges.</p>}
         {rimFinish && !pickedFaceValue && (rimBody?.kind === 'Extrude' || props.selection?.topologyKind === 'Face') && <p className="placement-hint">Choose the Face in this form to finish its rim. On an extrusion, use Top or Bottom. To finish an individual edge, cancel and choose Finish an edge.</p>}
-        {!interactiveHole && !singleEdge && !perforation && (!rimFinish || pickedFaceValue) && <button disabled={!rimFinish && !props.selection?.sourceAddressable || !draftNode || state === 'preparing' || !!preview.current} onClick={() => {
+        {!importedFinish && !interactiveHole && !singleEdge && !perforation && (!rimFinish || pickedFaceValue) && <button disabled={!rimFinish && !props.selection?.sourceAddressable || !draftNode || state === 'preparing' || !!preview.current} onClick={() => {
           const field = draftNode?.fields.find(f => ['on', 'face'].includes(f.name.toLowerCase()));
           if (field && pickedFaceValue) {
             try {
@@ -367,7 +392,7 @@ export function AuthoringPanel(props: Props) {
           }
         }}>Use picked face{pickedFaceValue ? ` · ${pickedFaceValue}` : ''}</button>}
       </>}
-      {(isFeature || pending.action.kind === 'base') && (draftNode ? <FieldSet key={`${draftReset}:${draft}`} fields={singleEdge ? draftNode.fields.filter(f => !['face', 'target', 'kind'].includes(f.name.toLowerCase())) : support ? draftNode.fields.filter(f => !['on', 'center'].includes(f.name.toLowerCase())) : draftNode.fields}
+      {(isFeature || pending.action.kind === 'base') && (draftNode ? <FieldSet key={`${draftReset}:${draft}`} fields={importedFinish ? draftNode.fields.filter(f => ['radius', 'distance', 'clearance'].includes(f.name.toLowerCase())) : singleEdge ? draftNode.fields.filter(f => !['face', 'target', 'kind'].includes(f.name.toLowerCase())) : support ? draftNode.fields.filter(f => !['on', 'center'].includes(f.name.toLowerCase())) : draftNode.fields}
         schema={fieldSchema} fieldLabel={interactiveHole || perforation ? holeFieldLabel : undefined}
         disabled={inputsLocked} draftRef={fieldDraft} onDirty={() => { invalidate(); setPlacementEpoch(e => e + 1); }} />
         : <p role="status">Preparing field controls…</p>)}
@@ -417,7 +442,7 @@ export function AuthoringPanel(props: Props) {
         : automaticPreview ? 'Preview updates as you edit. Apply when it’s ready.'
         : 'Click Preview to check this feature and enable Apply.'}</p>}
       <div className="authoring-actions">
-        <button disabled={!fieldsReady || state === 'preparing' || !!placementError || !!placementReason && pending.action.kind === 'placement'} onClick={() => void runPreview()}>Preview</button>
+        <button disabled={!fieldsReady || !!importedFinish && !excludeSourceAnnotations || state === 'preparing' || !!placementError || !!placementReason && pending.action.kind === 'placement'} onClick={() => void runPreview()}>Preview</button>
         <button className="primary" disabled={!prepared || state !== 'previewed' || !!placementError} title={failed ? 'Resolve the preview issue to enable Apply' : 'Apply the accepted preview'} onClick={() => prepared && props.onApply(prepared, title)}>Apply</button>
       </div>
     </footer>

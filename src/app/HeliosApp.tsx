@@ -1,6 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ConstructProjection, Diagnostic, EdgeFinishKind, EdgeFinishRange, EditableProperty, FieldProjection, LanguageOutline, ModelSession, LanguageEditOperation, LanguageField, MotionPose, OutlineField, OutlineNode, PaletteItem, SelectionDescription, SemanticSchema, UnitValue } from '@aetheris/cad';
-import { WebSdkCadRuntime } from '../sdk/CadRuntime';
+import { prepareStepImport, WebSdkCadRuntime } from '../sdk/CadRuntime';
 import { AetherisWorkerClient, type BuildResult } from '../sdk/AetherisWorkerClient';
 import { assemblySource, bracketSource, emptyModelSource } from '../sdk/samples';
 import { LocalHostControl } from '../desktop/LocalHostControl';
@@ -24,7 +24,7 @@ import { ExampleDialog } from '../showcase/ExampleDialog';
 import { loadShowcase, type WorkspaceProject } from '../showcase/catalog';
 import { WorkspacePanels } from './WorkspacePanels';
 import { ResizeHandle } from './ResizeHandle';
-import { WorkspaceStatus } from './WorkspaceStatus';
+import { formatAetherisRuntime, WorkspaceStatus } from './WorkspaceStatus';
 import { useTheme } from '../themes/useTheme';
 import { GraphPanel, type GraphSelection } from '../graph/GraphPanel';
 import type { GraphLayouts } from '../graph/useGraphNodes';
@@ -42,7 +42,7 @@ import { MotionStrip } from '../viewport/MotionStrip';
 import { poseCoverage } from '../viewport/pose';
 import type { ExportFormat, PmiOffsets } from '@aetheris/cad';
 import { ExportPicker } from './ExportPicker';
-import { importedProject, isStep, packProject, sourceFiles, stepTextSha256, unpackProject } from './localProject';
+import { importedProject, isStep, localFileLimit, localWorkspaceLimit, packProject, sourceFiles, stepTextSha256, unpackProject } from './localProject';
 import { registerRecoverableSource } from './crashRecovery';
 import { LabelPanel } from '../label/LabelPanel';
 import { labelRefusal } from '../label/feedback';
@@ -51,6 +51,7 @@ import { allFaces, findFace } from '../label/geometry';
 import { holeFaceSelectors, recognizedHoles } from '../label/holes';
 import { AuthoringPanel, type AuthoringAction, type PendingAuthoring } from '../graph/AuthoringPanel';
 import { edgeSelectionHelp } from '../graph/edgePreviewAdvice';
+import { importedFinishTarget, supportsImportedFinish } from '../graph/importedEdgeFinish';
 import { isHoleTool } from '../graph/holeAuthoring';
 import { TutorialPanel } from '../learn/TutorialPanel';
 import type { PlacementActions, PlacementGuide } from '../viewport/featurePlacement';
@@ -62,9 +63,8 @@ const LearnCenter = lazy(() => import('../learn/LearnCenter').then(m => ({ defau
 
 type UtilityTab = { kind: 'files' } | { kind: 'inspector' } | { kind: 'examples' } | { kind: 'llm' } | { kind: 'version-control' } | { kind: 'tutorial' };
 
-/** What an imported STEP part takes in Helios today, said where the hole and finish tools would be. */
-const IMPORTED_PART_NOTE = 'This is an imported STEP part. Label it in the Label tab: datums, sizes, tolerances and notes. '
-  + 'Adding holes or edge finishes to an imported part is not supported yet.';
+const IMPORTED_PART_NOTE = 'Pick a face to finish its outer rim, or switch to Edges to finish one edge. Use the Label tab for datums, sizes, tolerances and notes.';
+const IMPORTED_FINISH_RUNTIME_NOTE = 'This Aetheris runtime needs an update to finish imported edges or rims. Use the Label tab for datums, sizes, tolerances and notes.';
 
 export function HeliosApp({ project, initialWorkspace, chooseBase = false, onShowcase, onSave, onPublish, onBack, onSignOut }: { project?: Project; initialWorkspace?: WorkspaceProject; chooseBase?: boolean; onShowcase?: () => void; onSave?: (source: string) => Promise<void>; onPublish?: (payload: { expectedRevisionId: string; title: string; description: string; category: string; tags: string[]; previewPngBase64: string }) => Promise<void>; onBack?: () => void; onSignOut?: () => void } = {}) {
   const [learnPage, setLearnPage] = useState<string | null>(null);
@@ -120,10 +120,13 @@ export function HeliosApp({ project, initialWorkspace, chooseBase = false, onSho
   const finishes = useEdgeFinishAdmission(model);
   const [viewMode, setViewMode] = useState<ViewMode>('perspective');
   const [viewCommand, setViewCommand] = useState('iso-0'); // Parts open in an isometric view; fit follows each new model.
-  const [runtimeName, setRuntimeName] = useState('WASM');
+  const [runtimeName, setRuntimeName] = useState('Aetheris');
   const [lastTiming, setLastTiming] = useState<{ label: string; milliseconds: number } | null>(null);
   const [phaseTiming, setPhaseTiming] = useState<string | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
+  const stepImport = useRef<AbortController | null>(null);
+  const [importingStep, setImportingStep] = useState(false);
+  useEffect(() => () => stepImport.current?.abort(), []);
   const projectDocuments = useRef<Record<string,string>>(Object.fromEntries(Object.entries(initialWorkspace?.documents ?? {}).map(([name, text]) => [name, editorSource(text)])));
   const projectRoot = useRef<string | null>(initialWorkspace?.root ?? null);
   const savedSources = useRef<Record<string,string>>({ ...projectDocuments.current, [initialName]: initialSource });
@@ -155,7 +158,8 @@ export function HeliosApp({ project, initialWorkspace, chooseBase = false, onSho
   const wireframePreview = useMemo(() => {
     const action = pendingAuthoring?.action;
     if (!previewModel || action?.kind !== 'feature' || !placingHole && !['fillet', 'chamfer'].includes(action.item.id)) return null;
-    return action.edge && model ? edgeOperationPreview(previewModel.mesh, model.mesh, action.edge) : previewModel.mesh;
+    const pick = action.edge ?? action.importedFinish?.pick;
+    return pick && model ? edgeOperationPreview(previewModel.mesh, model.mesh, pick) : previewModel.mesh;
   }, [model, pendingAuthoring?.action, placingHole, previewModel]);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [publishOpen, setPublishOpen] = useState(false);
@@ -257,6 +261,7 @@ export function HeliosApp({ project, initialWorkspace, chooseBase = false, onSho
     const rootSource = root === name ? value : projectDocuments.current[root];
     try {
       await runtime.initialize();
+      if (runtime.info) setRuntimeName(formatAetherisRuntime(runtime.info));
       if (submission === latestSubmission.current) setBusy('Building');
     } catch (error) {
       setDiagnostics([toDiagnostic(error, 'HELIOS-WORKER')]);
@@ -265,7 +270,6 @@ export function HeliosApp({ project, initialWorkspace, chooseBase = false, onSho
       return false;
     }
     const result = await buildClient.submit(rootSource, root, revision, projectDocuments.current);
-    if (runtime.info) setRuntimeName(`WASM Worker · ${runtime.info.packageVersion}`);
     if (submission === latestSubmission.current) acceptBuild(result);
     if (submission === latestSubmission.current && result.request.sourceRevision !== sourceRevisionRef.current) {
       setBusy(null);
@@ -669,9 +673,9 @@ export function HeliosApp({ project, initialWorkspace, chooseBase = false, onSho
   // The kernel's catalog of things to add; every item is proven to build.
   const [palette, setPalette] = useState<readonly PaletteItem[]>([]);
   useEffect(() => {
-    if (editorMode !== 'graph' || palette.length) return;
+    if ((editorMode !== 'graph' && !model?.mesh.importedAsset) || palette.length) return;
     void runtime.palette().then(result => setPalette(result.items)).catch(() => { /* the canvas works without a palette */ });
-  }, [editorMode]);
+  }, [editorMode, model?.mesh.importedAsset]);
   // The Assembly view of the canvas: the chosen assembly's parts and joints.
   const [pickedAssembly, setPickedAssembly] = useState<string | null>(null);
   // A sampled Motion pose shown in the viewport; null shows the model as built.
@@ -703,7 +707,10 @@ export function HeliosApp({ project, initialWorkspace, chooseBase = false, onSho
       actions: constructionActions(),
       palette: [...documentFeatures(), ...palette],
       featureTarget: 'body' in target ? { body: target.body.name ?? target.body.id } : target,
-      unavailable: (item: PaletteItem) => item.requiresEmptyModel ? null : paletteUnavailable(item, outline, inspectedId),
+      unavailable: (item: PaletteItem) => 'body' in target && target.body.kind === 'InlineStep' && item.placement === 'feature'
+        ? (item.id === 'fillet' || item.id === 'chamfer' ? 'Pick a STEP edge or face in the viewport to start a finish.'
+          : 'This feature requires an authored body.')
+        : item.requiresEmptyModel ? null : paletteUnavailable(item, outline, inspectedId),
       onInsert: (item: PaletteItem) => {
         if (item.placement === 'feature') { beginAuthoring({ kind: 'feature', item }); return; }
         if (item.requiresEmptyModel) { beginAuthoring({ kind: 'base', baseId: item.id }); return; }
@@ -736,9 +743,24 @@ export function HeliosApp({ project, initialWorkspace, chooseBase = false, onSho
       }, reason: assemblyGraph?.joints.some(j => j.id === inspectedId) ? undefined : 'Select a mate first.' },
     ];
   }
-  // A model whose only bodies are imported STEP parts: Graph's hole and finish tools do not apply to them yet.
   const importedOnly = !!outline?.nodes.some(n => n.kind === 'InlineStep')
     && !outline.nodes.some(n => ['Box', 'Cylinder', 'Extrude', 'Compose', 'Revolve', 'Loft', 'Sweep'].includes(n.kind));
+  const importedFinishSupported = supportsImportedFinish(semanticSchema);
+  const importedTarget = importedFinishSupported && importedOnly
+    ? importedFinishTarget(outline, selectedSelection, model?.mesh.importedAsset?.path) : null;
+  const beginImportedFinish = (kind: EdgeFinishKind) => {
+    const item = palette.find(candidate => candidate.id === kind);
+    if (!item || !importedTarget) return;
+    setFinishPick(null);
+    const kindName = kind === 'fillet' ? 'Fillet' : 'Chamfer';
+    const target = importedTarget.topology === 'Edge' ? 'SingleEdge' : 'Boundary';
+    const size = kind === 'fillet' ? 'Radius' : 'Distance';
+    beginAuthoring({ kind: 'feature', importedFinish: importedTarget, item: {
+      ...item, nameStem: kindName,
+      source: 'EdgeFinish<' + kindName + '> ' + kindName + ' { On: ' + importedTarget.selector
+        + ' Target: ' + target + ' ' + size + ': 0.1mm Clearance: 0.1mm }',
+    } });
+  };
   const contextActions = () => {
     const node = outlineNode(outline, inspectedId);
     const target = featureTarget(outline, inspectedId);
@@ -751,7 +773,13 @@ export function HeliosApp({ project, initialWorkspace, chooseBase = false, onSho
     const canPickFinish = 'body' in target && model?.mesh.definitions.some(definition =>
       definition.edges?.some(edge => edge.edgeFinish?.body === target.body.name));
     if ('body' in target && target.body.kind === 'InlineStep')
-      return <div className="node-construction-actions"><p className="imported-part-note" role="note">{IMPORTED_PART_NOTE}</p></div>;
+      return <div className="node-construction-actions">
+        <p className="imported-part-note" role="note">{importedFinishSupported ? IMPORTED_PART_NOTE : IMPORTED_FINISH_RUNTIME_NOTE}</p>
+        {importedFinishSupported && <div className="node-feature-actions">
+          <button disabled={updating || !!busy || buildStarted !== null} onClick={() => chooseSelectionMode('edge')}>Pick edge…</button>
+          <button disabled={updating || !!busy || buildStarted !== null} onClick={() => chooseSelectionMode('face')}>Pick face rim…</button>
+        </div>}
+      </div>;
     return <div className="node-construction-actions">{updating && <small role="status">Updating graph controls…</small>}{'body' in target && <div className="node-feature-actions" aria-label={`Features on ${target.body.name}`}>
       <small>On {target.body.name}</small>
       {palette.filter(item => ['hole', 'hole-blind', 'counterbore', 'countersink'].includes(item.id)).map(item =>
@@ -770,6 +798,23 @@ export function HeliosApp({ project, initialWorkspace, chooseBase = false, onSho
   };
   const selectedEdgeActions = () => {
     if (editorMode === 'label' || pendingAuthoring) return null;
+    if (importedOnly && selectedSelection) {
+      const label = selectedSelection.topologyKind === 'Edge' ? 'edge' : 'face rim';
+      const reason = !importedFinishSupported ? IMPORTED_FINISH_RUNTIME_NOTE
+        : picks.length !== 1 ? 'Click one edge or face without Ctrl or Shift.'
+        : displayRevision !== sourceRevision ? 'Build the current source before finishing the selection.'
+        : pendingGraphFields ? 'Apply or discard the current graph edits first.'
+        : busy || buildStarted !== null || outline?.document !== sourceName || outline.revision !== String(sourceRevision)
+          ? 'Wait for the current build to finish.'
+          : !importedTarget ? 'Pick an original STEP edge or face. To resize an existing finish, select it in Graph.' : null;
+      return <div className="edge-feature-actions" role="group" aria-label={label === 'edge' ? 'Selected edge actions' : 'Selected face rim actions'}>
+        {importedTarget && <small className="selected-edge-kind">STEP {label} {importedTarget.entity}</small>}
+        {(['fillet', 'chamfer'] as const).map(kind => <button key={kind} disabled={!!reason || !palette.some(item => item.id === kind)}
+          onClick={() => beginImportedFinish(kind)}>
+          {kind === 'fillet' ? 'Fillet selected ' : 'Chamfer selected '}{label}</button>)}
+        {reason && <small className="edge-finish-notes">{reason}</small>}
+      </div>;
+    }
     if (finishPick && selectedSelection?.topologyKind !== 'Edge')
       return <div className="edge-feature-actions" role="group" aria-label="Edge finish picking">
         <small role="status">{finishSummary(finishPick, finishes.state(finishPick))}</small>
@@ -984,7 +1029,7 @@ export function HeliosApp({ project, initialWorkspace, chooseBase = false, onSho
     ...(['front', 'top', 'bottom', 'right', 'iso', 'fit', 'fitselection'] as const).map(view => ({ id: view, label: `${view === 'iso' ? 'Isometric' : view === 'fitselection' ? 'Fit selection' : view[0].toUpperCase() + view.slice(1)} view`, run: () => view === 'fit' || view === 'fitselection' ? setViewCommand(`${view}-${Date.now()}`) : namedView(view) }))
   ];
 
-  const documentControlsBlocked = pendingGraphFields || !!pendingAuthoring;
+  const documentControlsBlocked = pendingGraphFields || !!pendingAuthoring || importingStep;
   const documentControlsHint = pendingAuthoring ? 'Apply or cancel the current preview first.'
     : pendingGraphFields ? 'Apply or discard the graph field edits first.' : undefined;
 
@@ -997,7 +1042,9 @@ export function HeliosApp({ project, initialWorkspace, chooseBase = false, onSho
         <button aria-label="Redo" title="Redo · Ctrl+Shift+Z" disabled={!historyState.redo || !!busy || documentControlsBlocked} onClick={() => void runHistory('redo')}>↷</button>
         <button disabled={documentControlsBlocked} title={documentControlsHint} onClick={() => setExamplesOpen(true)}>Examples</button>
         <button disabled={documentControlsBlocked} title={documentControlsHint} onClick={() => fileInput.current?.click()}>Open file</button>
-        <button disabled={documentControlsBlocked} title={documentControlsHint ?? 'Import a supported canonical STEP part'} onClick={() => fileInput.current?.click()}>Import STEP</button>
+        {importingStep
+          ? <button onClick={() => stepImport.current?.abort()} aria-label="Cancel STEP import">Cancel STEP import</button>
+          : <button disabled={documentControlsBlocked || !!busy} title={documentControlsHint ?? 'Open a STEP part or assembly'} onClick={() => fileInput.current?.click()}>Import STEP</button>}
         <button disabled={pendingGraphFields} title="Download source, or a portable workspace with all imported assets · Ctrl+S" onClick={() => onSave ? void save() : downloadSource()}>{!onSave && Object.keys(projectDocuments.current).length > 1 ? 'Save workspace' : 'Save source'}</button>
         <button className="build-action" disabled={buildStarted !== null || !!busy || documentControlsBlocked} title={documentControlsHint ?? 'Build project · Ctrl+Enter'} onClick={() => void rebuildSource()}>{buildStarted !== null ? `Building · ${elapsedSeconds.toFixed(1)} s` : 'Build'}</button>
         <ExportPicker formats={model?.exportFormats ?? []} disabled={!model || !!busy || buildStarted !== null || !!pendingAuthoring} open={exportOpen} onOpen={setExportOpen} onExport={exportSelected} />
@@ -1010,11 +1057,30 @@ export function HeliosApp({ project, initialWorkspace, chooseBase = false, onSho
       <input ref={fileInput} hidden type="file" multiple accept=".firmament,.firmasm,.step,.stp,.zip" onChange={async event => {
         const files = Array.from(event.target.files ?? []); if (!files.length) return;
         event.target.value = '';
+        if (stepImport.current) return;
+        let importController: AbortController | undefined;
         try {
-          if (files.some(file => file.size > 32 * 1024 * 1024) || files.reduce((sum, file) => sum + file.size, 0) > 64 * 1024 * 1024) throw new Error('Local import supports files up to 32 MB and workspaces up to 64 MB.');
+          if (files.some(file => file.size > localFileLimit(file.name)) || files.reduce((sum, file) => sum + file.size, 0) > localWorkspaceLimit)
+            throw new Error('Local import supports STEP files and workspaces up to 64 MiB, with a 32 MiB limit for other individual files.');
           let next;
+          let importWarnings: readonly string[] = [];
           if (files.length === 1 && /\.zip$/i.test(files[0].name)) next = unpackProject(new Uint8Array(await files[0].arrayBuffer()));
-          else if (files.length === 1 && isStep(files[0].name)) { const text = await files[0].text(); next = importedProject(files[0].name, text, await stepTextSha256(text)); }
+          else if (files.length === 1 && isStep(files[0].name)) {
+            const file = files[0];
+            importController = new AbortController();
+            stepImport.current = importController;
+            setImportingStep(true);
+            const assembly = await prepareStepImport(file, importController.signal);
+            if (assembly) next = assembly;
+            else {
+              const text = await file.text();
+              next = importedProject(file.name, text, await stepTextSha256(text));
+            }
+            importController.signal.throwIfAborted();
+            importWarnings = assembly?.warnings ?? [];
+            if (assembly) pushOutput(`Imported ${assembly.solidCount} solid definitions from ${file.name}.`);
+            setImportingStep(false);
+          }
           else {
             if (files.some(file => !/\.(firmament|firmasm|step|stp)$/i.test(file.name))) throw new Error('Open Firmament source, STEP, or a .helios.zip workspace.');
             const entries = await Promise.all(files.map(async file => [file.name, await file.text()] as const));
@@ -1027,7 +1093,16 @@ export function HeliosApp({ project, initialWorkspace, chooseBase = false, onSho
           projectDocuments.current = next.documents; projectRoot.current = next.root;
           setProjectFileNames(sourceFiles(next.documents)); setWorkspaceTitle(stripExtension(next.root)); setUtilityTab({ kind: 'inspector' });
           await open(next.documents[next.root], next.root);
-        } catch (error) { setDiagnostics([toDiagnostic(error, 'HELIOS-OPEN')]); setBusy(null); }
+          if (importWarnings.length) {
+            for (const warning of importWarnings) pushOutput(warning);
+            setDiagnostics(items => [...items, ...importWarnings.map(message => ({ severity: 'warning' as const, code: 'STEP-ASSEMBLY-IMPORT', message }))]);
+            shellLayout.setBottomOpen(true);
+          }
+        } catch (error) {
+          if (!importController?.signal.aborted) setDiagnostics([toDiagnostic(error, 'HELIOS-OPEN')]);
+        } finally {
+          if (importController) { stepImport.current = null; setImportingStep(false); }
+        }
       }} />
     </header>
     {project && <div className="cloud-project-bar"><button onClick={() => { if (saveState === 'Saved' || confirm('Leave this project with unsaved source?')) onBack?.(); }}>← Discover</button><strong>{project.name}</strong><span className="cloud-save-state" role="status">{saveState}</span><div className="cloud-editor-actions"><button className="cloud-save" onClick={() => void save()}>Save</button>{onPublish && <button onClick={() => { setPublishState(''); setPublishOpen(true); }}>Publish</button>}<button onClick={() => downloadText(source, sourceName)}>Download source</button>{onSignOut && <button onClick={() => { if (saveState === 'Saved' || confirm('Sign out with unsaved source?')) onSignOut(); }}>Sign out</button>}</div></div>}
@@ -1135,7 +1210,7 @@ export function HeliosApp({ project, initialWorkspace, chooseBase = false, onSho
         {editorMode === 'graph' && selectionMode === 'edge' && !finishPick && !pendingAuthoring && !selectedSelection && model &&
           <div className="pick-edge-hint" role="status">Click an edge in the viewport to see its finish options.</div>}
         {welcomeHint && !pendingAuthoring && !selectedSelection && editorMode !== 'label' && (editorMode !== 'graph' || selectionMode === 'face') &&
-          <div className="workflow-hint"><span>{importedOnly ? IMPORTED_PART_NOTE : editorMode === 'graph'
+          <div className="workflow-hint"><span>{importedOnly ? importedFinishSupported ? IMPORTED_PART_NOTE : IMPORTED_FINISH_RUNTIME_NOTE : editorMode === 'graph'
             ? 'Click a face to add a hole. Switch to Edges to fillet or chamfer. Use Label for notes and dimensions.'
             : 'Use Graph to add holes and finish edges. Use Label for notes and dimensions.'}</span><button aria-label="Dismiss workflow hint" onClick={() => { setWelcomeHint(false); localStorage.setItem('helios-workflow-understood', '1'); }}>×</button></div>}
         </div>
@@ -1180,7 +1255,7 @@ export function HeliosApp({ project, initialWorkspace, chooseBase = false, onSho
       </aside>
       <div className="bottom-region" style={shellLayout.place('bottom')}><ResizeHandle axis="vertical" label="Resize bottom panel" value={shellLayout.bottomPixels} onResize={shellLayout.resizeBottom} /><BottomDock collapsed={!shellLayout.bottomOpen} onToggle={() => shellLayout.setBottomOpen(value => !value)} diagnostics={shownDiagnostics} busy={busy} sourceName={sourceName} sourceRevision={sourceRevision} displayRevision={displayRevision} lastTiming={lastTiming} events={phaseTiming ? [...outputEvents, phaseTiming] : outputEvents} onDiagnosticClick={diagnostic => { if (diagnostic.source) navigateSource(diagnostic.source); }} /></div>
     </main>
-    <WorkspaceStatus busy={busy ?? (workerFailed ? 'Worker failed' : null)} elapsed={elapsedSeconds} runtimeName={runtimeName} model={model} sourceRevision={sourceRevision} displayRevision={displayRevision} diagnostics={shownDiagnostics} timing={lastTiming} theme={theme} viewMode={viewMode} onRestart={() => { void buildClient.restart().then(() => submitBuild(source, sourceName)).catch(error => setDiagnostics([toDiagnostic(error, 'HELIOS-WORKER-RESTART')])); }} />
+    <WorkspaceStatus busy={importingStep ? 'Reading STEP solids' : busy ?? (workerFailed ? 'Worker failed' : null)} elapsed={elapsedSeconds} runtimeName={runtimeName} model={model} sourceRevision={sourceRevision} displayRevision={displayRevision} diagnostics={shownDiagnostics} timing={lastTiming} theme={theme} viewMode={viewMode} onRestart={() => { void buildClient.restart().then(() => submitBuild(source, sourceName)).catch(error => setDiagnostics([toDiagnostic(error, 'HELIOS-WORKER-RESTART')])); }} />
     {paletteOpen && <CommandPalette commands={paletteCommands} onClose={() => setPaletteOpen(false)} />}
     {learnPage !== null && <Suspense fallback={<div className="app-loading" role="status">Opening Firmament manual…</div>}><LearnCenter initialPage={learnPage} onClose={() => setLearnPage(null)} /></Suspense>}
     {examplesOpen && <ExampleDialog onClose={() => setExamplesOpen(false)}><ExampleGallery onOpen={id => void openExample(id)} opening={openingExample} unavailableReason={busy ? "A project operation is running. Open another example when it finishes." : undefined} /></ExampleDialog>}

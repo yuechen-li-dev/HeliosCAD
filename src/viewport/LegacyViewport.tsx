@@ -220,13 +220,15 @@ function createScene(host: HTMLDivElement, onSelect: Props['onSelect']) {
     if (state.selectionMode === 'face' || state.selectionMode === 'auto' && event.altKey) return face;
     // A broad world-space tolerance sorted by depth can select a neighbouring
     // trim instead of the line under the pointer. Rank visible candidates in pixels.
-    return hits.filter(hit => hit.object instanceof THREE.LineSegments
+    const edges = hits.filter(hit => hit.object instanceof THREE.LineSegments
         && (!face || hit.distance <= face.distance + worldPerPixel * 8))
       .map(hit => {
         const projected = hit.point.clone().project(camera);
         return { hit, distance: Math.hypot((projected.x - pointer.x) * rect.width / 2, (projected.y - pointer.y) * rect.height / 2) };
-      }).filter(candidate => candidate.distance <= 8)
-      .sort((a, b) => a.distance - b.distance || a.hit.distance - b.hit.distance)[0]?.hit ?? (state.selectionMode === 'auto' ? face : undefined);
+      }).filter(candidate => candidate.distance <= 8);
+    const closestPixels = edges.reduce((closest, edge) => Math.min(closest, edge.distance), Infinity);
+    return edges.filter(edge => edge.distance <= closestPixels + 0.5)
+      .sort((a, b) => a.hit.distance - b.hit.distance || a.distance - b.distance)[0]?.hit ?? (state.selectionMode === 'auto' ? face : undefined);
   };
   renderer.domElement.addEventListener('pointermove', event => {
     const hit = hitTest(event)?.object;

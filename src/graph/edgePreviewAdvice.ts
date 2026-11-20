@@ -59,10 +59,49 @@ export function edgePreviewAdvice(
 export function edgeSelectionHelp(selection: SelectionDescription): string {
   if (selection.edgeFinish) return '';
   if (selection.sourceAddressability === 'ImportedStable') {
-    return 'This edge comes from imported geometry. Open the original editable part to fillet or chamfer it here.';
+    return 'Open the imported part as a single-solid workspace to finish this edge.';
   }
   if (selection.edgeFinishReason?.includes('picked-face holes')) {
     return 'The picked-face holes on this part cannot be combined with a corner finish. Try the finish on the original extrusion before placing the holes.';
   }
   return selection.edgeFinishReason ?? 'Choose an original straight outer edge on a Box or extrusion. To resize an existing finish, select it in Graph.';
+}
+
+/** Keep the raw planner evidence in Technical details and lead with a next action. */
+export function importedFinishAdvice(
+  diagnostics: readonly Diagnostic[], error: string, kind: 'fillet' | 'chamfer', topology: 'Edge' | 'Face',
+): string | null {
+  const evidence = [error, ...diagnostics.map(d => [d.code, d.message, d.details].join(' '))].join('\n');
+  const size = kind === 'fillet' ? 'Radius' : 'Distance';
+  if (/source-pmi|geometry-only revision/.test(evidence))
+    return 'Allow this revision to exclude annotations from the original STEP, then Preview again.';
+  if (/source-pin|pin-mismatch|original STEP file/.test(evidence))
+    return 'Reopen the original STEP or a workspace with its matching source file, then pick the edge or face again.';
+  if (/imported-finish-combination/.test(evidence))
+    return 'Export the current part as a single-solid STEP and reopen it in a new workspace, then pick the finish again.';
+  if (/imported-finish-roundtrip|new edge trim .*could not be qualified/.test(evidence))
+    return 'The kernel could not verify the new trims. Try a different edge or rim, or re-export the original part as STEP and try again.';
+  if (/edge-unresolved|face-unresolved/.test(evidence))
+    return 'This STEP selection has changed or an earlier finish replaced it. Cancel, build the current source, and pick an original edge or face.';
+  if (/import-unqualified|not qualified at the requested tolerance|single closed oriented manifold/.test(evidence))
+    return 'This part needs a closed solid with valid trims. Repair or re-export it as a single solid STEP, then import it again.';
+  if (/reaches? existing boundary|may reach existing face|leave clearance|keep the inset rim open|ring torus/.test(evidence))
+    return 'This finish would reach nearby geometry or leave too little material. Reduce ' + size + ', or pick a different edge or rim.';
+  if (/size and clearance must|setback is below/.test(evidence))
+    return 'Increase ' + size + ' and Clearance above the STEP import tolerance.';
+  if (/edge is too short for the requested clearance/.test(evidence))
+    return 'Pick a longer edge, or reduce Clearance while keeping it above the STEP import tolerance.';
+  if (topology === 'Edge' && /endpoint trim does not support/.test(evidence))
+    return 'Try a smaller ' + size + '. If it still fails, pick a straight outside corner with flat end faces.';
+  if (/full cap profile must be convex|strict convex turn/.test(evidence))
+    return 'Pick a convex outer rim, or switch to Edges and finish one straight outside edge.';
+  if (/outward planar cap perpendicular|polygon rim sides must be perpendicular|needs a planar support|straight axial edge|each endpoint must meet exactly three edges|two distinct planar supports/.test(evidence))
+    return topology === 'Edge'
+      ? 'Pick a straight outside edge between flat faces with flat ends perpendicular to the edge.'
+      : 'Pick a flat cap with perpendicular sides, or switch to Edges to finish one outside edge.';
+  if (/complete circular|closed outer loop of straight edges|select a straight edge|Brep\.ImportedEdgeFinish\.Region|straight-edge:|polygon-rim:/.test(evidence))
+    return topology === 'Face'
+      ? 'Pick a convex, straight-sided outer rim or a circular rim made from one full edge.'
+      : 'Pick a straight outside edge or one complete circular outer rim.';
+  return null;
 }

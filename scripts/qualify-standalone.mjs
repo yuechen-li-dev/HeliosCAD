@@ -66,6 +66,31 @@ async function runBrowserSuite(config, environment, extraArgs = []) {
   });
   return await new Promise((resolve, reject) => { runner.once('error', reject); runner.once('exit', code => resolve(code)); });
 }
+async function qualifyImportedFinish(page) {
+  const fixture = join(root, '../Aetheris/fixtures/Regression/InlineStep/production/imported-single-edge.firmament');
+  const source = (await readFile(fixture, 'utf8')).replace(
+    '../../../../testdata/step242/handcrafted/baseline/block-basic.step', 'block-basic.step');
+  const asset = join(root, '../Aetheris/testdata/step242/handcrafted/baseline/block-basic.step');
+  const input = page.getByRole('banner').locator('input[type=file]');
+  const status = page.locator('.status-ready');
+
+  async function open(name, text) {
+    await input.setInputFiles([
+      { name, mimeType: 'text/plain', buffer: Buffer.from(text) },
+      { name: 'block-basic.step', mimeType: 'model/step', buffer: await readFile(asset) },
+    ]);
+    await expect(page.locator('.workspace-identity small')).toContainText(name, { timeout: 120_000 });
+  }
+
+  await open('refused-finish.firmament', source.replace('radius: 0.1mm', 'radius: 2mm'));
+  await expect(status).toHaveText('Build failed', { timeout: 120_000 });
+  const problems = page.getByRole('tab', { name: 'Problems', exact: true });
+  if (!(await page.locator('.dock-errors').isVisible())) await problems.click();
+  await expect(page.locator('.dock-errors')).toContainText('requested clearance');
+  await open('qualified-finish.firmament', source);
+  await expect(status).toHaveText('Ready', { timeout: 120_000 });
+  console.log('The packaged browser runtime refuses an oversized imported fillet and builds the valid finish.');
+}
 async function stop(cookie) {
   // CSRF cookie accompanies the request token and authentication cookie.
   const tokenResponse = await fetch(address + '/api/auth/csrf', { headers: { Cookie: cookie } });
@@ -108,7 +133,7 @@ try {
     }
   });
   await page.goto(address + '/__helios/start#' + session.Token);
-  await expect(page.getByRole('button', { name: 'New part', exact: false })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'New part', exact: false })).toBeVisible({ timeout: 30_000 });
   assert.equal(new URL(page.url()).hash, '');
   await expect(page.getByRole('button', { name: 'Quit Helios', exact: true })).toBeVisible();
   await page.goto(address + '/local');
@@ -144,8 +169,11 @@ try {
   const glb = Object.entries(exports).find(([name]) => name.endsWith('.glb'));
   assert.ok(pdf && glb); assert.equal(Buffer.from(pdf[1]).subarray(0, 4).toString(), '%PDF'); assert.equal(Buffer.from(glb[1]).subarray(0, 4).toString(), 'glTF');
   await page.getByRole('banner').locator('input[type=file]').setInputFiles(stepPath);
-  await expect(page.locator('.workspace-identity strong')).toHaveText('box');
+  // STEP is classified in a fresh worker before the workspace switches.
+  // Include its cold WASM startup in the import deadline.
+  await expect(page.locator('.workspace-identity strong')).toHaveText('box', { timeout: 120_000 });
   await expect(page.locator('.status-ready')).toContainText('Ready', { timeout: 120_000 });
+  await qualifyImportedFinish(page);
   await page.getByRole('banner').locator('input[type=file]').setInputFiles(join(root, 'fixtures/author-local/part.firmament'));
   await expect(page.locator('.workspace-identity small')).toContainText('part.firmament');
   await expect(page.locator('.workspace-identity strong')).toHaveText('AgentWitness');
@@ -212,7 +240,8 @@ try {
   await assert.rejects(() => fetch(address + '/health/live'));
   launch(); session = await waitReady();
   await page.goto(address + '/__helios/start#' + session.Token);
-  await expect(page.getByRole('button', { name: 'New part', exact: false })).toBeVisible();
+  // Host readiness precedes the browser's session exchange and gallery navigation.
+  await expect(page.getByRole('button', { name: 'New part', exact: false })).toBeVisible({ timeout: 30_000 });
   const projects = await context.request.get(address + '/api/projects'); assert.ok((await projects.json()).some(project => project.id === projectId));
   await page.goto(address + '/local'); await expect(page.locator('.status-ready')).toContainText('Ready', { timeout: 120_000 });
   await page.getByRole('tab', { name: 'Version Control', exact: true }).click();
@@ -244,7 +273,11 @@ try {
   await stop(cookie);
   const log = await readFile(join(data, 'logs/helios.log'), 'utf8'); assert.ok(!log.includes(session.Token));
   await writeFile(join(working, 'QUALIFICATION.json'), JSON.stringify({ verdict: 'passed', archive: basename(archive), manifest,
-    browser: browser.version(), checks: ['inventory', 'self-contained startup', 'authentication and CSRF', 'loopback origin guard', 'single host', 'production AOT native worker load/build', '128 fresh curved AOT draft traces', 'STEP bounds/topology/reopening', 'GLB/PDF export', 'local projects restart', 'browser checkpoint restart/restore', 'AI settings', 'Quit and process exit', ...(graphQualification ? ['graph-only part authoring and recovery'] : []), ...(usageQualification ? ['production learning, language, graph, draft, gallery, imported PMI and project usage suite'] : [])], errors }, null, 2));
+    browser: browser.version(), checks: ['inventory', 'self-contained startup', 'authentication and CSRF', 'loopback origin guard', 'single host',
+      'production AOT native worker load/build', '128 fresh curved AOT draft traces', 'STEP bounds/topology/reopening',
+      'imported fillet acceptance and clearance refusal', 'GLB/PDF export', 'local projects restart', 'browser checkpoint restart/restore',
+      'AI settings', 'Quit and process exit', ...(graphQualification ? ['graph-only part authoring and recovery'] : []),
+      ...(usageQualification ? ['production learning, language, graph, draft, gallery, imported PMI and project usage suite'] : [])], errors }, null, 2));
   await writeFile(join(root, 'artifacts/local/standalone/qualified.json'), JSON.stringify({ working, archive }, null, 2));
   console.log(`Standalone qualification passed: ${working}`);
 } finally {

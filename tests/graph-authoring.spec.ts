@@ -2,6 +2,7 @@ import { expect, test, type Page } from '@playwright/test';
 import { execFileSync } from 'node:child_process';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
+import { strFromU8, unzipSync } from 'fflate';
 import { TelosCamera } from '@aetheris/three-telos';
 
 const output = resolve('artifacts/local/graph-authoring');
@@ -217,7 +218,7 @@ for (const kind of ['Chamfer'] as const) test(`a picked bracket edge accepts one
   await expect(page.locator('.status-ready')).toContainText('Ready', { timeout: 120_000 });
   await page.getByRole('tab', { name: 'Graph', exact: true }).click();
   const before = (await saveSource(page, `single-edge-${kind}-before`)).source;
-  await page.getByRole('button', { name: 'Front', exact: true }).click();
+  await page.getByRole('button', { name: 'Top', exact: true }).click();
   await inspector(page).getByRole('button', { name: `${kind} an edge…`, exact: true }).click();
   await expect(page.getByRole('button', { name: 'Edges', exact: true })).toHaveAttribute('aria-pressed', 'true');
   // The runtime builds the finish on every offered edge; the ones that build are lit.
@@ -225,10 +226,8 @@ for (const kind of ['Chamfer'] as const) test(`a picked bracket edge accepts one
   const canvas = page.locator('[data-testid="viewport"] canvas');
   const lit = JSON.parse((await canvas.getAttribute('data-finish-highlight'))!);
   expect(lit).toMatchObject({ kind: 'chamfer' }); expect(lit.admitted).toBeGreaterThan(0);
-  const camera = JSON.parse((await canvas.getAttribute('data-surface-inspection'))!).camera, rect = (await canvas.boundingBox())!;
-  // Clicking a lit edge starts the finish on it.
-  await page.mouse.click(rect.x + rect.width / 2 + (18 - camera.target[0]) * rect.height / camera.span,
-    rect.y + rect.height / 2 - (3 - camera.target[2]) * rect.height / camera.span);
+  // The Top view separates the two extrusion caps across the screen.
+  await clickWorld(page, [18, -20, 3]);
   await expect(panel(page).getByText(/Builds with Distance .* mm/)).toBeVisible({ timeout: 60_000 });
   await expect(panel(page).getByRole('region', { name: 'Selected edge' })).toContainText('Extrusion end-face edge');
   await expect(panel(page).getByLabel('Face', { exact: true })).toHaveCount(0);
@@ -803,3 +802,74 @@ test('assembly ports create explicit Firmament mates and Parts exposes no wire p
   await expect(page.locator('.react-flow__handle:visible')).toHaveCount(0);
   await expect(page.locator('.react-flow__handle.connectable')).toHaveCount(0);
 });
+
+for (const { target, kind } of [
+  { target: 'edge', kind: 'Fillet' }, { target: 'edge', kind: 'Chamfer' },
+  { target: 'face rim', kind: 'Fillet' }, { target: 'face rim', kind: 'Chamfer' },
+] as const) {
+  test(`imported STEP ${target} can preview and apply a ${kind.toLowerCase()}`, async ({ page }) => {
+    await page.goto('/local');
+    await expect(page.locator('.status-ready')).toContainText('Ready', { timeout: 120_000 });
+    const original = '../Aetheris/testdata/step242/handcrafted/baseline/block-basic.step';
+    await page.getByRole('banner').locator('input[type=file]').setInputFiles(original);
+    await expect(page.locator('.status-ready')).toContainText('Ready', { timeout: 120_000 });
+    await page.getByRole('tab', { name: 'Graph', exact: true }).click();
+    await expect(page.locator('.imported-part-note').first()).toContainText('Pick a face to finish its outer rim');
+    await page.getByRole('button', { name: 'Top', exact: true }).click();
+
+    const edge = target === 'edge';
+    if (edge) await page.getByRole('button', { name: 'Pick edge…', exact: true }).click();
+    await clickWorld(page, edge ? [1, .5, 1] : [.5, .5, 1]);
+    await page.getByRole('button', { name: kind + ' selected ' + target, exact: true }).click();
+
+    const consent = panel(page).getByRole('checkbox', { name: 'Exclude annotations from the imported STEP in this revision' });
+    await expect(panel(page).getByRole('button', { name: 'Preview', exact: true })).toBeDisabled();
+    await consent.check();
+    const size = kind === 'Fillet' ? 'Radius' : 'Distance';
+    const editName = `${edge ? 'edge' : 'rim'}-${kind.toLowerCase()}`;
+    await panel(page).getByLabel(size, { exact: true }).fill('2');
+    await panel(page).getByRole('button', { name: 'Preview', exact: true }).click();
+    await expect(panel(page).getByRole('alert')).toContainText(edge ? `Try a smaller ${size}` : `Reduce ${size}`);
+    await expect(panel(page).getByRole('button', { name: 'Apply', exact: true })).toBeDisabled();
+
+    const refused = await saveImportedWorkspace(page, `refused-imported-${editName}`);
+    expect(refused.source).not.toContain('EdgeFinish');
+    expect(refused.source.toLowerCase()).not.toContain('geometryonly');
+    expect(refused.asset).toBe(await readFile(original, 'utf8'));
+
+    await panel(page).getByLabel(size, { exact: true }).fill('0.1');
+    await panel(page).getByRole('button', { name: 'Preview', exact: true }).click();
+    await expect(panel(page).getByRole('status')).toContainText('Preview ready');
+    await expect(page.locator('[data-testid="viewport"] canvas')).toHaveAttribute('data-operation-preview-wires', /^[1-9]/);
+    await panel(page).getByRole('button', { name: 'Apply', exact: true }).click();
+    await ready(page);
+    await expect(panel(page)).toHaveCount(0);
+
+    const applied = await saveImportedWorkspace(page, `applied-imported-${editName}`);
+    expect(applied.source).toContain('EdgeFinish<' + kind + '>');
+    expect(applied.source).toMatch(edge ? /part\.edge\("#\d+"\)/ : /part\.face\("#\d+"\)/);
+    expect(applied.source).toContain(edge ? 'SingleEdge' : 'Boundary');
+    expect(applied.source).toMatch(/geometryonly\s*:\s*true/i);
+    expect(applied.asset).toBe(refused.asset);
+    const exported = await step(page, `imported-${editName}`, { min: [0, 0, 0], max: [1, 1, 1] });
+    if (kind === 'Fillet') expect(exported).toContain('CYLINDRICAL_SURFACE');
+    else expect(exported.match(/ADVANCED_FACE\(/g)).toHaveLength(edge ? 7 : 10);
+    if (edge && kind === 'Fillet') {
+      await page.getByRole('button', { name: 'Faces', exact: true }).click();
+      await page.getByRole('button', { name: 'Right', exact: true }).click();
+      await clickWorld(page, [1, .5, .5]);
+      await expect(page.getByRole('button', { name: 'Chamfer selected face rim', exact: true })).toBeEnabled();
+    }
+  });
+}
+
+async function saveImportedWorkspace(page: Page, name: string) {
+  await mkdir(output, { recursive: true });
+  const event = page.waitForEvent('download');
+  await page.getByRole('button', { name: 'Save workspace', exact: true }).click();
+  const path = resolve(output, name + '.helios.zip');
+  await (await event).saveAs(path);
+  const entries = unzipSync(await readFile(path));
+  const { root } = JSON.parse(strFromU8(entries['helios-workspace.json']!));
+  return { source: strFromU8(entries[root]!), asset: strFromU8(entries['block-basic.step']!) };
+}
