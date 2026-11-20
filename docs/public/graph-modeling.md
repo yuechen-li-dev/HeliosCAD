@@ -141,8 +141,8 @@ Radius and Distance must be at least 0.01 mm.
 Extrusion end-face edges currently offer chamfer only. Full-edge fillets on
 those edges are not yet supported; the earlier inset cap-fillet demo is no
 longer offered as a standard UI fillet. The Box's shared +X/+Z edge retains its
-qualified route. Imported edges, curved profile corners and other unqualified
-selections show why the operation is unavailable and what to try. Use
+qualified route. Curved profile corners and other unqualified selections show
+why the operation is unavailable and what to try. Use
 **Fillet face rim…** or **Chamfer face rim…** to finish the full boundary of a face.
 On an extrusion, choose **Top** or **Bottom** for the rim. Select an end face
 before opening the form to use **Use picked face**.
@@ -150,12 +150,34 @@ before opening the form to use **Use picked face**.
 On a single profile extrusion, these corner finishes combine with separated
 picked-side through holes, counterbores and countersinks on either bracket leg.
 Add the holes before or after the finishes. Hole coordinates stay anchored to
-the original construction face; the remaining face boundary clips placement.
+the original construction face. The remaining face boundary clips placement.
 The complete shaft/recess envelope must retain at least 0.01 mm clearance from
 finished boundaries and other holes. A colliding preview disables Apply and
 leaves accepted source and geometry intact. Move the hole, reduce the finish,
 or cancel the draft. End-face finishes combined with picked-side holes and
 general Compose histories are not supported by this route.
+
+## Finish an imported STEP edge or rim
+
+Open a STEP part and wait for the build. Choose **Edges** to pick one edge,
+or **Faces** and click the cap whose outer rim you want to finish. The
+viewport shows **Fillet selected edge/rim** and **Chamfer selected edge/rim**
+for the original STEP selection.
+
+Set **Radius** for a fillet or **Distance** for a chamfer, then choose
+**Preview**. The gold wireframe shows the candidate boundary. A refusal
+gives the next adjustment, such as reducing the radius or picking a convex
+rim. The accepted solid, exports and source remain intact while you preview.
+
+When prompted, allow this revision to exclude annotations carried by the
+original STEP. **Apply** records that choice, any needed source pin, and
+the finish as one undoable Firmament edit. **Save workspace** keeps the
+original STEP asset alongside the edit.
+
+The current kernel admits straight outside edges between planar faces with
+perpendicular ends, unsplit circular outer rims, and convex polygon rims on
+planar caps with perpendicular sides. This workflow needs one qualified
+solid and an Aetheris runtime with imported edge finishing.
 
 ## Drafts, failures and history
 

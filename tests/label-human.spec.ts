@@ -168,7 +168,7 @@ test('a STEP file from another system imports and labels beside the datums it ca
   // A file Aetheris did not write is admitted by a pin of its exact text.
   await expect(page.locator('.editor-pane')).toContainText('textSha256');
   await page.getByRole('tab', { name: 'Graph', exact: true }).click();
-  await expect(page.locator('.node-construction-actions')).toContainText('Adding holes or edge finishes to an imported part is not supported yet.');
+  await expect(page.locator('.node-construction-actions')).toContainText('Use the Label tab for datums, sizes, tolerances and notes.');
   await page.getByRole('tab', { name: 'Label', exact: true }).click();
   const fromFile = page.getByLabel('From the STEP file', { exact: true });
   for (const name of ['A', 'B', 'C']) await expect(fromFile).toContainText(`Datum ${name}`);

@@ -171,6 +171,8 @@ button, a { transition: background-color 100ms, border-color 100ms, color 100ms;
 .authoring-panel > header h2 { margin: 0; font-size: inherit; font-weight: 600; }
 .authoring-fields { display: flex; flex: 1; flex-direction: column; gap: 10px; min-height: 0; overflow: auto; padding: 12px; }
 .authoring-fields > * { flex: none; }
+.authoring-fields .imported-geometry-consent { display: flex; align-items: start; gap: 8px; }
+.authoring-fields .imported-geometry-consent input { flex: none; width: auto; margin-top: 3px; }
 .authoring-footer { display: grid; gap: 8px; padding: 10px 12px; border-top: 1px solid var(--border); background: var(--panel-bg); }
 .authoring-footer [role="alert"] { max-height: 24vh; overflow: auto; }
 .authoring-footer details p + p { margin-top: 6px; }
